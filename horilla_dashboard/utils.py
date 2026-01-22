@@ -127,19 +127,36 @@ class DefaultDashboardGenerator:
                 queryset = self.get_queryset(model_class)
                 count = queryset.count()
 
-                if count == 0:
-                    continue
-
                 chart_func = model_info.get("chart_func")
 
                 if callable(chart_func):
-                    chart = chart_func(self, queryset, model_info)
+                    if count == 0:
+                        # Return empty chart with no_record message
+                        chart = {
+                            "title": model_info.get(
+                                "name", model_class._meta.verbose_name_plural
+                            ),
+                            "type": "pie",  # Default type, won't be rendered anyway
+                            "data": {
+                                "labels": [],
+                                "data": [],
+                                "urls": [],
+                                "labelField": "",
+                            },
+                            "is_empty": True,
+                            "no_record_msg": f"No {model_info.get('name', model_class._meta.verbose_name_plural).lower()} found.",
+                        }
+                        charts.append(chart)
+                    else:
+                        chart = chart_func(self, queryset, model_info)
 
-                    # Post-process chart data to handle choice fields
-                    if chart and isinstance(chart, dict) and "data" in chart:
-                        chart = self._convert_choice_labels_in_chart(chart, model_class)
-
-                    charts.append(chart)
+                        # Post-process chart data to handle choice fields
+                        if chart and isinstance(chart, dict) and "data" in chart:
+                            chart = self._convert_choice_labels_in_chart(
+                                chart, model_class
+                            )
+                            chart["is_empty"] = False
+                            charts.append(chart)
 
             except Exception as e:
                 traceback.print_exc()
@@ -168,7 +185,7 @@ class DefaultDashboardGenerator:
             field_obj = None
             try:
                 field_obj = model_class._meta.get_field(field_name)
-            except:
+            except Exception:
                 # If exact match fails, try to find a field that matches
                 for field in model_class._meta.fields:
                     if (
@@ -244,6 +261,7 @@ class DefaultDashboardGenerator:
         view_id,
         request=None,
         table_fields=None,
+        no_found_img=None,
     ):
         """
         Build table context with pagination for infinite scroll
@@ -261,7 +279,7 @@ class DefaultDashboardGenerator:
                 prefix = "-" if sort_direction == "desc" else ""
                 try:
                     qs = qs.order_by(f"{prefix}{sort_field}")
-                except:
+                except Exception:
                     qs = qs.order_by("id")
             else:
                 date_field = self.get_date_field(model_info["model"])
@@ -272,7 +290,7 @@ class DefaultDashboardGenerator:
             paginator = Paginator(qs, 10)
             try:
                 page_obj = paginator.get_page(page)
-            except:
+            except Exception:
                 page_obj = paginator.get_page(1)
 
             has_next = page_obj.has_next()
@@ -298,7 +316,7 @@ class DefaultDashboardGenerator:
                 if self.has_model_permission(model_info["model"]):
                     col_attrs = {
                         first_col_field: {
-                            "hx-get": f"{{get_detail_url}}?section=sales",
+                            "hx-get": "{get_detail_url}?section=sales",
                             "hx-target": "#mainContent",
                             "hx-swap": "outerHTML",
                             "hx-push-url": "true",
@@ -346,6 +364,7 @@ class DefaultDashboardGenerator:
                 "view_type": "dashboard",
                 "no_record_section": True,
                 "no_record_msg": no_record_msg,
+                "no_found_img": no_found_img,
                 "no_record_add_button": {},
                 "page_obj": page_obj,
                 "has_next": has_next,

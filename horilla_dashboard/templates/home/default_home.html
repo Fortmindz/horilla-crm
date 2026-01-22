@@ -83,7 +83,21 @@
                         {% for chart in chart_data %}
                             <div class="bg-white p-6 rounded-xl shadow-sm chart-container">
                                 <h4 class="text-md font-semibold mb-4">{{ chart.title }}</h4>
-                                <div id="default-chart-{{ forloop.counter }}" class="chart-content"></div>
+                                {% if chart.is_empty %}
+                                    <img
+                                        src="{% static 'assets/img/not-found-chart.svg' %}"
+                                        alt="404" class="w-60 m-auto mb-4 mt-5"
+                                    />
+                                    <p class="text-sm text-center pb-3">
+                                        {% if chart.no_record_msg %}
+                                            {{ chart.no_record_msg }}
+                                        {% else %}
+                                            {% trans "Nothing to show yet. Please add your data." %}
+                                        {% endif %}
+                                    </p>
+                                {% else %}
+                                    <div id="default-chart-{{ forloop.counter }}" class="chart-content"></div>
+                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
@@ -132,7 +146,9 @@
     function initializeCharts() {
         {% if chart_data %}
             {% for chart in chart_data %}
-                initializeDefaultChart({{ forloop.counter }}, {{ chart.data|safe }}, '{{ chart.type }}');
+                {% if not chart.is_empty %}
+                    initializeDefaultChart({{ forloop.counter }}, {{ chart.data|safe }}, '{{ chart.type }}');
+                {% endif %}
             {% endfor %}
         {% endif %}
     }
