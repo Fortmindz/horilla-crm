@@ -1,14 +1,25 @@
+"""
+Signal handlers for the horilla_notifications app.
+"""
+
+# Third party imports (Django Channels)
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.db.models.signals import post_save, pre_save
+
+# Third party imports (Django)
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
 
+# Local application imports
 from .models import Notification
 
 
 @receiver(post_save, sender=Notification)
 def send_notification(sender, instance, created, **kwargs):
+    """
+    Sends real-time notification via Django Channels when a notification is created.
+    """
     if created:
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
