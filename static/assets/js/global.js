@@ -784,31 +784,45 @@ function hxConfirmForm(element, messageText) {
 }
 
 function showMessages() {
+    var messages = [];
+
+    // Collect all messages first
     $("#messages-container .message").each(function () {
         var $message = $(this);
-        var level = $message.data("level");
-        var messageText = $message.data("message");
-
-        Swal.fire({
-            toast: true,
-            position: "top-end",
-            icon: level,
-            title: messageText,
-            showConfirmButton: false,
-            timer: 4000,
-            timerProgressBar: true,
-            customClass: {
-                popup: `custom-toast toast-${level}`
-            },
-            didOpen: (toast) => {
-                toast.addEventListener("mouseenter", Swal.stopTimer);
-                toast.addEventListener("mouseleave", Swal.resumeTimer);
-            }
+        messages.push({
+            level: $message.data("level"),
+            text: $message.data("message")
         });
-
         $message.remove();
     });
+
+    // Display messages sequentially
+    let delay = 0;
+    messages.forEach(function(msg) {
+        setTimeout(function() {
+            Swal.fire({
+                toast: true,
+                position: "top-end",
+                icon: msg.level,
+                title: msg.text,
+                showConfirmButton: false,
+                timer: 4000,
+                timerProgressBar: true,
+                customClass: {
+                    popup: `custom-toast toast-${msg.level}`
+                },
+                didOpen: (toast) => {
+                    toast.addEventListener("mouseenter", Swal.stopTimer);
+                    toast.addEventListener("mouseleave", Swal.resumeTimer);
+                }
+            });
+        }, delay);
+
+        delay += 4500; // 4000ms timer + 500ms gap between messages
+    });
 }
+
+
 
 function isElementChecked(element) {
     let message = element.getAttribute('data-message');
