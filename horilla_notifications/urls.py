@@ -1,5 +1,16 @@
+"""
+URL configuration for horilla_notifications app.
+
+This module defines URL patterns for notification-related views, including:
+- Marking notifications as read (single or all)
+- Deleting notifications (single or all)
+- Opening/redirecting to notification URLs
+"""
+
+# Third party imports (Django)
 from django.urls import path
 
+# Local application imports
 from . import views
 
 app_name = "horilla_notifications"

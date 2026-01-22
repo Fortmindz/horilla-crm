@@ -8,6 +8,14 @@ from django.utils.translation import gettext_lazy as _
 
 
 class Notification(models.Model):
+    """
+    Model representing a notification for a user.
+
+    Notifications are messages sent to users, typically triggered by system
+    events or actions from other users. Each notification can be marked as
+    read and may include a URL for navigation.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
     )
@@ -27,6 +35,8 @@ class Notification(models.Model):
         return f"Notification for {self.user.username}: {self.message}"
 
     class Meta:
+        """Meta options for the Notification model."""
+
         verbose_name = _("Notification")
         verbose_name_plural = _("Notifications")
         ordering = ["-created_at"]

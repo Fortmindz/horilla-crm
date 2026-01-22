@@ -1,3 +1,10 @@
+"""
+WebSocket URL routing configuration for notifications.
+
+This module defines the WebSocket URL patterns for real-time notification
+delivery using Django Channels.
+"""
+
 from django.urls import re_path
 
 from . import consumers
