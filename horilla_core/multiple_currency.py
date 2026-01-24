@@ -50,9 +50,11 @@ class CurrencyListView(LoginRequiredMixin, HorillaListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.GET.get("sort"):
-            return queryset
-        return queryset.order_by("-is_default")
+        return (
+            queryset
+            if self.request.GET.get("sort")
+            else queryset.order_by("-is_default")
+        )
 
     @cached_property
     def columns(self):
@@ -576,9 +578,7 @@ class DatedCurrencyListView(LoginRequiredMixin, HorillaListView):
         """
         queryset = super().get_queryset()
         start_date = self.request.GET.get("start_date", None)
-        if start_date:
-            queryset = queryset.filter(start_date=start_date)
-        return queryset
+        return queryset.filter(start_date=start_date) if start_date else queryset
 
 
 @method_decorator(htmx_required, name="dispatch")

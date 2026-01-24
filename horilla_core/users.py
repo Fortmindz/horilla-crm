@@ -472,10 +472,11 @@ class LoginHistoryListView(LoginRequiredMixin, HorillaListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        user_id = self.request.GET.get("pk")
-        if user_id:
-            queryset = queryset.filter(user_id=user_id)
-        return queryset
+        return (
+            queryset.filter(user_id=self.request.GET.get("pk"))
+            if self.request.GET.get("pk")
+            else queryset
+        )
 
     columns = [
         (_("Browser"), "user_agent"),
