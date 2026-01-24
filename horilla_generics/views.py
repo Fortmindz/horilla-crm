@@ -146,6 +146,7 @@ class HorillaNavView(TemplateView):
     navbar_indication_attrs: dict = {}
     exclude_kanban_fields: str = ""
     enable_actions = False
+    search_push_url = True
 
     def get_navbar_indication_attrs(self):
         """Return additional attributes for navbar indication when enabled."""
@@ -178,6 +179,7 @@ class HorillaNavView(TemplateView):
         context = super().get_context_data(**kwargs)
         context["nav_title"] = self.nav_title
         context["search_url"] = self.search_url or self.request.path
+        context["search_push_url"] = "true" if self.search_push_url else "false"
         context["main_url"] = self.main_url or self.request.path
         context["kanban_url"] = self.kanban_url
         context["actions"] = self.actions
@@ -944,8 +946,6 @@ class HorillaListView(ListView):
         Check for dependencies in related models for the given record IDs.
         Returns two lists: records that cannot be deleted (with dependencies) and records that can be deleted.
         """
-        import time
-
         from django.db.models import Prefetch
 
         can_delete = []
@@ -1501,7 +1501,7 @@ class HorillaListView(ListView):
         if action == "bulk_delete" and record_ids:
             try:
                 record_ids = json.loads(record_ids)
-                cannot_delete, can_delete, dependency_details = (
+                cannot_delete, can_delete, _dependency_details = (
                     self._check_dependencies(record_ids)
                 )
 
@@ -2252,10 +2252,17 @@ class HorillaListView(ListView):
         response = render(request, self.template_name, context)
 
         # Update URL for HX-Push-Url
-        new_query_string = new_query_params.urlencode()
-        current_path = self.main_url
-        url = f"{current_path}?{new_query_string}" if new_query_string else current_path
-        response["HX-Push-Url"] = url
+        if self.filter_url_push:
+            new_query_string = new_query_params.urlencode()
+            current_path = self.main_url
+            url = (
+                f"{current_path}?{new_query_string}"
+                if new_query_string
+                else current_path
+            )
+            response["HX-Push-Url"] = url
+        else:
+            response["HX-Push-Url"] = "false"
 
         return response
 
@@ -2281,9 +2288,14 @@ class HorillaListView(ListView):
         self.object_list = self.get_queryset()
         context = self.get_context_data()
         response = render(request, self.template_name, context)
-        new_query_string = new_query_params.urlencode()
-        url = f"{self.main_url}" + (f"?{new_query_string}" if new_query_string else "")
-        response["HX-Push-Url"] = url
+        if self.filter_url_push:
+            new_query_string = new_query_params.urlencode()
+            url = f"{self.main_url}" + (
+                f"?{new_query_string}" if new_query_string else ""
+            )
+            response["HX-Push-Url"] = url
+        else:
+            response["HX-Push-Url"] = "false"
 
         return response
 
@@ -2310,7 +2322,7 @@ class HorillaListView(ListView):
                 pass
         context["view_type"] = view_type
         context["filter_fields"] = filter_fields
-        context["filter_push_url"] = self.filter_url_push
+        context["filter_push_url"] = "true" if self.filter_url_push else "false"
         context["model_verbose_name"] = self.model._meta.verbose_name_plural
         context["model_name"] = self.model.__name__
         context["no_record_add_button"] = self.no_record_add_button or {}
@@ -2663,7 +2675,7 @@ class HorillaKanbanView(HorillaListView):
                 view.model = apps.get_model(
                     app_label=app_label.split(".")[-1], model_name=model_name
                 )
-            except LookupError as e:
+            except LookupError:
                 messages.error(
                     request, f"Invalid app_label/model_name: {app_label}/{model_name}"
                 )
@@ -2805,7 +2817,7 @@ class HorillaKanbanView(HorillaListView):
                 column_order = json.loads(column_order)
                 if not isinstance(column_order, list):
                     raise ValueError("column_order must be a list")
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 return HttpResponse(status=400, content="Invalid column_order format")
 
             try:
@@ -2831,7 +2843,7 @@ class HorillaKanbanView(HorillaListView):
                         related_obj.order = index
                         related_obj.save()
 
-            except IntegrityError as e:
+            except IntegrityError:
                 return HttpResponse(
                     status=400,
                     content="Failed to update column order due to a unique constraint violation.",
@@ -3687,7 +3699,7 @@ class HorillaDetailView(DetailView):
                                         section_for_breadcrumb = section_info.get(
                                             "section"
                                         )
-                                    except Exception as e:
+                                    except Exception:
                                         section_for_breadcrumb = None
 
                                 if not section_for_breadcrumb:
@@ -3704,7 +3716,7 @@ class HorillaDetailView(DetailView):
                             except Exception:
                                 url = None
                         dynamic_breadcrumbs.append((obj_title, url))
-                    except (LookupError, model_class.DoesNotExist, ValueError) as e:
+                    except (LookupError, model_class.DoesNotExist, ValueError):
                         if referrer_label and referrer_url:
                             dynamic_breadcrumbs.append((referrer_label, referrer_url))
 
@@ -4201,7 +4213,7 @@ class HorillaRelatedListSectionView(DetailView):
         if isinstance(related_config, functools.cached_property):
             try:
                 related_config = related_config.func(self)
-            except Exception as e:
+            except Exception:
                 related_config = {}
         elif not isinstance(related_config, dict):
             related_config = {}
@@ -4235,7 +4247,7 @@ class HorillaRelatedListSectionView(DetailView):
         if isinstance(related_config, functools.cached_property):
             try:
                 related_config = related_config.func(self)
-            except Exception as e:
+            except Exception:
                 related_config = {}
 
         if not isinstance(related_config, dict):
@@ -4319,7 +4331,7 @@ class HorillaRelatedListSectionView(DetailView):
                 "custom_buttons": custom_buttons,
                 "is_custom": False,
             }
-        except Exception as e:
+        except Exception:
             return None
 
     def build_custom_related_list_data(self, obj, custom_name, custom_config):
@@ -4580,7 +4592,7 @@ class HorillaRelatedListSectionView(DetailView):
             return render_to_string(
                 list_view.template_name, context, request=self.request
             )
-        except Exception as e:
+        except Exception:
             return ""
 
     def get_columns_for_model(self, model, config):
@@ -4612,7 +4624,7 @@ class HorillaRelatedListSectionView(DetailView):
                     columns.append((field.verbose_name, field.name))
                     if len(columns) == 5:
                         break
-        except Exception as e:
+        except Exception:
             return []
 
         return columns
@@ -8394,7 +8406,7 @@ class HorillaSingleDeleteView(DeleteView):
             return reassigned_count
         except ObjectDoesNotExist:
             raise ValueError(f"Target with id {new_target_id} does not exist")
-        except Exception as e:
+        except Exception:
             raise
 
     def _perform_individual_action(self, record_id, actions):
@@ -8460,7 +8472,7 @@ class HorillaSingleDeleteView(DeleteView):
             return processed_count
         except ObjectDoesNotExist:
             raise ValueError("Invalid target ID provided in individual actions")
-        except Exception as e:
+        except Exception:
             raise
 
     def _delete_main_object(self, delete_mode, user=None):
@@ -8539,7 +8551,7 @@ class HorillaSingleDeleteView(DeleteView):
                     context,
                 )
 
-            cannot_delete, can_delete, dependency_details = self._check_dependencies(
+            cannot_delete, can_delete, _dependency_details = self._check_dependencies(
                 record_id
             )
             available_targets = self.model.all_objects.exclude(id=record_id)
@@ -8690,7 +8702,7 @@ class HorillaSingleDeleteView(DeleteView):
 
             cannot_delete = []
             can_delete = []
-            dependency_details = {}
+            _dependency_details = {}
 
             if not delete_mode and action != "check_dependencies_with_mode":
                 context = {
@@ -8734,7 +8746,7 @@ class HorillaSingleDeleteView(DeleteView):
                     )
 
             if action == "check_dependencies_with_mode":
-                cannot_delete, can_delete, dependency_details = (
+                cannot_delete, can_delete, _dependency_details = (
                     self._check_dependencies(record_id)
                 )
 
@@ -8851,7 +8863,7 @@ class HorillaSingleDeleteView(DeleteView):
                             record_id, actions
                         )
 
-                        remaining_cannot_delete, remaining_can_delete, _ = (
+                        remaining_cannot_delete, _remaining_can_delete, _ = (
                             self._check_dependencies(record_id)
                         )
 
@@ -9172,7 +9184,7 @@ class HorillaSingleDeleteView(DeleteView):
                 else:
                     return HttpResponse("No record ID provided", status=400)
 
-            cannot_delete, can_delete, dependency_details = self._check_dependencies(
+            cannot_delete, can_delete, _dependency_details = self._check_dependencies(
                 record_id
             )
             if not cannot_delete:

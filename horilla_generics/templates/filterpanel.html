@@ -10,11 +10,8 @@
            hx-target="#mainSession"
            hx-select="#mainSession"
            hx-swap="outerHTML"
-           {% if filter_push_url %}
-           hx-push-url="true"
-           {% else %}
-            hx-push-url="false"
-          {% endif %}
+           hx-preserve="true"
+           hx-push-url="{{ filter_push_url }}"
            hx-trigger="submit"
            hx-select-oob="#navBar"
            >
@@ -56,11 +53,8 @@
                   hx-select="#mainSession"
                   hx-select-oob="#navBar"
                   hx-swap="outerHTML"
-                  {% if filter_push_url %}
-                  hx-push-url="true"
-                  {% else %}
-                   hx-push-url="false"
-                 {% endif %}
+                  hx-preserve="true"
+                  hx-push-url="{{ filter_push_url }}"
                   hx-trigger="click"
                   hx-on:click="$('#searchInput').val('')">{% trans 'Clear All' %}</button>
           {% if save_to_list_option %}
@@ -91,11 +85,8 @@
             hx-select="#mainSession"
             hx-select-oob="#navBar"
             hx-swap="outerHTML"
-            {% if filter_push_url %}
-            hx-push-url="true"
-            {% else %}
-             hx-push-url="false"
-           {% endif %}
+            hx-preserve="true"
+            hx-push-url="{{ filter_push_url }}"
             hx-trigger="click"
             hx-on:click="$('#searchInput').val('')">
             <img src="{% static '/assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="10" />
@@ -122,11 +113,8 @@
                   hx-select="#mainSession"
                   hx-select-oob="#navBar"
                   hx-swap="outerHTML"
-                  {% if filter_push_url %}
-                  hx-push-url="true"
-                  {% else %}
-                   hx-push-url="false"
-                 {% endif %}
+                  hx-preserve="true"
+                  hx-push-url="{{ filter_push_url }}"
                   hx-trigger="click">
                   <img src="{% static '/assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="10" />
                 </button>
