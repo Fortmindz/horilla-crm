@@ -25,9 +25,8 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
-from horilla.registry.permission_registry import permission_exempt_model
-
 # First-party / Horilla imports
+from horilla.registry.permission_registry import permission_exempt_model
 from horilla.utils.choices import OPERATOR_CHOICES
 from horilla_core.models import Company, HorillaCoreModel
 from horilla_mail.models import HorillaMailConfiguration
