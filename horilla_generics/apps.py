@@ -32,6 +32,5 @@ class HorillaGenericsConfig(AppConfig):
             import logging
 
             logging.warning("HorillaGenericsConfig.ready failed: %s", e)
-            pass
 
         super().ready()
