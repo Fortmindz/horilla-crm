@@ -1,3 +1,11 @@
+"""
+Horilla management command to update fiscal year instances.
+
+This module provides a management command that checks the current status of
+fiscal years and automatically updates them (e.g., marking expired ones as
+inactive) and creates the next fiscal year if needed.
+"""
+
 # Third-party imports (Django)
 from django.core.management.base import BaseCommand
 
