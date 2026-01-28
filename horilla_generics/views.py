@@ -212,6 +212,8 @@ class HorillaNavView(TemplateView):
     @cached_property
     def actions(self):
         """Actions"""
+        if not self.enable_actions:
+            return []
         view_perm = f"{self.model_app_label}.view_{self.model_name.lower()}"
         view_own_perm = f"{self.model_app_label}.view_own_{self.model_name.lower()}"
         can_create_perm = f"{self.model_app_label}.add_{self.model_name.lower()}"
@@ -6290,6 +6292,12 @@ class HorillaMultiStepFormView(FormView):
                             self.detail_url_name,
                             kwargs={self.pk_url_kwarg: self.object.pk},
                         )
+                        # Preserve section parameter from the request
+                        if "section" in self.request.GET:
+                            query_string = urlencode(
+                                {"section": self.request.GET.get("section")}
+                            )
+                            detail_url = f"{detail_url}?{query_string}"
                         response = HttpResponse()
                         response["HX-Redirect"] = detail_url
                         return response
@@ -8034,6 +8042,12 @@ class HorillaSingleFormView(FormView):
                 detail_url = reverse(
                     self.detail_url_name, kwargs={"pk": self.object.pk}
                 )
+                # Preserve section parameter from the request
+                if "section" in self.request.GET:
+                    query_string = urlencode(
+                        {"section": self.request.GET.get("section")}
+                    )
+                    detail_url = f"{detail_url}?{query_string}"
                 response = HttpResponse()
                 response["HX-Redirect"] = detail_url
                 return response
