@@ -1527,10 +1527,6 @@ $(document).on("htmx:afterSwap", function (event) {
         }
     }
 
-    if (event.detail.target.id === "filtermodalBox") {
-        $('#filtermodal').removeClass("hidden");
-        $('#filtermodalBox').removeClass("opacity-0 scale-95").addClass("opacity-100 scale-100");
-    }
 
     if (window.Dropdown) {
         $('[data-dropdown-toggle]').each(function () {

@@ -17,6 +17,7 @@
                     hx-target="#filtermodalBox"
                     hx-swap="innerHTML"
                     hx-trigger="click"
+                    hx-on:click="openFilterModal()"
                     class="flex items-center gap-3 text-sm p-2 rounded-md bg-primary-600 text-white shadow">
                 <img src="{% static 'assets/icons/filter1.svg' %}" alt="{% trans 'Filter' %}" width="18" />
             </button>
