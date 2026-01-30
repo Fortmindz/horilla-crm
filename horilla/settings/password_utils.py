@@ -51,7 +51,7 @@ def create_password_file():
         password_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Write password to file
-        with open(password_file, "w") as f:
+        with open(password_file, "w", encoding="utf-8") as f:
             f.write(password)
 
         # Set secure file permissions (Unix/Linux/Mac only)
@@ -79,7 +79,7 @@ def read_password_from_file():
         return None
 
     try:
-        with open(password_file, "r") as f:
+        with open(password_file, "r", encoding="utf-8") as f:
             password = f.read().strip()
             if password:  # Ensure it's not empty
                 return password
