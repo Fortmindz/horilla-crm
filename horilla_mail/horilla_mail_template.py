@@ -288,8 +288,8 @@ class MailTemplatePreviewView(LoginRequiredMixin, TemplateView):
         context = self.get_context_data(**kwargs)
         body_content = request.POST.get("body")
         subject = request.POST.get("subject")
-        context["body"] = mark_safe(body_content)
-        context["subject"] = mark_safe(subject)
+        context["body"] = body_content
+        context["subject"] = subject
         return self.render_to_response(context)
 
 
