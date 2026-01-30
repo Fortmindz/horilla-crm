@@ -3717,6 +3717,14 @@ class HorillaDetailView(DetailView):
             except Exception:
                 pass
             queryset = related_model.objects.all()
+
+            if (
+                hasattr(related_model, "company")
+                and hasattr(obj, "company")
+                and obj.company
+            ):
+                queryset = queryset.filter(company=obj.company)
+
             if order_field:
                 queryset = queryset.order_by("order")
 
@@ -4946,6 +4954,8 @@ class HorillaRelatedListContentView(LoginRequiredMixin, DetailView):
 
 
 class AttachmentListView(HorillaListView):
+    """List view for displaying horilla attachments."""
+
     model = HorillaAttachment
     columns = ["title", "created_by", "created_at"]
     bulk_select_option = False
@@ -6012,11 +6022,33 @@ class HorillaMultiStepFormView(FormView):
                                 permission_str = ",".join(permission)
                             else:
                                 permission_str = permission
+
+                        # Process initial values from mapping
+                        initial_config = field_config.get("initial", {})
+                        initial_values = {}
+                        if initial_config:
+                            company = getattr(self.request, "active_company", None)
+                            for init_field, init_value in initial_config.items():
+                                # If it's a callable, call it with company
+                                if callable(init_value):
+                                    try:
+                                        if company:
+                                            initial_values[init_field] = init_value(
+                                                company
+                                            )
+                                        else:
+                                            initial_values[init_field] = init_value()
+                                    except Exception:
+                                        pass
+                                else:
+                                    initial_values[init_field] = init_value
+
                         related_models_info[field_name] = {
                             "model_name": related_model._meta.model_name,
                             "app_label": related_model._meta.app_label,
                             "verbose_name": related_model._meta.verbose_name.title(),
                             "permission": permission_str,
+                            "initial": initial_values if initial_values else None,
                         }
                 except Exception:
                     pass
@@ -6222,7 +6254,7 @@ class HorillaMultiStepFormView(FormView):
                 try:
 
                     instance = final_form.save(commit=False)
-                    instance.company = (
+                    instance.company = final_form.cleaned_data.get("company") or (
                         getattr(_thread_local, "request", None).active_company
                         if hasattr(_thread_local, "request")
                         else self.request.user.company
@@ -6269,7 +6301,7 @@ class HorillaMultiStepFormView(FormView):
                     )
                     messages.success(
                         self.request,
-                        f"{self.model.__name__} was successfully {action}.",
+                        f"{self.model._meta.verbose_name} was successfully {action}.",
                     )
 
                     # Check if "save_and_new" button was clicked (only in create mode, last step)
@@ -7550,11 +7582,32 @@ class HorillaSingleFormView(FormView):
                             else:
                                 permission_str = permission
 
+                        # Process initial values from mapping
+                        initial_config = field_config.get("initial", {})
+                        initial_values = {}
+                        if initial_config:
+                            company = getattr(self.request, "active_company", None)
+                            for init_field, init_value in initial_config.items():
+                                # If it's a callable, call it with company
+                                if callable(init_value):
+                                    try:
+                                        if company:
+                                            initial_values[init_field] = init_value(
+                                                company
+                                            )
+                                        else:
+                                            initial_values[init_field] = init_value()
+                                    except Exception:
+                                        pass
+                                else:
+                                    initial_values[init_field] = init_value
+
                         related_models_info[field_name] = {
                             "model_name": related_model._meta.model_name,
                             "app_label": related_model._meta.app_label,
                             "verbose_name": related_model._meta.verbose_name.title(),
-                            "permission": permission_str,  # Add this line
+                            "permission": permission_str,
+                            "initial": initial_values if initial_values else None,
                         }
                 except Exception:
                     pass
@@ -7983,7 +8036,7 @@ class HorillaSingleFormView(FormView):
             self.object.created_by = self.request.user
             self.object.updated_at = timezone.now()
             self.object.updated_by = self.request.user
-        self.object.company = (
+        self.object.company = form.cleaned_data.get("company") or (
             getattr(_thread_local, "request", None).active_company
             if hasattr(_thread_local, "request")
             else self.request.user.company
@@ -8190,9 +8243,42 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
 
         if not self.target_model:
             messages.error(self.request, "Invalid model or fields")
-            return HttpResponse(
-                "<script>$('#reloadMessagesButton').click();closeDynamicModal();</script>"
+            response = HttpResponse(
+                """<div></div>
+                <script>
+                    setTimeout(function() {
+                        $('#reloadMessagesButton').click();
+                        closeDynamicModal();
+                    }, 50);
+                </script>"""
             )
+            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
+            return response
+
+        # Validate field names against the model
+        if self.field_names:
+            valid_field_names = {f.name for f in self.target_model._meta.get_fields()}
+            invalid_fields = [f for f in self.field_names if f not in valid_field_names]
+            if invalid_fields:
+                messages.error(
+                    self.request,
+                    f"Some fields are not valid: {', '.join(invalid_fields)}.",
+                )
+                response = HttpResponse(
+                    """<div></div>
+                    <script>
+                        setTimeout(function() {
+                            $('#reloadMessagesButton').click();
+                            closeDynamicModal();
+                        }, 50);
+                    </script>"""
+                )
+                response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                response["Pragma"] = "no-cache"
+                response["Expires"] = "0"
+                return response
 
         custom_perms = self.get_permission_from_mapping()
 
@@ -8269,6 +8355,27 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
             context["field_permissions"] = {}
         return context
 
+    def get_initial_values_from_mapping(self):
+        """Get initial values from dynamic_create_field_mapping if available"""
+        initial_values = {}
+
+        # Get initial values from URL parameters with initial_ prefix
+        for key, value in self.request.GET.items():
+            if key.startswith("initial_"):
+                field_name = key.replace("initial_", "", 1)
+                try:
+                    # Try to convert to number if possible
+                    if value.isdigit():
+                        initial_values[field_name] = int(value)
+                    elif value.replace(".", "", 1).isdigit():
+                        initial_values[field_name] = float(value)
+                    else:
+                        initial_values[field_name] = value
+                except (ValueError, AttributeError):
+                    initial_values[field_name] = value
+
+        return initial_values
+
     def get_form_kwargs(self):
         """Pass full_width_fields and field_permissions to the form"""
         kwargs = super().get_form_kwargs()
@@ -8280,6 +8387,13 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
                 self.request.user, self.target_model
             )
             kwargs["field_permissions"] = field_permissions
+
+        # Add initial values from mapping
+        initial_values = self.get_initial_values_from_mapping()
+        if initial_values:
+            if "initial" not in kwargs:
+                kwargs["initial"] = {}
+            kwargs["initial"].update(initial_values)
 
         return kwargs
 
@@ -8295,7 +8409,9 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         instance.updated_at = timezone.now()
         instance.created_by = self.request.user
         instance.updated_by = self.request.user
-        instance.company = self.request.active_company
+        instance.company = form.cleaned_data.get("company") or (
+            getattr(self.request, "active_company", None) or self.request.user.company
+        )
         instance.save()
         form.save_m2m()
 
