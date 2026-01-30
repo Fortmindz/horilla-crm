@@ -28,6 +28,7 @@ from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunityContactRole,
     OpportunitySettings,
+    OpportunityStage,
 )
 from horilla_crm.opportunities.signals import set_opportunity_contact_id
 from horilla_generics.mixins import RecentlyViewedMixin
@@ -298,7 +299,12 @@ class OpportunityMultiStepFormView(LoginRequiredMixin, HorillaMultiStepFormView)
     dynamic_create_fields = ["stage"]
     detail_url_name = "opportunities:opportunity_detail_view"
     dynamic_create_field_mapping = {
-        "stage": {"full_width_fields": ["description"]},
+        "stage": {
+            "fields": ["name", "order", "probability", "stage_type", "is_final"],
+            "initial": {
+                "order": OpportunityStage.get_next_order_for_company,
+            },
+        },
     }
 
     single_step_url_name = {
@@ -338,7 +344,12 @@ class OpportunitySingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     dynamic_create_fields = ["stage"]
     detail_url_name = "opportunities:opportunity_detail_view"
     dynamic_create_field_mapping = {
-        "stage": {"full_width_fields": ["description"]},
+        "stage": {
+            "fields": ["name", "order", "probability", "stage_type", "is_final"],
+            "initial": {
+                "order": OpportunityStage.get_next_order_for_company,
+            },
+        },
     }
 
     multi_step_url_name = {
