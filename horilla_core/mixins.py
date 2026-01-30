@@ -3,7 +3,6 @@
 This module provides reusable mixin classes that can be added to Django views,
 forms, and filtersets to add common functionality:
 
-- CompanyFilterMixin: Filters querysets by active company
 - FiscalYearCalendarMixin: Generates fiscal year calendar data with custom configurations
 - OwnerQuerysetMixin: Restricts User field querysets based on permissions and role hierarchy
 - OwnerFiltersetMixin: Restricts User filter querysets based on permissions and role hierarchy
@@ -14,16 +13,6 @@ from calendar import monthcalendar
 from datetime import datetime, timedelta
 
 from horilla.auth.models import User
-
-
-class CompanyFilterMixin:
-    """Mixin to filter queryset by active company in request."""
-
-    def get_queryset(self):
-        """Filter queryset by active company if set in request."""
-        queryset = super().get_queryset()
-        company = getattr(self.request, "active_company", None)
-        return queryset.filter(company=company) if company else queryset
 
 
 class FiscalYearCalendarMixin:
@@ -317,6 +306,10 @@ class OwnerQuerysetMixin:
     """
 
     def __init__(self, *args, **kwargs):
+        # Get instance from kwargs before super() is called
+        # This is important because after super().__init__(), instance might be None for new objects
+        instance_from_kwargs = kwargs.get("instance")
+
         super().__init__(*args, **kwargs)
         request = kwargs.get("request") or getattr(self, "request", None)
         user = request.user if request else None
@@ -365,11 +358,52 @@ class OwnerQuerysetMixin:
 
         allowed_users = allowed_users.filter(is_active=True)
 
+        # Get company for filtering foreign key fields
+        # Priority: 1. Instance's company (when editing), 2. Active company, 3. User's company
+        company = None
+
+        # Try to get instance from multiple sources
+        instance = (
+            instance_from_kwargs
+            or getattr(self, "instance", None)
+            or getattr(self, "instance_obj", None)
+        )
+
+        # If editing an existing object, use the object's company
+        if (
+            instance
+            and hasattr(instance, "pk")
+            and instance.pk
+            and hasattr(instance, "company")
+            and instance.company
+        ):
+            company = instance.company
+        elif request:
+            company = getattr(request, "active_company", None)
+            if not company and hasattr(request.user, "company"):
+                company = request.user.company
+
         for field_name, field in self.fields.items():
             model_field = self._meta.model._meta.get_field(field_name)
 
             if model_field.is_relation and model_field.related_model == User:
                 field.queryset = allowed_users
+            elif model_field.is_relation and hasattr(
+                model_field.related_model, "company"
+            ):
+                # Filter foreign key fields by company if the related model has a company field
+                # When editing: use the object's company
+                # When creating: use the active company
+                # This ensures forms show objects from the correct company
+                if company:
+                    # Get the current queryset or create a new one
+                    if hasattr(field, "queryset") and field.queryset is not None:
+                        queryset = field.queryset.filter(company=company)
+                    else:
+                        queryset = model_field.related_model.objects.filter(
+                            company=company
+                        )
+                    field.queryset = queryset
 
 
 class OwnerFiltersetMixin:

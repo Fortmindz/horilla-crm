@@ -1016,6 +1016,11 @@ class HorillaMultiStepForm(forms.ModelForm):
                 )
                 initial_value = None
 
+        # Get object_id if editing
+        object_id = None
+        if self.instance and self.instance.pk:
+            object_id = self.instance.pk
+
         field.widget = forms.Select(
             choices=[("", "---------")] + initial_choices,  # Set initial choices
             attrs={
@@ -1030,6 +1035,7 @@ class HorillaMultiStepForm(forms.ModelForm):
                 "data-field-name": field_name,  # Add unique identifier
                 "id": f"id_{field_name}",
                 "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
+                **({"data-object-id": str(object_id)} if object_id else {}),
             },
         )
         field.widget._pagination_configured = True
@@ -1640,6 +1646,11 @@ class HorillaModelForm(forms.ModelForm):
                                     ):
                                         should_disable = True
 
+                            # Get object_id if editing
+                            object_id = None
+                            if self.instance and self.instance.pk:
+                                object_id = self.instance.pk
+
                             widget_attrs = {
                                 "class": "select2-pagination w-full text-sm",
                                 "data-url": reverse_lazy(
@@ -1662,6 +1673,11 @@ class HorillaModelForm(forms.ModelForm):
                                 "data-field-name": field_name,
                                 "id": f"id_{field_name}",
                                 "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
+                                **(
+                                    {"data-object-id": str(object_id)}
+                                    if object_id
+                                    else {}
+                                ),
                                 **existing_attrs,
                             }
 
@@ -1762,6 +1778,11 @@ class HorillaModelForm(forms.ModelForm):
                                     ):
                                         should_disable = True
 
+                            # Get object_id if editing
+                            object_id = None
+                            if self.instance and self.instance.pk:
+                                object_id = self.instance.pk
+
                             widget_attrs = {
                                 "class": "select2-pagination w-full",
                                 "data-url": reverse_lazy(
@@ -1781,6 +1802,11 @@ class HorillaModelForm(forms.ModelForm):
                                 "data-field-name": field_name,
                                 "id": f"id_{field_name}",
                                 "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
+                                **(
+                                    {"data-object-id": str(object_id)}
+                                    if object_id
+                                    else {}
+                                ),
                                 **existing_attrs,
                             }
 
