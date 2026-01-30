@@ -384,6 +384,9 @@ class LeadFormView(LoginRequiredMixin, HorillaMultiStepFormView):
     dynamic_create_field_mapping = {
         "lead_status": {
             "fields": ["name", "order", "color", "probability"],
+            "initial": {
+                "order": LeadStatus.get_next_order_for_company,
+            },
         },
     }
 
@@ -688,7 +691,10 @@ class LeadsSingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     dynamic_create_fields = ["lead_status"]
     dynamic_create_field_mapping = {
         "lead_status": {
-            "fields": ["name", "order", "color", "probability"],
+            "fields": ["name", "order", "color", "probability", "is_final"],
+            "initial": {
+                "order": LeadStatus.get_next_order_for_company,
+            },
         },
     }
 
