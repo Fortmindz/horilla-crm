@@ -161,6 +161,11 @@ urlpatterns = [
         name="add_currency",
     ),
     path(
+        "fetch-exchange-rate/",
+        multiple_currency_views.FetchExchangeRateView.as_view(),
+        name="fetch_exchange_rate",
+    ),
+    path(
         "edit-currency/<int:pk>/",
         multiple_currency_views.AddCurrencyView.as_view(),
         name="edit_currency",

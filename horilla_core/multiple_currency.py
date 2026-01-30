@@ -5,6 +5,9 @@ import logging
 from decimal import Decimal
 from functools import cached_property
 
+# Third-party imports
+import requests
+
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -30,6 +33,97 @@ from horilla_generics.views import (
 from .models import DatedConversionRate, MultipleCurrency
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_exchange_rate_from_api(base_currency, target_currency):
+    """
+    Fetch exchange rate from Frankfurter API (free, no API key required).
+    Falls back to exchangerate.host if Frankfurter fails.
+
+    Args:
+        base_currency: The base currency code (e.g., 'USD')
+        target_currency: The target currency code (e.g., 'INR')
+
+    Returns:
+        Decimal: The exchange rate, or None if fetch fails
+    """
+    # Primary: Frankfurter API (free, open-source, uses ECB data)
+    try:
+        url = f"https://api.frankfurter.app/latest?from={base_currency}&to={target_currency}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            rate = data.get("rates", {}).get(target_currency)
+            if rate:
+                return Decimal(str(rate)).quantize(Decimal("0.0001"))
+    except Exception as e:
+        logger.warning("Frankfurter API failed: %s", e)
+
+    # Fallback: exchangerate-api.com (free tier, no key for basic usage)
+    try:
+        url = f"https://open.er-api.com/v6/latest/{base_currency}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("result") == "success":
+                rate = data.get("rates", {}).get(target_currency)
+                if rate:
+                    return Decimal(str(rate)).quantize(Decimal("0.0001"))
+    except Exception as e:
+        logger.warning("Fallback exchange rate API failed: %s", e)
+
+    return None
+
+
+@method_decorator(htmx_required, name="dispatch")
+class FetchExchangeRateView(LoginRequiredMixin, View):
+    """
+    HTMX endpoint to fetch exchange rate when currency is selected.
+    Returns the exchange rate value to auto-populate the conversion_rate field.
+    """
+
+    def get(self, request, *args, **kwargs):
+        """Handle GET request to fetch exchange rate for selected currency."""
+        currency_code = request.GET.get("currency")
+        company = getattr(request, "active_company", None) or request.user.company
+
+        # Get the default currency for the company
+        default_currency = MultipleCurrency.objects.filter(
+            company=company, is_default=True
+        ).first()
+
+        # Helper HTML for the conversion_rate input
+        def _conversion_input_html(value: str = "") -> str:
+            return (
+                '<input type="number" name="conversion_rate" step="0.0001" '
+                'class="text-color-600 p-2 placeholder:text-xs font-normal w-full '
+                "border border-dark-50 rounded-md focus-visible:outline-0 "
+                "placeholder:text-dark-100 text-sm transition duration-300 "
+                'focus:border-primary-600" id="id_conversion_rate" '
+                f'value="{value}" />'
+            )
+
+        # If currency or default not available, keep the input and let user type manually
+        if not currency_code or not default_currency:
+            return HttpResponse(_conversion_input_html(""))
+
+        # Don't fetch rate if selecting the same as default currency
+        if currency_code == default_currency.currency:
+            return HttpResponse(_conversion_input_html("1.0000"))
+
+        # Fetch exchange rate from free API
+        rate = fetch_exchange_rate_from_api(default_currency.currency, currency_code)
+
+        if rate:
+            return HttpResponse(_conversion_input_html(str(rate)))
+
+        logger.warning(
+            "Exchange rate not available for %s to %s",
+            default_currency.currency,
+            currency_code,
+        )
+        # Keep an empty input so the user can manually enter the rate
+        return HttpResponse(_conversion_input_html(""))
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -387,6 +481,35 @@ class AddCurrencyView(LoginRequiredMixin, HorillaSingleFormView):
             self.form_title = _("Edit Currency Information")
             self.full_width_fields = ["format"]
         return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        """
+        Add HTMX attributes to the currency field for auto-fetching exchange rates.
+        """
+        form = super().get_form(form_class)
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+
+        # Only add HTMX attributes when adding a new currency (not editing)
+        if not pk and "currency" in form.fields and "conversion_rate" in form.fields:
+            # Attach HTMX behavior to currency field
+            form.fields["currency"].widget.attrs.update(
+                {
+                    "hx-get": reverse_lazy("horilla_core:fetch_exchange_rate"),
+                    "hx-trigger": "change",
+                    "hx-target": "#id_conversion_rate",
+                    "hx-swap": "outerHTML",
+                    "hx-include": "[name='currency']",
+                    "hx-indicator": "#conversion-rate-spinner",
+                }
+            )
+            # Mark the conversion_rate field so the generic template can show an indicator
+            form.fields["conversion_rate"].widget.attrs.update(
+                {
+                    "data_show_conversion_indicator": "true",
+                    "data_indicator_text": str(_("Fetching conversion rate...")),
+                }
+            )
+        return form
 
     def get_initial(self):
         initial = super().get_initial()

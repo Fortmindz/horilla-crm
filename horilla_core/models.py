@@ -734,9 +734,19 @@ class MultipleCurrency(HorillaCoreModel):
         return self.conversion_rate
 
     def format_amount(self, amount):
-        """Format amount according to currency's decimal places and format"""
+        """
+        Format amount according to currency's decimal places and format.
+
+        Supported formats:
+        - western_format: 1,234,567.00 (comma thousand separator, dot decimal)
+        - european_format: 1.234.567,00 (dot thousand separator, comma decimal)
+        - scientific_format: 1 234 567,00 (space thousand separator, comma decimal)
+        - indian_format: 12,34,567.00 (Indian grouping style)
+        """
         if amount is None:
-            return "0.00"
+            # Return zero with correct decimal places
+            zero_str = "0." + "0" * self.decimal_places
+            return zero_str
 
         amount = Decimal(str(amount))
         quantize_string = "0." + "0" * self.decimal_places
@@ -745,24 +755,49 @@ class MultipleCurrency(HorillaCoreModel):
         )
 
         if self.format == "western_format":
+            # 1,234,567.00
             return f"{formatted_amount:,.{self.decimal_places}f}"
+
+        if self.format == "european_format":
+            # 1.234.567,00 (dot as thousand separator, comma as decimal)
+            western = f"{formatted_amount:,.{self.decimal_places}f}"
+            # Swap: comma -> temp, dot -> comma, temp -> dot
+            return western.replace(",", "X").replace(".", ",").replace("X", ".")
+
+        if self.format == "scientific_format":
+            # 1 234 567,00 (space as thousand separator, comma as decimal)
+            western = f"{formatted_amount:,.{self.decimal_places}f}"
+            # Replace comma with space, dot with comma
+            return western.replace(",", " ").replace(".", ",")
+
         if self.format == "indian_format":
+            # 12,34,567.00 (Indian grouping: last 3 digits, then groups of 2)
             amount_str = str(formatted_amount)
             parts = amount_str.split(".")
             integer_part = parts[0]
-            decimal_part = parts[1] if len(parts) > 1 else "00"
+            decimal_part = parts[1] if len(parts) > 1 else "0" * self.decimal_places
+
+            # Handle negative numbers
+            is_negative = integer_part.startswith("-")
+            if is_negative:
+                integer_part = integer_part[1:]
 
             if len(integer_part) > 3:
                 last_three = integer_part[-3:]
                 remaining = integer_part[:-3]
-                grouped = ",".join(
-                    [remaining[i : i + 2] for i in range(0, len(remaining), 2)][::-1]
-                )[::-1]
+                # Group remaining digits in pairs from right to left
+                groups = []
+                while remaining:
+                    groups.append(remaining[-2:])
+                    remaining = remaining[:-2]
+                grouped = ",".join(reversed(groups))
                 integer_part = grouped + "," + last_three
 
-            return f"{integer_part}.{decimal_part}"
+            result = f"{integer_part}.{decimal_part}"
+            return f"-{result}" if is_negative else result
 
-        return str(formatted_amount)
+        # Fallback: format with correct decimal places
+        return f"{formatted_amount:.{self.decimal_places}f}"
 
     def display_with_symbol(self, amount):
         """Display amount with currency symbol - Example: USD 100.00"""
