@@ -3529,6 +3529,9 @@ class HorillaDetailView(DetailView):
     actions = []
     tab_url: str = ""
     final_stage_action = {}
+    badge: list = (
+        []
+    )  # List of badge configurations: [{"condition": callable, "label": str, "class": str}, ...]
 
     _view_registry = {}
 
@@ -3756,6 +3759,50 @@ class HorillaDetailView(DetailView):
 
         return pipeline
 
+    def get_badges(self):
+        """
+        Get badges to display for the current object.
+        Returns a list of badge dictionaries with 'label' and 'class' keys.
+        Each badge in self.badge should have:
+        - condition: A callable that takes the object and returns True if badge should show
+        - label: The text to display on the badge
+        - class: CSS classes for styling the badge
+        - icon: (optional) FontAwesome icon class (e.g., "fa-solid fa-check")
+        - icon_class: (optional) CSS classes for the icon
+        - icon_bg_class: (optional) CSS classes for the icon background circle
+        """
+        badges = []
+        if not self.badge:
+            return badges
+
+        obj = self.get_object()
+        for badge_config in self.badge:
+            try:
+                condition = badge_config.get("condition")
+                badge_data = {
+                    "label": badge_config.get("label", ""),
+                    "class": badge_config.get("class", ""),
+                }
+                # Include icon fields if present
+                if "icon" in badge_config:
+                    badge_data["icon"] = badge_config.get("icon")
+                if "icon_class" in badge_config:
+                    badge_data["icon_class"] = badge_config.get("icon_class")
+                if "icon_bg_class" in badge_config:
+                    badge_data["icon_bg_class"] = badge_config.get("icon_bg_class")
+
+                if condition and callable(condition):
+                    if condition(obj):
+                        badges.append(badge_data)
+                elif condition is None:
+                    # If no condition, always show
+                    badges.append(badge_data)
+            except Exception as e:
+                logger.warning(f"Error evaluating badge condition: {e}")
+                continue
+
+        return badges
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["body"] = self.get_body()
@@ -3763,6 +3810,7 @@ class HorillaDetailView(DetailView):
         current_obj = self.get_object()
         current_id = current_obj.id
         context["tab_url"] = self.tab_url
+        context["badges"] = self.get_badges()
         field_permissions = get_field_permissions_for_model(
             self.request.user, self.model
         )
@@ -3776,6 +3824,16 @@ class HorillaDetailView(DetailView):
                 context["final_stage_action"] = final_stage
         else:
             context["final_stage_action"] = self.final_stage_action
+
+        # Get custom pipeline colors if method exists
+        if hasattr(self, "get_pipeline_custom_colors"):
+            custom_colors = self.get_pipeline_custom_colors()
+            if custom_colors:
+                context["pipeline_custom_bg_color"] = custom_colors.get("bg_color")
+                context["pipeline_custom_text_color"] = custom_colors.get("text_color")
+                context["pipeline_custom_hover_color"] = custom_colors.get(
+                    "hover_color"
+                )
 
         session_key = f"list_view_queryset_ids_{self.model._meta.model_name}"
 
@@ -5300,7 +5358,7 @@ class HorillaNotesAttachmentCreateView(LoginRequiredMixin, FormView):
             messages.success(self.request, f"{attachment.title} updated successfully")
         attachment.save()
         return HttpResponse(
-            "<script>$('#tab-notes-attachments').click();closeModal();</script>"
+            "<script>$('#tab-notes-attachments').click();closeModal();$('#detailReloadButton').click();</script>"
         )
 
     def get(self, request, *args, **kwargs):
@@ -9635,7 +9693,9 @@ class HorillaNotesAttachmentDeleteView(LoginRequiredMixin, HorillaSingleDeleteVi
     model = HorillaAttachment
 
     def get_post_delete_response(self):
-        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
+        return HttpResponse(
+            "<script>htmx.trigger('#reloadButton','click');closeContentModal();</script>"
+        )
 
 
 class HorillaModalDetailView(DetailView):
