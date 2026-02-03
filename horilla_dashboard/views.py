@@ -313,14 +313,9 @@ class DashboardDefaultToggleView(LoginRequiredMixin, View):
                 return HttpResponse("<script>$('#reloadButton').click();</script>")
             return None
 
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Dashboard not found');</script>", status=404
-            )
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, e)
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -346,14 +341,10 @@ class DashboardFavoriteToggleView(LoginRequiredMixin, View):
                     messages.success(request, f"Added {dashboard.name} to favorites.")
                 return HttpResponse(headers={"HX-Refresh": "true"})
             return HttpResponse("<script>$('#reloadButton').click();</script>")
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Dashboard not found');</script>", status=404
-            )
+
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, e)
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
 
     def get(self, request, *args, **kwargs):
         """Handle GET request to return 403 error for non-POST requests."""
