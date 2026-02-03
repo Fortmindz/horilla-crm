@@ -66,6 +66,15 @@ class DashboardCreateForm(HorillaModelForm):
 
         super().__init__(*args, **kwargs)
 
+        if self.instance_obj and self.instance_obj.pk and self.instance_obj.columns:
+            if isinstance(self.instance_obj.columns, str):
+                try:
+                    parsed = json.loads(self.instance_obj.columns)
+                    if isinstance(parsed, list):
+                        self.instance_obj.columns = parsed
+                except json.JSONDecodeError:
+                    pass
+
         # Get model_name after base class initialization
         model_name = getattr(self, "model_name", None)
 
@@ -194,21 +203,22 @@ class DashboardCreateForm(HorillaModelForm):
                                     column_choices.append((field_name, field_label))
 
                             # Recreate the field with choices
-                            self.fields["columns"] = forms.MultipleChoiceField(
-                                choices=column_choices,
-                                required=False,
-                                widget=forms.SelectMultiple(
-                                    attrs={
-                                        "class": "js-example-basic-multiple headselect",
-                                        "id": "id_columns",
-                                        "name": "columns",
-                                        "data-placeholder": "Add Columns",
-                                        "tabindex": "-1",
-                                        "aria-hidden": "true",
-                                        "multiple": True,
-                                    }
-                                ),
-                            )
+                            if self.request.method == "GET":
+                                self.fields["columns"] = forms.MultipleChoiceField(
+                                    choices=column_choices,
+                                    required=False,
+                                    widget=forms.SelectMultiple(
+                                        attrs={
+                                            "class": "js-example-basic-multiple headselect",
+                                            "id": "id_columns",
+                                            "name": "columns",
+                                            "data-placeholder": "Add Columns",
+                                            "tabindex": "-1",
+                                            "aria-hidden": "true",
+                                            "multiple": True,
+                                        }
+                                    ),
+                                )
 
                             # Set the initial value with the saved columns
                             self.initial["columns"] = columns_list
@@ -361,15 +371,11 @@ class DashboardCreateForm(HorillaModelForm):
             condition_rows = self._extract_condition_rows()
             cleaned_data["condition_rows"] = condition_rows
 
-        # Handle columns field (convert list to comma-separated string)
-        raw_columns = self.data.getlist("columns")
-        if raw_columns and "columns" in cleaned_data:
-            cleaned_data["columns"] = raw_columns
-
         return cleaned_data
 
     def clean_columns(self):
         """Clean the columns field to store as comma-separated values"""
+
         raw_columns = self.data.getlist("columns")
         columns = self.cleaned_data.get("columns")
 
@@ -383,8 +389,9 @@ class DashboardCreateForm(HorillaModelForm):
             columns = raw_columns if raw_columns else [columns]
 
         if not columns:
+            print("No columns - returning empty")
             return ""
 
         column_list = [str(col) for col in columns if col]
-        result = ",".join(column_list)
+        result = json.dumps(column_list)
         return result

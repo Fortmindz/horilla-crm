@@ -2,13 +2,12 @@
 {% load i18n %} {% load dashboard_tags %} {% block content %}
 <div class="flex modelcontent">
     {% include "components/sub_sidebar.html" %}
-    <div id="messages-container" style="display: none">
-        {% for message in messages %}
-            <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-        {% endfor %}
-    </div>
+
     <div id="mainContent"
         class="flex-[1_0] leftspace transition-all duration-300 ease-in-out pt-0 overflow-hidden overflow-y-auto h-[100vh]">
+        {% include "messages.html" %}
+        <button id="reloadButton" hidden hx-get="{{ request.path }}?{{request.GET.urlencode}}" hx-target="#mainContent" hx-trigger="click" hx-swap="outerHTML" hx-select="#mainContent">click</button>
+
         <div class="bg-white px-5 border-b border-b-dark-50 fixed w-fill-available z-30">
             <div class="flex flex-wrap items-center gap-2 justify-between">
                 <div class="flex items-start">
