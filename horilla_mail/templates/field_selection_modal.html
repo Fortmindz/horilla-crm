@@ -268,7 +268,8 @@
 </div>
 
 <script>
-    let globalSelectedFields = [];
+    // Use window object to avoid redeclaration errors with HTMX
+    window.globalSelectedFields = window.globalSelectedFields || [];
 
     function preserveSelections() {
         const checkboxes = document.querySelectorAll('#fieldSelectionForm input[type="checkbox"]:checked');
@@ -276,8 +277,8 @@
             const template = checkbox.getAttribute('data-template');
             const uniqueKey = checkbox.id + '_' + template;
 
-            if (template && !globalSelectedFields.some(item => item.uniqueKey === uniqueKey)) {
-                globalSelectedFields.push({
+            if (template && !window.globalSelectedFields.some(item => item.uniqueKey === uniqueKey)) {
+                window.globalSelectedFields.push({
                     id: checkbox.id,
                     template: template,
                     value: checkbox.value,
@@ -286,20 +287,20 @@
             }
         });
 
-        document.getElementById('selectedFieldsStore').value = JSON.stringify(globalSelectedFields);
+        document.getElementById('selectedFieldsStore').value = JSON.stringify(window.globalSelectedFields);
     }
 
     function restoreSelections() {
         const storedValue = document.getElementById('selectedFieldsStore').value;
         if (storedValue) {
             try {
-                globalSelectedFields = JSON.parse(storedValue);
+                window.globalSelectedFields = JSON.parse(storedValue);
             } catch (e) {
-                globalSelectedFields = [];
+                window.globalSelectedFields = [];
             }
         }
 
-        globalSelectedFields.forEach(field => {
+        window.globalSelectedFields.forEach(field => {
             const checkbox = document.getElementById(field.id);
             if (checkbox && checkbox.getAttribute('data-template') === field.template) {
                 checkbox.checked = true;
@@ -337,39 +338,26 @@
         clickedBtn.classList.add("bg-primary-600", "text-white");
     }
 
-
     function insertSelectedFields() {
         preserveSelections();
-        if (globalSelectedFields.length === 0) {
-
+        if (window.globalSelectedFields.length === 0) {
             return;
         }
 
-        const fieldsText = globalSelectedFields.map(field => field.template).join(' ');
+        const fieldsText = window.globalSelectedFields.map(field => field.template).join(' ');
 
-        if (typeof summernoteInitialized !== 'undefined' && summernoteInitialized && $('#summernote').length) {
-            const currentContent = $('#summernote').summernote('code');
-
-            $('#summernote').summernote('insertText', fieldsText);
-            $('#summernote').summernote('focus');
-        } else {
-            const activeElement = document.activeElement;
-            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
-                const start = activeElement.selectionStart;
-                const end = activeElement.selectionEnd;
-                const value = activeElement.value;
-
-                activeElement.value = value.substring(0, start) + fieldsText + value.substring(end);
-                activeElement.selectionStart = activeElement.selectionEnd = start + fieldsText.length;
-                activeElement.focus();
-            }
+        // Use the global function from the main template
+        if (typeof window.insertTextAtCursor === 'function') {
+            window.insertTextAtCursor(fieldsText);
         }
 
-        globalSelectedFields = [];
+        // Clear selections
+        window.globalSelectedFields = [];
         document.getElementById('selectedFieldsStore').value = '';
 
         closeContentModal();
     }
+
     document.addEventListener('DOMContentLoaded', function() {
         restoreSelections();
     });

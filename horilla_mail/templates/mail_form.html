@@ -1,4 +1,3 @@
-
 {% load static i18n %}
 <div id="send-mail-container">
 <style>
@@ -76,17 +75,19 @@
                     <path fill="currentColor" d="M19.463 5.576c-.688-.75-1.929-.796-2.756.031l-8.1 8.1c-.21.21-.21.476 0 .686s.476.21.686 0l6.7-6.7a1 1 0 0 1 1.414 1.414l-6.7 6.7a2.45 2.45 0 0 1-3.514 0a2.45 2.45 0 0 1 0-3.514l8.1-8.1c1.567-1.568 4.115-1.619 5.63.015c1.552 1.569 1.597 4.104-.03 5.613l-9.486 9.486c-2.19 2.19-5.624 2.19-7.814 0s-2.19-5.624 0-7.814l8.1-8.1a1 1 0 0 1 1.414 1.414l-8.1 8.1c-1.41 1.41-1.41 3.576 0 4.986s3.576 1.41 4.986 0l9.5-9.5l.031-.03c.75-.687.796-1.929-.031-2.756z"/>
                 </svg>
             </button>
-            <button title="Insert Field" class="w-7 h-7 hover:bg-primary-600 hover:text-[white] transition-all p-[5px] border border-[#a8a8a8] hover:border-primary-600 flex items-center justify-center rounded-md"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-            hx-get="{% url 'horilla_mail:field_selection' %}?model_name={{ model_name }}&object_id={{ object_id }}"
-            hx-target="#contentModalBox"
-            hx-on:click="openContentModal()"
-            >
-                <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1">
-                <path stroke-width="2" d="M8 12h.009m3.986 0h.01m3.986 0H16" />
-                <path stroke-width="1.5"
-                    d="M18 21c1.232 0 2.231-1.151 2.231-2.571c0-2.248-.1-3.743 1.442-5.52c.436-.502.436-1.316 0-1.818c-1.542-1.777-1.442-3.272-1.442-5.52C20.231 4.151 19.232 3 18 3M6 21c-1.232 0-2.231-1.151-2.231-2.571c0-2.248.1-3.743-1.442-5.52c-.436-.502-.436-1.316 0-1.818C3.835 9.352 3.769 7.84 3.769 5.57C3.769 4.151 4.768 3 6 3" />
-                </g>
-            </svg></button>
+            <button title="Insert Field"
+                class="w-7 h-7 hover:bg-primary-600 hover:text-[white] transition-all p-[5px] border border-[#a8a8a8] hover:border-primary-600 flex items-center justify-center rounded-md"
+                hx-get="{% url 'horilla_mail:field_selection' %}?model_name={{ model_name }}&object_id={{ object_id }}"
+                hx-target="#contentModalBox"
+                hx-on:click="saveCursorPosition(); openContentModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1">
+                        <path stroke-width="2" d="M8 12h.009m3.986 0h.01m3.986 0H16" />
+                        <path stroke-width="1.5"
+                            d="M18 21c1.232 0 2.231-1.151 2.231-2.571c0-2.248-.1-3.743 1.442-5.52c.436-.502.436-1.316 0-1.818c-1.542-1.777-1.442-3.272-1.442-5.52C20.231 4.151 19.232 3 18 3M6 21c-1.232 0-2.231-1.151-2.231-2.571c0-2.248.1-3.743-1.442-5.52c-.436-.502-.436-1.316 0-1.818C3.835 9.352 3.769 7.84 3.769 5.57C3.769 4.151 4.768 3 6 3" />
+                    </g>
+                </svg>
+            </button>
             <button title="Add mail template"
             hx-get="{% url 'horilla_mail:select_mail_template' %}?model_name={{ model_name }}"
             hx-target="#modalBox"
@@ -198,6 +199,7 @@
     <script>
         var allFiles = [];
         let summernoteInitialized = false;
+        let savedCursorPosition = null; // Store cursor position
 
         function createSummernoteInstance() {
             $('#summernote').summernote({
@@ -237,6 +239,99 @@
             const existingContent = $('#message_content').val();
             if (existingContent && existingContent.trim() !== '' && summernoteInitialized) {
                 $('#summernote').summernote('code', existingContent);
+            }
+        }
+
+        function saveCursorPosition() {
+            if (summernoteInitialized && $('#summernote').next('.note-editor').length) {
+                try {
+                    // Check if we're in code view
+                    const isCodeView = $('.note-editor').hasClass('codeview');
+
+                    if (!isCodeView) {
+                        // Save the current selection/range for WYSIWYG view
+                        const selection = window.getSelection();
+                        if (selection.rangeCount > 0) {
+                            // Clone the range to preserve it
+                            savedCursorPosition = selection.getRangeAt(0).cloneRange();
+                        } else {
+                            savedCursorPosition = null;
+                        }
+                    } else {
+                        // For code view, we don't need to save position
+                        // The textarea will maintain its own selection
+                        savedCursorPosition = null;
+                    }
+                } catch (error) {
+                    console.log('Error saving cursor position:', error);
+                    savedCursorPosition = null;
+                }
+            }
+        }
+
+        // Restore cursor position and insert text
+        function insertTextAtCursor(text) {
+            if (summernoteInitialized && $('#summernote').next('.note-editor').length) {
+                try {
+                    // Check if we're in code view
+                    const isCodeView = $('.note-editor').hasClass('codeview');
+
+                    if (isCodeView) {
+                        // Handle code view - insert into textarea
+                        const textarea = $('.note-codable')[0];
+                        if (textarea) {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const value = textarea.value;
+
+                            // Insert text at cursor position
+                            textarea.value = value.substring(0, start) + text + value.substring(end);
+
+                            // Move cursor to end of inserted text
+                            const newPosition = start + text.length;
+                            textarea.selectionStart = newPosition;
+                            textarea.selectionEnd = newPosition;
+
+                            // Focus on textarea
+                            textarea.focus();
+
+                            // Trigger Summernote to sync from code view
+                            $('#summernote').summernote('code', textarea.value);
+                        }
+                    } else {
+                        // Handle normal WYSIWYG view
+                        if (savedCursorPosition && savedCursorPosition.startContainer) {
+                            try {
+                                // Verify the range is still valid
+                                const selection = window.getSelection();
+                                selection.removeAllRanges();
+                                selection.addRange(savedCursorPosition);
+
+                                // Now insert the text using Summernote
+                                $('#summernote').summernote('focus');
+                                $('#summernote').summernote('insertText', text);
+                            } catch (e) {
+                                console.log('Error with saved position, using fallback:', e);
+                                // Fallback: just insert at current position
+                                $('#summernote').summernote('focus');
+                                $('#summernote').summernote('insertText', text);
+                            }
+                        } else {
+                            // No saved position, insert at current cursor
+                            $('#summernote').summernote('focus');
+                            $('#summernote').summernote('insertText', text);
+                        }
+                    }
+
+                    // Sync content after insertion
+                    syncEditorContent();
+
+                    // Clear saved position
+                    savedCursorPosition = null;
+                } catch (error) {
+                    console.log('Error inserting text:', error);
+                    savedCursorPosition = null;
+                }
             }
         }
 
@@ -284,6 +379,17 @@
             const fileInput = document.getElementById("fileInput");
             if (fileInput) {
                 fileInput.files = dataTransfer.files;
+            }
+        }
+
+        function cleanupEditor() {
+            if (summernoteInitialized && $('#summernote').next('.note-editor').length) {
+                try {
+                    $('#summernote').summernote('destroy');
+                    summernoteInitialized = false;
+                } catch (error) {
+                    console.log('Error destroying Summernote:', error);
+                }
             }
         }
 
@@ -345,6 +451,16 @@
             });
         });
 
+        $(document).on('click', '#close-mail-btn', function() {
+            cleanupEditor();
+        });
+
+        $(document).on('htmx:beforeSwap', function(evt) {
+            if ($(evt.target).is('#horillaModalBox')) {
+                cleanupEditor();
+            }
+        });
+
         $(document).on("htmx:afterSwap", function(evt) {
             if ($(evt.target).is('#horillaModalBox') || $(evt.detail.elt).is('#horillaModalBox')) {
                 allFiles = [];
@@ -357,5 +473,8 @@
         $(document).ready(function() {
             initMailForm();
         });
+
+        // Make insertTextAtCursor globally available
+        window.insertTextAtCursor = insertTextAtCursor;
     </script>
 </div>
