@@ -470,6 +470,9 @@ class AddCurrencyView(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     fields = ["currency", "conversion_rate", "decimal_places", "format", "company"]
     hidden_fields = ["company"]
+    return_response = HttpResponse(
+        "<script>closeModal();$('#tab-currency-view').click();</script>"
+    )
 
     def dispatch(self, request, *args, **kwargs):
         """
