@@ -26,7 +26,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import ForeignKey, Q
 from django.http import Http404, HttpResponse, QueryDict
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
@@ -39,6 +39,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 # First-party / Horilla imports
 from horilla.exceptions import HorillaHttp404
 from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import (
     htmx_required,
     permission_required,

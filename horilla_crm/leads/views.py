@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render  # type: ignore
+from django.shortcuts import render  # type: ignore
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -20,6 +20,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import FormView
 
 # First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_activity.views import HorillaActivitySectionView
 from horilla_core.decorators import (
     htmx_required,

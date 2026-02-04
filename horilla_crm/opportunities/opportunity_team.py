@@ -15,7 +15,6 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -23,9 +22,11 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, TemplateView, View
 
-# First-party / Horilla imports
 from horilla.auth.models import User
 from horilla.exceptions import HorillaHttp404
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required
 from horilla_crm.opportunities.filters import (
     OpportunityTeamFilter,

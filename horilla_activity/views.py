@@ -14,7 +14,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.http import Http404, HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -22,6 +22,7 @@ from django.utils.functional import cached_property  # type: ignore
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView
 
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_activity.filters import ActivityFilter
 from horilla_activity.forms import EventForm
 from horilla_core.decorators import (
