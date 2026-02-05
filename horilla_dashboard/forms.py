@@ -15,7 +15,7 @@ from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.utils.choices import DISPLAYABLE_FIELD_TYPES
 from horilla_generics.forms import HorillaModelForm
 
-from .models import ComponentCriteria, DashboardComponent
+from .models import ComponentCriteria, Dashboard, DashboardComponent, DashboardFolder
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,24 @@ def get_dashboard_component_models():
         key = model_cls.__name__.lower()
         models.append((key, model_cls))
     return models
+
+
+class DashboardForm(HorillaModelForm):
+    """Form for creating and and editing dashboards"""
+
+    class Meta:
+        """Meta options for ReportForm."""
+
+        model = Dashboard
+        fields = ["name", "description", "folder", "is_default", "dashboard_owner"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["folder"].queryset = (
+            DashboardFolder.objects.all()
+            if self.request.user.is_superuser
+            else DashboardFolder.objects.filter(folder_owner=self.request.user)
+        )
 
 
 class DashboardCreateForm(HorillaModelForm):

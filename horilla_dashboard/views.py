@@ -32,7 +32,7 @@ from horilla_core.decorators import (
 )
 from horilla_core.models import HorillaContentType
 from horilla_dashboard.filters import DashboardFilter
-from horilla_dashboard.forms import DashboardCreateForm
+from horilla_dashboard.forms import DashboardCreateForm, DashboardForm
 from horilla_dashboard.models import (
     ComponentCriteria,
     Dashboard,
@@ -324,28 +324,23 @@ class DashboardFavoriteToggleView(LoginRequiredMixin, View):
     """Toggle favorite status of a dashboard for the logged-in user."""
 
     def post(self, request, *args, **kwargs):
-        """Handle POST request to toggle favorite status of a dashboard."""
+        """Handle POST requests to toggle favorite status of a dashboard folder."""
         try:
             dashboard = Dashboard.objects.get(pk=kwargs["pk"])
-            user = request.user
-            if (
-                user.has_perm("horilla_dashboard.change_dashboard")
-                or dashboard.dashboard_owner == user
-            ):
-                if user in dashboard.favourited_by.all():
-                    dashboard.favourited_by.remove(user)
-                    messages.success(
-                        request, f"Removed {dashboard.name} from favorites."
-                    )
-                else:
-                    dashboard.favourited_by.add(user)
-                    messages.success(request, f"Added {dashboard.name} to favorites.")
-                return HttpResponse(headers={"HX-Refresh": "true"})
+        except Exception as e:
+            messages.error(request, str(e))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
-        except Exception as e:
-            messages.error(request, e)
-            return HttpResponse("<script>$('#reloadButton').click();</script>")
+        user = request.user
+        if (
+            user.has_perm("horilla_dashboard.change_dashboardfolder")
+            or dashboard.dashboard_owner == user
+        ):
+            if user in dashboard.favourited_by.all():
+                dashboard.favourited_by.remove(user)
+            else:
+                dashboard.favourited_by.add(user)
+        return HttpResponse("<script>$('#reloadButton').click();</script>")
 
     def get(self, request, *args, **kwargs):
         """Handle GET request to return 403 error for non-POST requests."""
@@ -1064,7 +1059,6 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
             kpi = self.get_kpi_data(component, self.request)
             if kpi:
                 kpi_data.append(kpi)
-            print(kpi_data, 111111111111111111111111111)
 
         # Process chart components
         chart_data = []
@@ -2110,7 +2104,6 @@ class DashboardComponentChartView(View):
             metric_label = (
                 f"{component.metric_type.title() if component.metric_type else 'Count'}"
             )
-            print(component.icon.url, 0000000000000000000000000000000)
 
             return {
                 "value": float(value),
@@ -2702,7 +2695,7 @@ class ComponentDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = DashboardComponent
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -2806,7 +2799,7 @@ class AddToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
         messages.success(
             self.request, _("Chart successfully added to another dashboard!")
         )
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>closeModal();$('#reloadButton').click();</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -2814,6 +2807,7 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
     """View to handle creation and updating of horilla_dashboard."""
 
     model = Dashboard
+    form_class = DashboardForm
     modal_height = False
     fields = ["name", "description", "folder", "is_default", "dashboard_owner"]
     full_width_fields = ["name", "description", "folder", "dashboard_owner"]
@@ -2827,30 +2821,6 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
         if pk:
             return reverse_lazy("horilla_dashboard:dashboard_update", kwargs={"pk": pk})
         return reverse_lazy("horilla_dashboard:dashboard_create")
-
-    def get_form(self, form_class=None):
-        form = super().get_form(form_class)
-        user = getattr(self.request, "user", None)
-        if user:
-            form.fields["folder"].widget.attrs.update(
-                {
-                    "class": "js-example-basic-single",
-                }
-            )
-            if not user.is_superuser:
-                form.fields["folder"].queryset = DashboardFolder.objects.filter(
-                    folder_owner=user
-                )
-
-            pk = self.request.GET.get("pk")
-            if pk:
-                try:
-                    folder = DashboardFolder.objects.get(pk=pk, folder_owner=user)
-                    form.initial["folder"] = folder
-                except DashboardFolder.DoesNotExist:
-                    pass
-
-        return form
 
     def get_initial(self):
         initial = super().get_initial()
@@ -2866,10 +2836,6 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
         initial.update(self.request.GET.dict())
         return initial
 
-    # def form_valid(self, form):
-    #     super().form_valid(form)
-    #     return HttpResponse(headers={"HX-Refresh": "true"})
-
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
@@ -2882,7 +2848,7 @@ class DashboardDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = Dashboard
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 # folder areas
@@ -2920,10 +2886,6 @@ class DashboardFolderCreate(LoginRequiredMixin, HorillaSingleFormView):
             )
         return reverse_lazy("horilla_dashboard:dashboard_folder_create")
 
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
 
 @method_decorator(htmx_required, name="dispatch")
 class DashboardFolderFavoriteView(LoginRequiredMixin, View):
@@ -2933,29 +2895,20 @@ class DashboardFolderFavoriteView(LoginRequiredMixin, View):
         """Handle POST requests to toggle favorite status of a dashboard folder."""
         try:
             folder = DashboardFolder.objects.get(pk=kwargs["pk"])
-            user = request.user
-
-            if (
-                user.has_perm("horilla_dashboard.change_dashboardfolder")
-                or folder.folder_owner == user
-            ):
-                if user in folder.favourited_by.all():
-                    folder.favourited_by.remove(user)
-                    messages.success(request, f"Removed {folder.name} from favorites.")
-                else:
-                    folder.favourited_by.add(user)
-                    messages.success(request, f"Added {folder.name} to favorites.")
-                return HttpResponse(headers={"HX-Refresh": "true"})
-            return render(request, "error/403.html")
-
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Folder not found');</script>", status=404
-            )
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, str(e))
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
+
+        user = request.user
+        if (
+            user.has_perm("horilla_dashboard.change_dashboardfolder")
+            or folder.folder_owner == user
+        ):
+            if user in folder.favourited_by.all():
+                folder.favourited_by.remove(user)
+            else:
+                folder.favourited_by.add(user)
+        return HttpResponse("<script>$('#reloadButton').click();</script>")
 
     def get(self, request, *args, **kwargs):
         """Handle GET requests by returning a 403 error page."""
@@ -3204,7 +3157,7 @@ class FolderDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = DashboardFolder
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
