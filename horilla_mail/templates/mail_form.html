@@ -15,6 +15,7 @@
     hx-target="#deleteModeBox"
     hx-encoding="multipart/form-data"
     hx-on:click="openDeleteModeModal();"
+    hx-on--before-request="syncEditorContent();"
     class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
     <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
     </button>
@@ -33,12 +34,22 @@
                 {% endfor %}
         </select>
         </div>
+        {% if validation_errors.from_mail %}
+            <div class="bg-red-50 text-red-500 px-3 py-2 rounded text-xs mt-1">
+                {{ validation_errors.from_mail }}
+            </div>
+        {% endif %}
 
         <label for="" class="text-xs text-color-600">{% trans "To" %}</label>
         <div class="relative">
             {% include 'email_pills_field.html' with field_type='to' email_list=to_pills.email_list email_string=to_pills.email_string current_search=to_pills.current_search %}
             <div id="email-suggestions-to" class="relative"></div>
         </div>
+        {% if validation_errors.to_email %}
+            <div class="bg-red-50 text-red-500 px-3 py-2 rounded text-xs mt-1">
+                {{ validation_errors.to_email }}
+            </div>
+        {% endif %}
 
         <label for="" class="text-xs text-color-600">{% trans "Cc" %}</label>
         <div class="relative">
@@ -55,6 +66,11 @@
         <label for="" class="text-xs text-color-600">{% trans "Subject" %}</label>
         <input type="text" name="subject" placeholder="Enter Subject" value="{{subject}}"
         class="mb-2 text-color-600 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" />
+        {% if validation_errors.subject %}
+            <div class="bg-red-50 text-red-500 px-3 py-2 rounded text-xs mt-1">
+                {{ validation_errors.subject }}
+            </div>
+        {% endif %}
 
         {% if related_object %}
             <div class="mb-3 p-2 bg-blue-50 rounded">
@@ -197,9 +213,10 @@
     <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 
     <script>
+        // Use var instead of let to allow redeclaration when form is reloaded via HTMX
         var allFiles = [];
-        let summernoteInitialized = false;
-        let savedCursorPosition = null; // Store cursor position
+        var summernoteInitialized = false;
+        var savedCursorPosition = null; // Store cursor position
 
         function createSummernoteInstance() {
             $('#summernote').summernote({
@@ -451,9 +468,9 @@
             });
         });
 
-        $(document).on('click', '#close-mail-btn', function() {
-            cleanupEditor();
-        });
+        // Don't cleanup editor on close button click - let the confirmation dialog show first
+        // Cleanup will happen when modal actually closes via htmx:beforeSwap handler
+
 
         $(document).on('htmx:beforeSwap', function(evt) {
             if ($(evt.target).is('#horillaModalBox')) {
@@ -473,6 +490,29 @@
         $(document).ready(function() {
             initMailForm();
         });
+
+        function handleMailModalEsc(e) {
+            if (e.key === "Escape" || e.keyCode === 27) {
+                const mailContainer = $('#send-mail-container');
+                if (mailContainer.length && mailContainer.is(':visible')) {
+                    if (typeof ModalManager !== 'undefined' && ModalManager.stack.length > 0) {
+                        const topModal = ModalManager.stack[ModalManager.stack.length - 1];
+                        if (topModal.id === 'horillaModal' && $('#horillaModalBox').find('#send-mail-container').length) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            const closeBtn = $('#close-mail-btn');
+                            if (closeBtn.length) {
+                                closeBtn.trigger('click');
+                            }
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        document.removeEventListener('keydown', handleMailModalEsc, true);
+        document.addEventListener('keydown', handleMailModalEsc, true); // Use capture phase (true) to run before other handlers
 
         // Make insertTextAtCursor globally available
         window.insertTextAtCursor = insertTextAtCursor;
