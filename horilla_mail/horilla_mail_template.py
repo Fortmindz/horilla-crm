@@ -185,7 +185,6 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
         self.object = None
 
     def dispatch(self, request, *args, **kwargs):
-
         self.template_id = kwargs.get("pk")
         if self.template_id:
             try:
@@ -239,7 +238,19 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
                 if hasattr(_thread_local, "request")
                 else self.request.user.company
             )
+
+            # Set created_by and updated_by before saving
+            # This is required by HorillaCoreModel validation
+            if not mail_template.pk:
+                # New object - set both created_by and updated_by
+                mail_template.created_by = self.request.user
+                mail_template.updated_by = self.request.user
+            else:
+                # Existing object - only update updated_by
+                mail_template.updated_by = self.request.user
+
             mail_template.save()
+
             if self.object:
                 messages.success(
                     self.request,
@@ -261,6 +272,9 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
 
         except ValidationError as e:
             messages.error(self.request, str(e))
+            return self.form_invalid(form)
+        except Exception as e:
+            messages.error(self.request, f"An error occurred: {str(e)}")
             return self.form_invalid(form)
 
 
