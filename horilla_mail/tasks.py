@@ -13,6 +13,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from horilla.auth.models import User
+from horilla_utils.methods import has_xss
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,7 @@ def send_scheduled_mail_task(self, mail_id):
         }
 
         # Check for XSS before rendering (on templates)
-        if HorillaMail.has_xss(mail.subject or "") or HorillaMail.has_xss(
-            mail.body or ""
-        ):
+        if has_xss(mail.subject or "") or has_xss(mail.body or ""):
             logger.warning("XSS detected in mail templates %s", mail_id)
             mail.mail_status = "failed"
             mail.mail_status_message = "XSS content detected in email templates"
