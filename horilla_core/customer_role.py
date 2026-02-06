@@ -26,7 +26,7 @@ from horilla_generics.views import (
     HorillaSingleFormView,
     HorillaView,
 )
-from horilla_notifications.models import Notification
+from horilla_notifications.methods import create_notification
 
 
 class CustomerRoleView(LoginRequiredMixin, HorillaView):
@@ -174,21 +174,6 @@ class CustomerRoleFormView(LoginRequiredMixin, HorillaSingleFormView):
                 "horilla_core:customer_role_update_form", kwargs={"pk": pk}
             )
         return reverse_lazy("horilla_core:customer_role_create_form")
-
-    def form_valid(self, form):
-        self.object = form.save()
-
-        if not self.kwargs.get("pk"):
-            Notification.objects.create(
-                user=self.request.user,
-                message=f"New Customer Role '{self.object}' created successfully.",
-                sender=self.request.user,
-                url=reverse_lazy("horilla_core:customer_role_view"),
-            )
-
-        _response = super().form_valid(form)
-
-        return HttpResponse("<script>$('#reloadButton').click();closeModal();</script>")
 
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)

@@ -192,6 +192,7 @@ function openContentModalSecond() { ModalManager.open("contentModalSecond", "con
 function closeContentModalSecond() { ModalManager.close("contentModalSecond", "contentModalBoxSecond"); }
 function openDetailModal() { ModalManager.open("detailModal", "detailModalBox"); }
 function closeDetailModal() { ModalManager.close("detailModal", "detailModalBox"); }
+document.body.addEventListener("openNotificationDetailModal", function () { openModal(); });
 function openModal() { ModalManager.open("dbmodal", "modalBox"); }
 function closeModal() { ModalManager.close("dbmodal", "modalBox"); }
 function openhorillaModal() { ModalManager.open("horillaModal", "horillaModalBox"); }
@@ -1580,57 +1581,6 @@ $(document).on('keydown', function (e) {
     }
 });
 
-// Close on backdrop click
-$(document).on('click', '[id$="modal"], [id$="Modal"]', function(e) {
-    if (e.target === this) {
-        const modalId = $(this).attr('id');
-        const modalInStack = ModalManager.stack.find(m => m.id === modalId);
-        if (modalInStack) {
-            ModalManager.close(modalInStack.id, modalInStack.boxId);
-        }
-    }
-});
-
-// // Dropdown functionality
-// document.addEventListener('DOMContentLoaded', function () {
-//     document.addEventListener('click', function (e) {
-//         const wrapper = e.target.closest('.dropdown-wrapper');
-
-//         if (wrapper) {
-//             const dropdown = wrapper.querySelector('.dropdown-content');
-//             const clickedDropdown = e.target.closest('.dropdown-content');
-//             if (clickedDropdown) {
-//                 e.stopPropagation();
-//                 return;
-//             }
-
-//             const trigger = Array.from(wrapper.children).find(el =>
-//                 el !== dropdown && (el.tagName === 'BUTTON' || el.tagName === 'A' || el.querySelector('svg'))
-//             );
-
-//             if (trigger && trigger.contains(e.target)) {
-//                 e.stopPropagation();
-
-//                 document.querySelectorAll('.dropdown-wrapper.active').forEach(other => {
-//                     if (other !== wrapper) other.classList.remove('active');
-//                 });
-
-//                 wrapper.classList.toggle('active');
-//             }
-//         } else {
-//             document.querySelectorAll('.dropdown-wrapper.active').forEach(wrapper => {
-//                 wrapper.classList.remove('active');
-//             });
-//         }
-//     });
-
-//     document.body.addEventListener('htmx:afterRequest', function (e) {
-//         const wrapper = e.target.closest('.dropdown-wrapper');
-//         if (wrapper && wrapper.classList.contains('active')) {
-//             wrapper.classList.remove('active');
-//         }
-//     });
-// });
 
 // Dropdown functionality
 document.addEventListener('DOMContentLoaded', function () {

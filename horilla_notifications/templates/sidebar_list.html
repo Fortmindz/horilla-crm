@@ -38,7 +38,7 @@
                     <div class="notif-indicator w-2 h-2 mt-2 flex-shrink-0"></div>
                 {% endif %}
                 <div class="flex-1">
-                    <h5 class="text-sm font-semibold mb-2">{{ notification.message|escape }}</h5>
+                    <h5 class="text-sm font-semibold mb-2">{{ notification.message|safe }}</h5>
                     <p class="text-xs text-[#777777] mt-1">
                         {{ notification.created_at|timesince }} ago by {{ notification.sender|default:"System" }}
                     </p>

@@ -287,6 +287,14 @@
             }
         }
 
+        function removeOpenedNotification(el) {
+            if (!el || !el.id || !el.id.startsWith('notif-')) return;
+            const notifId = el.id.replace('notif-', '');
+            if (el.parentNode) el.remove();
+            updateNotificationCount(-1);
+            if (notifId) toggleNotificationDot('all-notif-' + notifId);
+        }
+
         function deleteAllDropdownNotifications() {
             const notifList = document.querySelector('.notification-list');
             if (notifList) {
@@ -341,7 +349,9 @@
             newDropdownItem.className = "mb-3 cursor-pointer";
             newDropdownItem.setAttribute("hx-get", data.open_url);
             newDropdownItem.setAttribute("hx-trigger", "click");
-            newDropdownItem.setAttribute("hx-swap", "none");
+            newDropdownItem.setAttribute("hx-target", "#modalBox");
+            newDropdownItem.setAttribute("hx-swap", "innerHTML");
+            newDropdownItem.setAttribute("hx-on:click", "openModal(); (function(e){ var el = e.currentTarget; setTimeout(function(){ removeOpenedNotification(el); }, 100); })(event)");
 
 
             newDropdownItem.innerHTML = `
