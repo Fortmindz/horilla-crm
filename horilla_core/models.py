@@ -377,7 +377,10 @@ class CompanyFilteredManager(models.Manager):
             request = getattr(_thread_local, "request", None)
             if request is None:
                 return queryset
-            if request.session.get("show_all_companies", False):
+            # Check if request has session attribute before accessing it
+            if hasattr(request, "session") and request.session.get(
+                "show_all_companies", False
+            ):
                 return queryset
 
             company = getattr(request, "active_company", None)
