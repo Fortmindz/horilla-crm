@@ -28,7 +28,7 @@
                 <div id="nav-actions"  class="flex items-center gap-5 h-[70px]">
                     <div class="flex items-center">
                         <button onclick="$('#reloadButton').click();"
-                        ><img src="{% static 'assets/icons/l5.svg' %}" alt="" width="17" /></button>
+                        ><img src="{% static 'assets/icons/l5.svg' %}" alt="{% trans 'Refresh' %}" width="17" /></button>
                     </div>
                     {% if panel_open %}
                         {% if has_unsaved_changes %}
@@ -41,7 +41,7 @@
                                         hx-swap="outerHTML"
                                         hx-select="#mainContent"
                                         >
-                                        <img src="{% static 'assets/icons/save.svg' %}" alt="" width="16" />
+                                        <img src="{% static 'assets/icons/save.svg' %}" alt="{% trans 'Save' %}" width="16" />
                                 </button>
                             </div>
                             <div class="flex items-center">
@@ -54,7 +54,7 @@
                                         hx-swap="outerHTML"
                                         hx-select="#mainContent"
                                         >
-                                        <img src="{% static 'assets/icons/close.svg' %}" alt="" width="16" />
+                                        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" width="16" />
                                 </button>
                             </div>
                         {% else %}
@@ -66,7 +66,7 @@
                                         hx-target="#mainContent"
                                         hx-swap="outerHTML"
                                         hx-select="#mainContent">
-                                        <img src="{% static 'assets/icons/close.svg' %}" alt="" width="16" />
+                                        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" width="16" />
                                 </button>
                             </div>
                         {% endif %}
@@ -79,7 +79,7 @@
                                     hx-target="#panel"
                                     hx-swap="outerHTML"
                                     hx-headers='{"HX-Trigger": "togglePanel"}'>
-                                <img src="{% static 'assets/icons/pen.svg' %}" alt="" width="16" />
+                                <img src="{% static 'assets/icons/pen.svg' %}" alt="{% trans 'Edit' %}" width="16" />
                             </button>
                         </div>
                     {% endif %}
@@ -89,7 +89,7 @@
                                 type="button"
                                 class="flex items-center">
                             {% comment %} <i class="fas fa-file-export mr-2"></i> {% endcomment %}
-                            <img src="{% static 'assets/icons/down.svg' %}" alt="" width="15" class="ml-1" />
+                            <img src="{% static 'assets/icons/down.svg' %}" alt="{% trans 'Actions' %}" width="15" class="ml-1" />
                         </button>
                         <!-- Dropdown menu -->
                         <div id="exportDropdown"
@@ -107,13 +107,6 @@
                                        class="block px-4 py-2 hover:bg-gray-100 flex items-center">
                                         <i class="fas fa-file-csv text-blue-600 mr-2"></i>
                                         CSV (.csv)
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="{% url 'horilla_reports:report_export' report.pk %}?format=pdf"
-                                       class="block px-4 py-2 hover:bg-gray-100 flex items-center">
-                                        <i class="fas fa-file-pdf text-red-600 mr-2"></i>
-                                        PDF (.pdf)
                                     </a>
                                 </li>
                             </ul>
@@ -168,9 +161,9 @@
                                 <h3 class="text-sm font-semibold mb-3"> {% trans 'Report Chart' %} </h3>
                                 <div class="relative dropdown-wrapper">
                                     <button id="dropdownLeftEndButton" type="button" class="flex w-[30px] justify-end">
-                                        <img src="{% static 'assets/icons/down.svg' %}" alt="" width="15" />
+                                        <img src="{% static 'assets/icons/down.svg' %}" alt="{% trans 'Actions' %}" width="15" />
                                     </button>
-                                    <div class="dropdown-content absolute z-10 bg-white rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] min-w-[150px] py-2 right-0">
+                                    <div class="dropdown-content absolute z-10 bg-white border-primary-300 rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] min-w-[150px] py-2 right-0">
                                         <ul class="text-sm z-50 relative" aria-labelledby="dropdownLeftEndButton">
                                             <li>
                                                 <a href="#" class="block px-3 py-1.5 hover:text-primary-600 transition duration-300 text-[.8rem]"
@@ -193,12 +186,12 @@
                                             {% endif %}
                                             <li>
                                                 <a href="#" class="block px-3 py-1.5 hover:text-primary-600 transition duration-300 text-[.8rem]"
-                                                    onclick="exportChartAsPDF('chart-{{ report.pk }}', 'report_{{ report.pk }}')">Export as PDF
+                                                    onclick="exportChartAsPDF('chart-{{ report.pk }}', 'report_{{ report.pk }}')">{% trans "Export as PDF" %}
                                                 </a>
                                             </li>
                                             <li>
                                                 <a href="#" class="block px-3 py-1.5 hover:text-primary-600 transition duration-300 text-[.8rem]"
-                                                    onclick="EChartsConfig.exportChart(window.reportChartInstance_{{ report.pk }}, 'report_{{ report.pk }}', 'png')">Export as PNG
+                                                    onclick="EChartsConfig.exportChart(window.reportChartInstance_{{ report.pk }}, 'report_{{ report.pk }}', 'png')">{% trans "Export as PNG" %}
                                                 </a>
                                             </li>
                                             {% if total_groups_count > 0 %}
@@ -426,15 +419,7 @@
                         }
                     });
 
-                    // Handle refreshReport trigger
-                    document.body.addEventListener('htmx:afterRequest', function(event) {
-                        if (event.detail.requestConfig.headers['HX-Trigger'] === 'refreshReport') {
-                            htmx.ajax('GET', '{% url "horilla_reports:report_update" report.pk %}', {
-                                target: '#panel',
-                                swap: 'outerHTML'
-                            });
-                        }
-                    });
+
                 })();
 
                 // Export dropdown handler

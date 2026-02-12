@@ -1,3 +1,9 @@
+"""Models for reports and folders used by `horilla_reports`.
+
+Includes `Report` and `ReportFolder` models with helper properties
+for presentation and serialization used by the reports UI.
+"""
+
 import json
 
 from django.conf import settings
@@ -5,14 +11,14 @@ from django.db import models
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
-from horilla.registry.feature import feature_enabled
 from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_reports.methods import limit_content_types
 from horilla_utils.methods import render_template
 
 
-@feature_enabled(import_data=True, export_data=True, global_search=True)
 class ReportFolder(HorillaCoreModel):
+    """Model representing a folder for organizing reports."""
+
     name = models.CharField(max_length=200, verbose_name=_("Folder Name"))
     parent = models.ForeignKey(
         "self",
@@ -31,10 +37,18 @@ class ReportFolder(HorillaCoreModel):
 
     OWNER_FIELDS = ["report_folder_owner"]
 
+    class Meta:
+        """Meta options for ReportFolder."""
+
+        verbose_name = _("Report Folder")
+        verbose_name_plural = _("Report Folders")
+
     def __str__(self):
-        return self.name
+        """Return the folder name as its string representation."""
+        return str(self.name)
 
     def get_item_type(self):
+        """Return a short label describing the item type (Folder)."""
         return "Folder"
 
     def get_detail_view_url(self):
@@ -66,7 +80,6 @@ class ReportFolder(HorillaCoreModel):
         )
 
 
-@feature_enabled(import_data=True, export_data=True, global_search=True)
 class Report(HorillaCoreModel):
     """Model to represent a report in the system."""
 
@@ -88,7 +101,7 @@ class Report(HorillaCoreModel):
         verbose_name=_("Report Owner"),
     )
 
-    name = models.CharField(max_length=200, verbose_name="Report Name")
+    name = models.CharField(max_length=200, verbose_name=_("Report Name"))
     module = models.ForeignKey(
         HorillaContentType,
         on_delete=models.CASCADE,
@@ -125,13 +138,17 @@ class Report(HorillaCoreModel):
     OWNER_FIELDS = ["report_owner"]
 
     class Meta:
+        """Meta options for Report."""
+
         verbose_name = _("Report")
         verbose_name_plural = _("Reports")
 
     def __str__(self):
-        return self.name
+        """Return the report name as its string representation."""
+        return str(self.name)
 
     def get_item_type(self):
+        """Return a short label describing the item type (Report)."""
         return "Report"
 
     @property
@@ -282,13 +299,13 @@ class Report(HorillaCoreModel):
                     {"value": value, "display": display}
                     for value, display in field.choices
                 ]
-            elif hasattr(field, "related_model") and field.related_model:
+            if hasattr(field, "related_model") and field.related_model:
                 related_objects = field.related_model.objects.all()
                 return [
                     {"value": obj.pk, "display": str(obj)} for obj in related_objects
                 ]
             return []
-        except:
+        except Exception:
             return []
 
     def is_choice_or_foreign_key_field(self, field_name):
@@ -298,7 +315,7 @@ class Report(HorillaCoreModel):
             return (hasattr(field, "choices") and field.choices) or (
                 hasattr(field, "related_model") and field.related_model
             )
-        except:
+        except Exception:
             return False
 
     def actions(self):

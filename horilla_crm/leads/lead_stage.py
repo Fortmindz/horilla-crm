@@ -1,11 +1,12 @@
 """Lead Stage Views"""
 
+# Third party imports (Django)
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render  # type: ignore
+from django.shortcuts import redirect, render  # type: ignore
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -14,14 +15,18 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
+from horilla.auth.models import User
 from horilla.exceptions import HorillaHttp404
+
+# First party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
 from horilla_core.initialiaze_database import InitializeRoleView
-from horilla_core.models import Company, HorillaUser
+from horilla_core.models import Company
 from horilla_core.progress import BASE_STEPS, ProgressStepsMixin
 from horilla_crm.leads.filters import LeadStatusFilter
 from horilla_crm.leads.forms import LeadStatusForm  # type: ignore
@@ -34,6 +39,9 @@ from horilla_generics.views import (
     HorillaView,
 )
 from horilla_utils.middlewares import _thread_local
+
+# Local imports
+from .signals import lead_stage_created
 
 
 class LeadsStageView(LoginRequiredMixin, HorillaView):
@@ -74,6 +82,7 @@ class LeadStageNavbar(LoginRequiredMixin, HorillaNavView):
                 "url": f"""{ reverse_lazy('leads:create_lead_stage')}?new=true""",
                 "attrs": {"id": "lead-stage-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -122,34 +131,28 @@ class LeadStageListView(LoginRequiredMixin, HorillaListView):
                 "url": f"""{ reverse_lazy('leads:create_lead_stage')}?new=true""",
                 "attrs": 'id="lead-stage-create"',
             }
+        return None
 
     columns = ["order", "name", (_("Is Final Stage"), "is_final_col"), "probability"]
-
-    @cached_property
-    def actions(self):
-        """Define actions for each row in the list view"""
-        actions = []
-        if self.request.user.has_perm("leads.change_leadstatus"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "leads.change_leadstatus",
+            "attrs": """
                         hx-get="{get_edit_url}?new=true"
                         hx-target="#modalBox"
                         hx-swap="innerHTML"
                         onclick="openModal()"
                         """,
-                },
-            )
-        if self.request.user.has_perm("leads.delete_leadstatus"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "leads.delete_leadstatus",
+            "attrs": """
                     hx-post="{get_delete_url}"
                     hx-target="#deleteModeBox"
                     hx-swap="innerHTML"
@@ -157,9 +160,8 @@ class LeadStageListView(LoginRequiredMixin, HorillaListView):
                     hx-vals='{{"check_dependencies": "true"}}'
                     onclick="openDeleteModeModal()"
                 """,
-                }
-            )
-        return actions
+        },
+    ]
 
 
 @method_decorator(
@@ -339,8 +341,8 @@ class UpdateLeadStageOrderView(LoginRequiredMixin, View):
                     LeadStatus.objects.filter(id=status.id).update(order=order)
 
 
-@method_decorator(htmx_required(login=False), name="dispatch")
-class LoadLeadStagesView(View):
+@method_decorator(htmx_required(), name="dispatch")
+class LoadLeadStagesView(LoginRequiredMixin, View):
     """View to display the lead stages modal."""
 
     def get(self, request, company_id):
@@ -391,13 +393,11 @@ class LoadLeadStagesView(View):
         # Group companies by their stage signatures
         signature_groups = {}
         default_signature = create_stage_signature(default_stages)
-        has_default_match = False
 
         for _comp_id, comp_data in raw_company_stages.items():
             signature = create_stage_signature(comp_data["stages"])
 
             if signature == default_signature:
-                has_default_match = True
                 continue
 
             if signature not in signature_groups:
@@ -411,7 +411,7 @@ class LoadLeadStagesView(View):
             representative = companies[0]
 
             if len(companies) > 1:
-                company_names = [comp["company_name"] for comp in companies]
+                _company_names = [comp["company_name"] for comp in companies]
                 representative["company_name"] = (
                     f"{representative['company_name']} (+{len(companies)-1} others)"
                 )
@@ -419,31 +419,37 @@ class LoadLeadStagesView(View):
             company_stages[f"group_{group_counter}"] = representative
             group_counter += 1
 
+        # Build context dictionary
+        context = {
+            "default_stages": default_stages,
+            "company_stages": company_stages,
+            "company": company,
+            "initialization": initialization,
+            "hx_target": (
+                "initialize-lead-stages" if initialization else "stage-messages"
+            ),
+            "hx_swap": "outerHTML" if initialization else "innerHTML",
+            "hx_push_url": (
+                reverse_lazy("opportunities:initialiaze_opportunity_stages")
+                if initialization
+                else "false"
+            ),
+        }
+
+        # Only add hx_select when initialization is True
+        if initialization:
+            context["hx_select"] = "#initialize-opportunity-stages"
+
         modal_content = render_to_string(
             "lead_status/lead_stages_modal.html",
-            {
-                "default_stages": default_stages,
-                "company_stages": company_stages,
-                "company": company,
-                "initialization": initialization,
-                "hx_target": (
-                    "initialize-lead-stages" if initialization else "stage-messages"
-                ),
-                "hx_swap": "outerHTML" if initialization else "innerHTML",
-                "hx_push_url": (
-                    reverse_lazy("opportunities:initialiaze_opportunity_stages")
-                    if initialization
-                    else "false"
-                ),
-                "hx_select": "#initialize-opportunity-stages",
-            },
+            context,
             request=request,
         )
         return HttpResponse(modal_content)
 
 
-@method_decorator(htmx_required(login=False), name="dispatch")
-class CustomStagesFormView(View):
+@method_decorator(htmx_required(), name="dispatch")
+class CustomStagesFormView(LoginRequiredMixin, View):
     """View to display the custom stages form."""
 
     def get(self, request, company_id):
@@ -488,35 +494,53 @@ class CustomStagesFormView(View):
             stage_copy["order"] = i
             combined_stages.append(stage_copy)
 
+        # Build context dictionary
+        context = {
+            "company": company,
+            "company_stages": {company_id: combined_stages},
+            "default_stages": combined_stages,
+            "initialization": initialization,
+            "hx_target": (
+                "initialize-lead-stages" if initialization else "stage-messages"
+            ),
+            "hx_swap": "outerHTML" if initialization else "innerHTML",
+            "hx_push_url": (
+                reverse_lazy("opportunities:initialiaze_opportunity_stages")
+                if initialization
+                else "false"
+            ),
+        }
+
+        # Only add hx_select when initialization is True
+        if initialization:
+            context["hx_select"] = "#initialize-opportunity-stages"
+
         modal_content = render_to_string(
-            "branches/custom_stages_form.html",
-            {
-                "company": company,
-                "company_stages": {company_id: combined_stages},
-                "default_stages": combined_stages,
-                "initialization": initialization,
-                "hx_target": (
-                    "initialize-lead-stages" if initialization else "stage-messages"
-                ),
-                "hx_swap": "outerHTML" if initialization else "innerHTML",
-                "hx_push_url": (
-                    reverse_lazy("opportunities:initialiaze_opportunity_stages")
-                    if initialization
-                    else "false"
-                ),
-                "hx_select": "#initialize-opportunity-stages",
-            },
+            "lead_status/custom_stages_form.html",
+            context,
             request=request,
         )
         return HttpResponse(modal_content)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(htmx_required(login=False), name="dispatch")
-class SaveCustomStagesView(View, ProgressStepsMixin):
+@method_decorator(htmx_required(), name="dispatch")
+class SaveCustomStagesView(LoginRequiredMixin, View, ProgressStepsMixin):
     """View to handle saving custom lead stages during company creation."""
 
     current_step = 6
+
+    def get_signal_kwargs(self, company, request, initialization):
+        """
+        Extension point: Override this method to pass additional data to signal.
+        Clients can add custom data without modifying source code.
+        """
+        return {
+            "company": company,
+            "request": request,
+            "view": self,
+            "initialization": initialization,
+        }
 
     def post(self, request, company_id):
         """Handle saving custom lead stages during company creation."""
@@ -533,9 +557,9 @@ class SaveCustomStagesView(View, ProgressStepsMixin):
         LeadStatus.all_objects.filter(company=company).delete()
 
         try:
-            for i in range(len(stage_names)):
+            for i, name in enumerate(stage_names):
                 is_final = str(i) in stage_is_finals
-                name = stage_names[i].strip()
+                name = name.strip()
                 if not name:
                     return HttpResponse(
                         f'<div class="alert alert-danger">Stage name cannot be empty for stage {i+1}.</div>',
@@ -564,43 +588,25 @@ class SaveCustomStagesView(View, ProgressStepsMixin):
             messages.success(
                 request, f"Successfully created {company} and associated Lead Stages."
             )
-            if initialization:
-                context = {
-                    "progress_steps": self.get_progress_steps(),
-                    "current_step": self.current_step,
-                    "company_id": company.id,
-                }
-                return render(
-                    request, "opportunity_stage/oppor_stages_initialize.html", context
-                )
-            return HttpResponse(
-                """
-                <script>
-                    closeContentModal();
-                    $('#reloadButton').click();
-                     openContentModalSecond();
-                        var div = document.createElement('div');
-                        div.setAttribute('hx-get', '%s');
-                        div.setAttribute('hx-target', '#contentModalBoxSecond');
-                        div.setAttribute('hx-trigger', 'load');
-                        div.setAttribute('hx-swap', 'innerHTML');
-                        document.body.appendChild(div);
-                        htmx.process(div);
-                </script>
-                """
-                % reverse_lazy(
-                    "opportunities:load_opp_stages", kwargs={"company_id": company_id}
-                ),
-                headers={"X-Debug": "Modal transition in progress"},
+            signal_kwargs = self.get_signal_kwargs(
+                company=company, request=request, initialization=initialization
             )
 
-        except:
+            responses = lead_stage_created.send(sender=self.__class__, **signal_kwargs)
+
+            for receiver, response in responses:
+                if isinstance(response, HttpResponse):
+                    return response
+
+            return None
+
+        except Exception:
             return HttpResponse()
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(htmx_required(login=False), name="dispatch")
-class AddStageView(View):
+@method_decorator(htmx_required(), name="dispatch")
+class AddStageView(LoginRequiredMixin, View):
     """View to handle adding a new stage to the custom stages form."""
 
     def get(self, request, company_id):
@@ -633,8 +639,8 @@ class AddStageView(View):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(htmx_required(login=False), name="dispatch")
-class RemoveStageView(View):
+@method_decorator(htmx_required(), name="dispatch")
+class RemoveStageView(LoginRequiredMixin, View):
     """View to handle removing a stage from the custom stages form."""
 
     def post(self, request, company_id):
@@ -658,20 +664,19 @@ class RemoveStageView(View):
             )
 
         stages = []
-        for i in range(len(stage_names)):
+        for i, name in enumerate(stage_names):
             if i != remove_index:
                 stages.append(
                     {
-                        "name": stage_names[i].strip(),
+                        "name": name.strip(),
                         "order": int(stage_orders[i]),
                         "probability": float(stage_probabilities[i]),
                         "is_final": str(i) in stage_is_finals,
                     }
                 )
-
         return HttpResponse(
             render_to_string(
-                "branches/custom_stages_form.html",
+                "lead_status/custom_stages_form.html",
                 {
                     "company": company,
                     "company_stages": {company_id: {"stages": stages}},
@@ -683,11 +688,24 @@ class RemoveStageView(View):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(htmx_required(login=False), name="dispatch")
-class CreateStageGroupView(View, ProgressStepsMixin):
+@method_decorator(htmx_required(), name="dispatch")
+class CreateStageGroupView(LoginRequiredMixin, View, ProgressStepsMixin):
     """View to handle saving custom lead stages during database setup."""
 
     current_step = 6
+
+    def get_signal_kwargs(self, company, stages, request, initialization):
+        """
+        Extension point: Override this method to pass additional data to signal.
+        Clients can add custom data without modifying source code.
+        """
+        return {
+            "company": company,
+            "stages": stages,
+            "request": request,
+            "view": self,
+            "initialization": initialization,
+        }
 
     def post(self, request, pk):
         """Handle saving custom lead stages during database setup."""
@@ -742,42 +760,27 @@ class CreateStageGroupView(View, ProgressStepsMixin):
                     created_by=(
                         request.user
                         if request.user.is_authenticated
-                        else HorillaUser.objects.first()
+                        else User.objects.first()
                     ),
                 )
                 created_stages.append(stage)
             messages.success(
                 request, f"Successfully created {company} and associated Lead Stages."
             )
-            if initialization:
-                context = {
-                    "progress_steps": self.get_progress_steps(),
-                    "current_step": self.current_step,
-                    "company_id": company.id,
-                }
-                return render(
-                    request, "opportunity_stage/oppor_stages_initialize.html", context
-                )
-            return HttpResponse(
-                """
-                <script>
-                    closeContentModal();
-                    $('#reloadButton').click();
-                     openContentModalSecond();
-                        var div = document.createElement('div');
-                        div.setAttribute('hx-get', '%s');
-                        div.setAttribute('hx-target', '#contentModalBoxSecond');
-                        div.setAttribute('hx-trigger', 'load');
-                        div.setAttribute('hx-swap', 'innerHTML');
-                        document.body.appendChild(div);
-                        htmx.process(div);
-                </script>
-                """
-                % reverse_lazy(
-                    "opportunities:load_opp_stages", kwargs={"company_id": pk}
-                ),
-                headers={"X-Debug": "Modal transition in progress"},
+            signal_kwargs = self.get_signal_kwargs(
+                company=company,
+                stages=created_stages,
+                request=request,
+                initialization=initialization,
             )
+
+            responses = lead_stage_created.send(sender=self.__class__, **signal_kwargs)
+
+            for receiver, response in responses:
+                if isinstance(response, HttpResponse):
+                    return response
+
+            return None
 
         except Exception as e:
             return HttpResponse(
@@ -790,7 +793,7 @@ BASE_STEPS.append({"step": 5, "title": "Lead Stages"})
 BASE_STEPS.append({"step": 6, "title": "Opportunity Stages"})
 
 
-class InitializeDatabaseLeadStages(View, ProgressStepsMixin):
+class InitializeDatabaseLeadStages(LoginRequiredMixin, View, ProgressStepsMixin):
     """View to handle the initialization of lead stages during database setup."""
 
     current_step = 5

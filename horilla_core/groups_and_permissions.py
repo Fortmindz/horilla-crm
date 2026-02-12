@@ -1,15 +1,20 @@
+""" "
+Views and utilities for managing groups and permissions in Horilla.
+"""
+
+# Standard library imports
 from functools import cached_property
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -17,9 +22,13 @@ from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
 
+from horilla.auth.models import User
 from horilla.registry.permission_registry import PERMISSION_EXEMPT_MODELS
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required, permission_required_or_denied
-from horilla_core.models import FieldPermission, HorillaUser, Role
+from horilla_core.models import FieldPermission, Role
 from horilla_generics.views import HorillaListView, HorillaTabView
 
 
@@ -31,19 +40,21 @@ class PermissionUtils:
         "change",
         "view",
         "delete",
-        "view_own",
+        "add_own",
         "change_own",
-        "can_import",
+        "view_own",
+        "delete_own",
     ]
 
     PERMISSION_MAP = {
-        "add": "Create",
-        "change": "Change",
-        "view": "View",
-        "delete": "Delete",
-        "view_own": "View Own",
-        "change_own": "Change Own",
-        "can_import": "Import",
+        "add": _("Create"),
+        "change": _("Change"),
+        "view": _("View"),
+        "delete": _("Delete"),
+        "add_own": _("Create Own"),
+        "change_own": _("Change Own"),
+        "view_own": _("View Own"),
+        "delete_own": _("Delete Own"),
     }
 
     @staticmethod
@@ -192,14 +203,14 @@ class ModelFieldsModalView(LoginRequiredMixin, TemplateView):
         if role_id:
             try:
                 role = get_object_or_404(Role, id=role_id)
-            except:
+            except Exception:
                 messages.error(request, _("Role does not exist"))
                 return HttpResponse("<script>$('#reloadButton').click();</script>")
 
         if user_id:
             try:
-                user = get_object_or_404(HorillaUser, id=user_id)
-            except:
+                user = get_object_or_404(User, id=user_id)
+            except Exception:
                 messages.error(request, _("User does not exist"))
                 return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -276,6 +287,15 @@ class ModelFieldsModalView(LoginRequiredMixin, TemplateView):
             else:
                 current_permission = "readwrite"
 
+            # Check if field is mandatory (required)
+            is_mandatory = False
+            try:
+                # Field is mandatory if it doesn't allow null and doesn't allow blank
+                is_mandatory = not field.null and not field.blank
+            except AttributeError:
+                # Some field types might not have null/blank attributes
+                pass
+
             # current_permission = existing_permissions.get(field_name, "readwrite")
 
             fields.append(
@@ -284,6 +304,7 @@ class ModelFieldsModalView(LoginRequiredMixin, TemplateView):
                     "verbose_name": verbose_name,
                     "field_type": field.__class__.__name__,
                     "current_permission": current_permission,
+                    "is_mandatory": is_mandatory,
                 }
             )
 
@@ -326,6 +347,7 @@ class SaveBulkFieldPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Save field permissions for multiple users in bulk."""
 
         user_ids_str = request.POST.get("user_ids", "")
         if not user_ids_str:
@@ -377,7 +399,7 @@ class SaveBulkFieldPermissionsView(LoginRequiredMixin, View):
             )
 
         try:
-            users = HorillaUser.objects.filter(id__in=user_ids, is_superuser=False)
+            users = User.objects.filter(id__in=user_ids, is_superuser=False)
 
             if not users.exists():
                 messages.error(request, _("No valid users found."))
@@ -437,7 +459,7 @@ class UpdateFieldPermissionView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
-
+        """Update field permission for a user or role."""
         role_id = kwargs.get("role_id")
         user_id = kwargs.get("user_id")
         app_label = kwargs.get("app_label")
@@ -459,7 +481,7 @@ class UpdateFieldPermissionView(LoginRequiredMixin, View):
         try:
             if role_id:
                 role = get_object_or_404(Role, id=role_id)
-                field_perm, created = FieldPermission.objects.update_or_create(
+                _field_perm, created = FieldPermission.objects.update_or_create(
                     role=role,
                     content_type=content_type,
                     field_name=field_name,
@@ -467,8 +489,8 @@ class UpdateFieldPermissionView(LoginRequiredMixin, View):
                 )
                 target_name = role.role_name
             elif user_id:
-                user = get_object_or_404(HorillaUser, id=user_id)
-                field_perm, created = FieldPermission.objects.update_or_create(
+                user = get_object_or_404(User, id=user_id)
+                _field_perm, created = FieldPermission.objects.update_or_create(
                     user=user,
                     content_type=content_type,
                     field_name=field_name,
@@ -487,6 +509,9 @@ class UpdateFieldPermissionView(LoginRequiredMixin, View):
             messages.success(
                 request,
                 f"Field permission for '{field_name}' {action} successfully for {target_name}",
+            )
+            return JsonResponse(
+                {"success": True, "message": "Field permission updated successfully"}
             )
 
         except Exception as e:
@@ -513,7 +538,7 @@ class SaveAllFieldPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
-
+        """Save all field permissions at once."""
         role_id = kwargs.get("role_id")
         user_id = kwargs.get("user_id")
         app_label = request.POST.get("app_label")
@@ -547,7 +572,7 @@ class SaveAllFieldPermissionsView(LoginRequiredMixin, View):
                 target_name = role.role_name
 
             elif user_id:
-                user = get_object_or_404(HorillaUser, id=user_id)
+                user = get_object_or_404(User, id=user_id)
                 for field_name, permission_type in field_permissions.items():
                     FieldPermission.objects.update_or_create(
                         user=user,
@@ -587,6 +612,10 @@ class SaveAllFieldPermissionsView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class GroupPermissionView(LoginRequiredMixin, TemplateView):
+    """
+    View to display group and permission management interface
+    """
+
     template_name = "permissions/group_perm_view.html"
 
 
@@ -611,6 +640,7 @@ class GroupPermissionTabView(LoginRequiredMixin, HorillaTabView):
 
     @cached_property
     def tabs(self):
+        """Define tabs for groups and permissions."""
         if self.request.user.has_perm("horilla_core.view_company"):
             return [
                 {
@@ -648,6 +678,10 @@ class GroupPermissionTabView(LoginRequiredMixin, HorillaTabView):
     name="dispatch",
 )
 class GroupTab(LoginRequiredMixin, TemplateView):
+    """
+    Tab view for groups
+    """
+
     template_name = "permissions/group.html"
 
     def get_context_data(self, **kwargs):
@@ -670,15 +704,21 @@ class GroupTab(LoginRequiredMixin, TemplateView):
     name="dispatch",
 )
 class RolePermissionsView(LoginRequiredMixin, TemplateView):
+    """
+    View to display and manage permissions for a specific role
+    """
+
     template_name = "permissions/group_role_detail.html"
 
     def get(self, request, *args, **kwargs):
         role_id = kwargs.get("role_id")
         try:
-            role = get_object_or_404(Role, id=role_id)
-        except:
+            _role = get_object_or_404(Role, id=role_id)
+        except Exception:
             messages.error(request, _("Role does not exist"))
-            return HttpResponse("<script>$('#reloadButton').click();</script>")
+            return HttpResponse(
+                "<div id=\"followup-contents\"><script>$('#reloadButton').click();</script></div>"
+            )
 
         return super().get(request, *args, **kwargs)
 
@@ -720,7 +760,7 @@ class SearchRoleModelsView(LoginRequiredMixin, TemplateView):
     def get(self, request, role_id, *args, **kwargs):
         try:
             role = get_object_or_404(Role, id=role_id)
-        except:
+        except Exception:
             messages.error(request, _("Role does not exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -756,8 +796,8 @@ class SearchUserModelsView(LoginRequiredMixin, TemplateView):
 
     def get(self, request, user_id, *args, **kwargs):
         try:
-            user = get_object_or_404(HorillaUser, id=user_id)
-        except:
+            user = get_object_or_404(User, id=user_id)
+        except Exception:
             messages.error(request, _("User does not exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -818,13 +858,15 @@ class SearchAssignModelsView(LoginRequiredMixin, TemplateView):
     name="dispatch",
 )
 class RoleMembersView(LoginRequiredMixin, TemplateView):
+    """View to display members of a specific role"""
+
     template_name = "permissions/role_members.html"
 
     def get(self, request, *args, **kwargs):
         role_id = kwargs.get("role_id")
         try:
-            role = get_object_or_404(Role, id=role_id)
-        except:
+            _role = get_object_or_404(Role, id=role_id)
+        except Exception:
             messages.error(request, _("Role does not exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -857,7 +899,7 @@ class RoleMembersView(LoginRequiredMixin, TemplateView):
         ]
 
         list_view = HorillaListView(
-            model=HorillaUser,
+            model=User,
             view_id=f"role-members-{role_id}",
             search_url=reverse_lazy(
                 "horilla_core:role_members_view", kwargs={"role_id": role_id}
@@ -882,9 +924,9 @@ class RoleMembersView(LoginRequiredMixin, TemplateView):
 
         list_view.request = self.request
         list_view.kwargs = self.kwargs
-        list_view.get_queryset = lambda: HorillaUser.objects.filter(
-            role=role
-        ).select_related("role")
+        list_view.get_queryset = lambda: User.objects.filter(role=role).select_related(
+            "role"
+        )
         list_view.object_list = list_view.get_queryset()
         context.update(list_view.get_context_data())
         context["role"] = role
@@ -917,7 +959,7 @@ class PermissionTab(LoginRequiredMixin, TemplateView):
         company = (
             getattr(self.request, "active_company", None) or self.request.user.company
         )
-        users = HorillaUser.objects.filter(is_superuser=False, company=company)
+        users = User.objects.filter(is_superuser=False, company=company)
         paginator = Paginator(users, 10)
         page_number = self.request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
@@ -944,9 +986,10 @@ class UpdateUserPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, user_id):
+        """Toggle permission for a specific user."""
         try:
-            user = get_object_or_404(HorillaUser, id=user_id)
-        except:
+            user = get_object_or_404(User, id=user_id)
+        except Exception:
             messages.error(request, _("User does not exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -997,9 +1040,10 @@ class LoadUserPermissionsView(LoginRequiredMixin, TemplateView):
     template_name = "permissions/user_permissions.html"
 
     def get(self, request, user_id, *args, **kwargs):
+        """Load permissions for a specific user."""
         try:
-            user = get_object_or_404(HorillaUser, id=user_id)
-        except:
+            user = get_object_or_404(User, id=user_id)
+        except Exception:
             messages.error(self.request, _("User Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
         context = {
@@ -1034,7 +1078,7 @@ class LoadMoreUsersView(LoginRequiredMixin, TemplateView):
     def get(self, request, *args, **kwargs):
         search_query = request.GET.get("search", "").strip()
 
-        users = HorillaUser.objects.filter(is_superuser=False)
+        users = User.objects.filter(is_superuser=False)
 
         if search_query:
             search_words = search_query.split()
@@ -1079,6 +1123,7 @@ class UpdateRolePermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, role_id):
+        """Toggle permission for a specific role."""
         role = get_object_or_404(Role, id=role_id)
         perm_id = request.POST.get("permission_id")
         checked = request.POST.get("checked") == "true"
@@ -1088,7 +1133,7 @@ class UpdateRolePermissionsView(LoginRequiredMixin, View):
         except Permission.DoesNotExist:
             return JsonResponse({"success": False, "message": "Permission not found"})
 
-        members = HorillaUser.objects.filter(role=role)
+        members = User.objects.filter(role=role)
         if checked:
             role.permissions.add(permission)
             for member in members:
@@ -1123,6 +1168,7 @@ class AssignUsersView(LoginRequiredMixin, View):
     template_name = "permissions/assign_perm_form.html"
 
     def get(self, request, *args, **kwargs):
+        """Render the assign permissions form."""
         context = {
             "all_models": PermissionUtils.get_all_models_data(
                 user=None,  # Optionally pass user if you want pre-check
@@ -1133,6 +1179,7 @@ class AssignUsersView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
     def post(self, request, *args, **kwargs):
+        """Handle assigning permissions to selected users."""
         user_ids = request.POST.getlist("users")
         permission_ids = request.POST.getlist("permissions")
 
@@ -1148,7 +1195,7 @@ class AssignUsersView(LoginRequiredMixin, View):
             }
             return HttpResponse(render_to_string(self.template_name, context, request))
 
-        users = HorillaUser.objects.filter(id__in=user_ids, is_superuser=False)
+        users = User.objects.filter(id__in=user_ids, is_superuser=False)
         permissions = Permission.objects.filter(id__in=permission_ids)
 
         try:
@@ -1196,9 +1243,10 @@ class UpdateRoleModelPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, role_id):
+        """Toggle all permissions for a specific model for a role."""
         try:
             role = get_object_or_404(Role, id=role_id)
-        except:
+        except Exception:
             messages.error(self.request, _("Role Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -1221,7 +1269,7 @@ class UpdateRoleModelPermissionsView(LoginRequiredMixin, View):
             permission_objects = Permission.objects.filter(
                 id__in=[p["id"] for p in permissions]
             )
-            members = HorillaUser.objects.filter(role=role)
+            members = User.objects.filter(role=role)
 
             if checked:
                 role.permissions.add(*permission_objects)
@@ -1260,9 +1308,10 @@ class UpdateRoleAllPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, role_id):
+        """Toggle ALL permissions for a role."""
         try:
             role = get_object_or_404(Role, id=role_id)
-        except:
+        except Exception:
             messages.error(self.request, _("Role Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
         checked = request.POST.get("checked") == "true"
@@ -1285,7 +1334,7 @@ class UpdateRoleAllPermissionsView(LoginRequiredMixin, View):
                     {"success": False, "message": "No permissions found"}
                 )
 
-            members = HorillaUser.objects.filter(role=role)
+            members = User.objects.filter(role=role)
             if checked:
                 role.permissions.add(*all_permissions)
                 for member in members:
@@ -1326,9 +1375,10 @@ class UpdateUserModelPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, user_id):
+        """Toggle all permissions for a specific model for a user."""
         try:
-            user = get_object_or_404(HorillaUser, id=user_id)
-        except:
+            user = get_object_or_404(User, id=user_id)
+        except Exception:
             messages.error(self.request, _("User Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -1392,9 +1442,10 @@ class UpdateUserAllPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, user_id):
+        """Toggle ALL permissions for a user."""
         try:
-            user = get_object_or_404(HorillaUser, id=user_id)
-        except:
+            user = get_object_or_404(User, id=user_id)
+        except Exception:
             messages.error(self.request, _("User Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
@@ -1455,6 +1506,7 @@ class BulkUpdateUserModelPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request):
+        """Toggle all permissions for a specific model for multiple users."""
         user_ids = request.POST.getlist("users")
         model_name = request.POST.get("model_name")
         app_label = request.POST.get("app_label")
@@ -1469,7 +1521,7 @@ class BulkUpdateUserModelPermissionsView(LoginRequiredMixin, View):
             )
 
         try:
-            users = HorillaUser.objects.filter(id__in=user_ids, is_superuser=False)
+            users = User.objects.filter(id__in=user_ids, is_superuser=False)
             if not users.exists():
                 return JsonResponse(
                     {"success": False, "message": "No valid users found"}
@@ -1527,6 +1579,7 @@ class BulkUpdateUserAllPermissionsView(LoginRequiredMixin, View):
     """
 
     def post(self, request):
+        """Toggle ALL permissions for multiple users."""
         user_ids = request.POST.getlist("users")
         checked = request.POST.get("checked") == "true"
 
@@ -1534,7 +1587,7 @@ class BulkUpdateUserAllPermissionsView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "No users selected"})
 
         try:
-            users = HorillaUser.objects.filter(id__in=user_ids, is_superuser=False)
+            users = User.objects.filter(id__in=user_ids, is_superuser=False)
             if not users.exists():
                 return JsonResponse(
                     {"success": False, "message": "No valid users found"}
@@ -1588,7 +1641,7 @@ class SuperUserTab(LoginRequiredMixin, HorillaListView):
     List view of the super user tab
     """
 
-    model = HorillaUser
+    model = User
     view_id = "super_user_list"
     list_column_visibility = False
     bulk_select_option = False
@@ -1626,11 +1679,11 @@ class ToggleSuperuserView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Toggle superuser status for a user."""
         user_id = kwargs.get("pk")
-        User = get_user_model()
         try:
             user = get_object_or_404(User, pk=user_id)
-        except:
+        except Exception:
             messages.error(self.request, _("User Does not Exist"))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 

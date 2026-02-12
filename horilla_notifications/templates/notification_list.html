@@ -12,7 +12,7 @@
             {% endif %}
         </span>
     </button>
-    <div class="dropdown-content w-56 md:w-80 absolute z-10 bg-white rounded-lg shadow-card right-0">
+    <div class="dropdown-content w-56 md:w-80 absolute z-10 bg-white border-primary-300 rounded-lg shadow-card right-0">
         <div class="flex justify-between items-center p-3 border-b border-b-dark-50">
             <h5 class="font-semibold text-sm">{% trans 'Notifications'%}</h5>
             <div class="flex gap-1">
@@ -39,17 +39,15 @@
                         class="mb-3 cursor-pointer"
                         hx-get="{% url 'horilla_notifications:open_notification' notification.id %}"
                         hx-trigger="click"
-                        hx-swap="none">
+                        hx-target="#modalBox"
+                        hx-swap="innerHTML"
+                        hx-on:click="openModal(); (function(e){ var el = e.currentTarget; setTimeout(function(){ removeOpenedNotification(el); }, 100); })(event)">
                         <div class="flex items-center justify-between">
-                        <span>{{ notification.message }}</span>
+                        <span>{{ notification.message|safe }}</span>
                         <button
                             hx-post="{% url 'horilla_notifications:mark_read' notification.id %}"
                             hx-target="#notif-{{ notification.id }}"
                             onclick="event.stopPropagation()"
-                            hx-on:click="setTimeout(() => {
-                                updateNotificationCount();
-                                toggleNotificationDot('all-notif-{{ notification.id }}');
-                            }, 500)"
                             hx-swap="outerHTML"
                             class="cursor-pointer text-xs group text-primary-600 w-6 h-6 bg-primary-100
                                     hover:bg-primary-600 hover:text-white rounded-full transition duration-300 flex items-center justify-center">
@@ -115,7 +113,7 @@
                         <div class="notif-indicator w-2 h-2 mt-2 flex-shrink-0"></div>
                     {% endif %}
                     <div class="flex-1 ">
-                        <h5 class="text-sm font-semibold mb-2">{{ notification.message }}</h5>
+                        <h5 class="text-sm font-semibold mb-2">{{ notification.message|safe }}</h5>
                         <p class="text-xs text-[#777777] mt-1">
                             {{ notification.created_at|timesince }} ago by {{ notification.sender|default:"System" }}
                         </p>

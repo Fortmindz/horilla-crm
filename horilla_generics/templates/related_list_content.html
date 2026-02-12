@@ -35,13 +35,13 @@
                 hx-swap="outerHTML"
                 hx-select="#{{ related_list.name|sanitize_id }}-content"
                 class="bg-[transparent] p-[5px] rounded-[5px] [box-shadow:0px_0px_20px_#00000008] w-[30px] h-[30px] flex items-center justify-center hover:bg-white transition duration-300">
-            <img src="{% static '/assets/icons/refresh.svg' %}" alt="" class="filter brightness-0" width="18" />
+            <img src="{% static '/assets/icons/refresh.svg' %}" alt="{% trans 'Reload' %}" class="filter brightness-0" width="18" />
         </button>
 
         <!-- Dropdown Menu -->
         <button id="dropdownDefaultButton-{{ related_list.name|sanitize_id }}" data-dropdown-toggle="dropdown-{{ related_list.name|sanitize_id }}" data-dropdown-placement="right-end"
             class="bg-[transparent] p-[5px] rounded-[5px] [box-shadow:0px_0px_20px_#00000008] w-[30px] h-[30px] flex items-center justify-center hover:bg-white transition duration-300">
-            <img src="{% static '/assets/icons/l3.svg' %}" alt="" width="13" />
+            <img src="{% static '/assets/icons/l3.svg' %}" alt="{% trans 'Actions' %}" width="13" />
         </button>
     </div>
 </div>
@@ -56,7 +56,7 @@
             hx-target="#modalBox"
             hx-swap="innerHTML"
             class="block px-4 py-2 text-[#333] hover:text-primary-600 transition duration-300 text-[.8rem] w-full text-left">
-                Add Columns to List
+                {% trans "Add column to list" %}
             </button>
         </li>
         {% for action in related_list.dropdown_actions %}

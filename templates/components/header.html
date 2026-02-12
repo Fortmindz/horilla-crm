@@ -1,6 +1,6 @@
 {% load static i18n horilla_tags %}
-<div class="h-[85px] flex justify-end md:justify-between items-center bg-[#fff] py-5 px-5 border-b border-b-primary-400 fixed w-[calc(100%-76px)] z-40">
-    <h1 class="hidden lg:block text-2xl font-semibold text-secondary-900">{% trans 'Horilla CRM' %}</h1>
+<div class="h-[85px] flex justify-end md:justify-between items-center bg-[#fff] py-5 px-5 border-b border-b-primary-100 fixed w-[calc(100%-76px)] z-40">
+    <h1 class="hidden lg:block text-2xl font-semibold text-primary-800">{{ PAGE_HEADER }}</h1>
     <div class="relative hidden md:block">
         <input id="header-search" type="text" name="q" placeholder="Search anything..." class="pl-10 pr-4 py-2 text-dark-400 rounded-lg border border-secondary-200 focus:outline-none focus:border-primary-300 w-64 placeholder:text-dark-50"
         hx-get="{% url 'horilla_generics:global_search' %}?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}{% if request.GET.filter %}filter={{ request.GET.filter }}&{% endif %}{% if request.GET.section %}section={{ request.GET.section }}&{% endif %}prev_url={{ request.get_full_path|remove_query_param:"section" }}"
@@ -22,7 +22,7 @@
                         type="button"
                         aria-pressed="false"
                 class="group flex items-center justify-center text-primary-600 w-8 h-8 lg:w-12 lg:h-12 bg-primary-100 hover:bg-primary-600 rounded-lg transition duration-300">
-                <i class="fa-solid fa-lightbulb  transition duration-300 group-hover:text-white"></i>
+                <i class="fa-solid fa-moon  transition duration-300 group-hover:text-white"></i>
             </button>
 
 
@@ -43,7 +43,7 @@
                     <i class="fas fa-history transition duration-300 group-hover:text-white"></i>
                     </button>
 
-                    <div class="dropdown-content w-56 md:w-80 absolute z-10 bg-white rounded-lg shadow-card py-2 md:right-0 md:left-auto right-auto -left-10">
+                    <div class="dropdown-content w-56 md:w-80 absolute z-10 bg-white border-primary-300 rounded-lg shadow-card py-2 md:right-0 md:left-auto right-auto -left-10">
                     <h5 class="px-4 py-2 font-semibold text-sm border-b border-dark-50">{% trans 'Recently Viewed' %}</h5>
                     <ul class="text-sm overflow-hidden overflow-y-auto max-h-64">
                         {% for item in recently_viewed_items %}
@@ -68,7 +68,7 @@
                     <button class="flex items-center justify-center group text-primary-600 w-8 h-8 lg:w-12 lg:h-12 bg-primary-100 hover:bg-primary-600 rounded-md transition duration-300">
                     <i class="fas fa-globe transition duration-300 group-hover:text-white"></i>
                     </button>
-                    <div class="dropdown-content w-44 absolute z-10 bg-white rounded-lg shadow-md py-2 md:right-0 -right-24">
+                    <div class="dropdown-content w-44 absolute z-10 bg-white border-primary-300 rounded-lg shadow-md py-2 md:right-0 -right-24">
                     <ul class="text-sm overflow-hidden overflow-y-auto">
                         {% for lang in allowed_languages %}
                         <li>
@@ -80,7 +80,7 @@
                                 class="px-4 py-1.5 hover:text-primary-600 transition duration-300 text-sm gap-4 items-center flex w-full">
                                 <div class="flex items-center gap-2">
                                 <span class="rounded-full overflow-hidden w-6 h-6">
-                                    <img src="{% static 'assets/img/' %}{{ lang.flag }}" alt="" class="object-cover w-full h-full">
+                                    <img src="{% static 'assets/img/' %}{{ lang.flag }}" alt="{% trans 'icon' %}" class="object-cover w-full h-full">
                                 </span>
                                 {{ lang.name }}
                                 </div>
@@ -103,7 +103,28 @@
                     <button class="flex items-center justify-center group text-primary-600 w-8 h-8 lg:w-12 lg:h-12 bg-primary-100 hover:bg-primary-600 rounded-md transition duration-300">
                     <i class="fas fa-th-large transition duration-300 group-hover:text-white"></i>
                     </button>
-                    <div class="dropdown-content w-44 absolute z-10 bg-white rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] py-2 right-0">
+                    <div class="dropdown-content w-44 absolute z-10 bg-white border-primary-300 rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] py-2 right-0">
+                    <!-- All Companies Toggle -->
+                    <div class="px-4 py-2 border-b border-dark-50">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-xs font-medium text-primary-700 whitespace-nowrap">{% trans 'All Company' %}</span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    class="sr-only peer"
+                                    {% if request.session.show_all_companies %}checked{% endif %}
+                                    hx-post="{% url 'horilla_core:toggle_all_companies' %}"
+                                    hx-trigger="change"
+                                    hx-target="body"
+                                    hx-swap="none"
+                                    hx-push-url="false"
+                                    id="allCompaniesToggle"
+                                    onclick="event.stopPropagation();"
+                                />
+                                <div class="relative w-11 h-5 rounded-full bg-gray-200 peer-checked:bg-primary-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-6"></div>
+                            </label>
+                        </div>
+                    </div>
                     <ul class="text-sm overflow-hidden overflow-y-auto max-h-64" id="dropdown-companies">
                         {% for company in available_companies %}
                         <li>
@@ -167,7 +188,7 @@
                     </div>
                 </button>
                 <div
-                    class="dropdown-content absolute z-10 bg-white rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] min-w-[150px] py-2 right-0"
+                    class="dropdown-content absolute z-10 bg-white border-primary-300 rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_8%)] min-w-[150px] py-2 right-0"
                 >
                     <ul class="text-sm">
                     <li>
@@ -196,6 +217,26 @@
         document.body.addEventListener('htmx:afterSwap', function(event){
             if(event.target.classList.contains('notification-list')) {
             updateNotificationCount();
+            }
+        });
+
+        document.body.addEventListener('htmx:afterSwap', function(event){
+            const target = event.detail.target;
+            if(target && target.id && target.id.startsWith('notif-')) {
+                const notifId = target.id.replace('notif-', '');
+                setTimeout(function() {
+                    updateNotificationCount();
+                    toggleNotificationDot('all-notif-' + notifId);
+                }, 100);
+            }
+        });
+
+        document.body.addEventListener('htmx:afterRequest', function(event){
+            const target = event.detail.target;
+            if(target && target.id && target.id.startsWith('notif-')) {
+                setTimeout(function() {
+                    updateNotificationCount();
+                }, 150);
             }
         });
 
@@ -246,6 +287,14 @@
             }
         }
 
+        function removeOpenedNotification(el) {
+            if (!el || !el.id || !el.id.startsWith('notif-')) return;
+            const notifId = el.id.replace('notif-', '');
+            if (el.parentNode) el.remove();
+            updateNotificationCount(-1);
+            if (notifId) toggleNotificationDot('all-notif-' + notifId);
+        }
+
         function deleteAllDropdownNotifications() {
             const notifList = document.querySelector('.notification-list');
             if (notifList) {
@@ -260,6 +309,12 @@
             if (badge) {
             badge.textContent = "0";
             }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         function handleNewNotification(data) {
@@ -294,16 +349,18 @@
             newDropdownItem.className = "mb-3 cursor-pointer";
             newDropdownItem.setAttribute("hx-get", data.open_url);
             newDropdownItem.setAttribute("hx-trigger", "click");
-            newDropdownItem.setAttribute("hx-swap", "none");
+            newDropdownItem.setAttribute("hx-target", "#modalBox");
+            newDropdownItem.setAttribute("hx-swap", "innerHTML");
+            newDropdownItem.setAttribute("hx-on:click", "openModal(); (function(e){ var el = e.currentTarget; setTimeout(function(){ removeOpenedNotification(el); }, 100); })(event)");
 
 
             newDropdownItem.innerHTML = `
             <div class="flex items-center justify-between">
-                <span>${data.message}</span>
+                <span>${escapeHtml(data.message)}</span>
                 <button
-                    hx-post="/horilla_notifications/notifications-read/${data.id}/"
+                    hx-post="/notifications/notifications-read/${data.id}/"
                     hx-target="#notif-${data.id}"
-                    hx-on:click="setTimeout(function(){ updateNotificationCount(-1); }, 500)"
+                    onclick="event.stopPropagation();"
                     hx-swap="outerHTML"
                     class="cursor-pointer text-xs group text-primary-600 w-6 h-6 bg-primary-100
                         hover:bg-primary-600 hover:text-white rounded-full transition duration-300 flex items-center justify-center">
@@ -311,7 +368,7 @@
                 </button>
             </div>
             <p class="text-xs text-[#777777] mt-1">
-                ${timesince} by ${data.sender}
+                ${timesince} by ${escapeHtml(data.sender)}
             </p>
             `;
 
@@ -369,7 +426,7 @@
             newSidebarItem.id = `all-notif-${data.id}`;
             newSidebarItem.innerHTML = `
             <button
-                hx-post="/horilla_notifications/notification-delete/${data.id}/"
+                hx-post="/notifications/notification-delete/${data.id}/"
                 class="delete-notification absolute top-2 right-2 text-xs"
                 hx-on:click="setTimeout(() => $('#reloadMessagesButton').click(), 500)"
                 hx-on:htmx:afterRequest="if(event.detail.successful) fadeAndRemoveNotification('all-notif-{{ notification.id }}')"
@@ -379,8 +436,8 @@
             <div class="flex items-start gap-2">
             <div class="w-2 h-2 bg-red-500 rounded-full mt-2 flex-shrink-0"></div>
                 <div class="flex-1">
-                    <h5 class="text-sm font-semibold mb-2">${data.message}</h5>
-                    <p class="text-xs text-[#777777] mt-1">${timesince} by ${data.sender}</p>
+                    <h5 class="text-sm font-semibold mb-2">${escapeHtml(data.message)}</h5>
+                    <p class="text-xs text-[#777777] mt-1">${timesince} by ${escapeHtml(data.sender)}</p>
                 </div>
             </div>
             `;
@@ -579,14 +636,14 @@
             if (savedTheme === "dark") {
                 toggleBtn.setAttribute("aria-pressed", "true");
                 if (icon) {
-                    icon.classList.remove("fa-lightbulb");
-                    icon.classList.add("fa-moon");
+                    icon.classList.remove("fa-moon");
+                    icon.classList.add("fa-lightbulb");
                 }
             } else {
                 toggleBtn.setAttribute("aria-pressed", "false");
                 if (icon) {
-                    icon.classList.remove("fa-moon");
-                    icon.classList.add("fa-lightbulb");
+                    icon.classList.remove("fa-lightbulb");
+                    icon.classList.add("fa-moon");
                 }
             }
 
@@ -605,8 +662,8 @@
                     toggleBtn.setAttribute("aria-pressed", "false");
 
                     if (icon) {
-                        icon.classList.remove("fa-moon");
-                        icon.classList.add("fa-lightbulb");
+                        icon.classList.remove("fa-lightbulb");
+                        icon.classList.add("fa-moon");
                     }
                 } else {
                     // Switch to dark
@@ -617,8 +674,8 @@
                     toggleBtn.setAttribute("aria-pressed", "true");
 
                     if (icon) {
-                        icon.classList.remove("fa-lightbulb");
-                        icon.classList.add("fa-moon");
+                        icon.classList.remove("fa-moon");
+                        icon.classList.add("fa-lightbulb");
                     }
                 }
 
@@ -642,73 +699,6 @@
                 document.body.classList.add("dark");
             }
         });
-
-
-        {% comment %} document.addEventListener("DOMContentLoaded", () => {
-    const savedTheme = localStorage.getItem("theme");
-    const toggleBtn = document.getElementById("darkModeToggle");
-    const icon = toggleBtn.querySelector(".fa-solid");
-
-    // If dark theme saved earlier
-    if (savedTheme === "dark") {
-        document.body.classList.add("dark");
-        toggleBtn.setAttribute("aria-pressed", "true");
-
-        // Show MOON in dark mode
-        icon.classList.remove("fa-lightbulb");
-        icon.classList.add("fa-moon");
-
-    } else {
-        // Default = light
-        document.body.classList.remove("dark");
-        toggleBtn.setAttribute("aria-pressed", "false");
-
-        // Show SUN in light mode
-        icon.classList.remove("fa-moon");
-        icon.classList.add("fa-lightbulb");
-
-        if (savedTheme === null) {
-            localStorage.setItem("theme", "light");
-        }
-    }
-});
-
-// Toggle button logic
-const toggleBtn = document.getElementById("darkModeToggle");
-
-toggleBtn.addEventListener("click", () => {
-    document.body.classList.toggle("dark");
-
-    const isDark = document.body.classList.contains("dark");
-    toggleBtn.setAttribute("aria-pressed", isDark);
-
-    const icon = toggleBtn.querySelector(".fa-solid");
-
-    if (isDark) {
-        // Switch to MOON
-        icon.classList.remove("fa-lightbulb");
-        icon.classList.add("fa-moon");
-    } else {
-        // Switch to SUN
-        icon.classList.remove("fa-moon");
-        icon.classList.add("fa-lightbulb");
-    }
-
-    localStorage.setItem("theme", isDark ? "dark" : "light");
-
-    // Keep your chart theme refresh code
-    if (typeof window.chartInstances !== "undefined") {
-        Object.keys(window.chartInstances).forEach(key => {
-            const chartData = window.chartInstances[key];
-            if (chartData && chartData.instance && chartData.config) {
-                EChartsConfig.refreshChartTheme(chartData.instance, chartData.config);
-            }
-        });
-    }
-}); {% endcomment %}
-
-
-
 
 </script>
 

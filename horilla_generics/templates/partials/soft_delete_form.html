@@ -4,9 +4,6 @@
 <div class="bg-white rounded-lg shadow p-6 min-w-[500px]">
     <div class="flex justify-between items-center mb-2">
         <h3 class="text-md font-semibold mb-2">{% trans "Soft Delete Confirmation" %}</h3>
-        {% comment %} <button onclick="closeConfirm(this)" class="text-gray-500 hover:text-red text-xl pt-0">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
-        </button> {% endcomment %}
     </div>
         <p class="text-sm text-gray-600 mb-2">
             {% trans "Deletable Records" %} : <strong>{{ can_delete_count }}</strong>

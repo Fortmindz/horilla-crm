@@ -1,27 +1,34 @@
+"""
+Data import functionality for Horilla.
+
+This module provides views and utilities for importing data from CSV and Excel files
+into Horilla models. It includes features for mapping columns, validating data,
+handling import history, and managing bulk import operations.
+"""
+
 # views.py
+# Standard library imports
 import csv
 import difflib
-import json
 import logging
-import os
 import time
 import traceback
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
-from functools import cached_property
 from io import StringIO
 
+# Third-party imports
 import pandas as pd
+
+# Django imports (third-party)
 from django.apps import apps
-from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import connection, transaction
 from django.db.models import CharField, EmailField, ForeignKey, URLField
-from django.forms.models import model_to_dict
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -30,8 +37,10 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 
+# First-party (Horilla)
 from horilla.exceptions import HorillaHttp404
 from horilla.registry.feature import FEATURE_REGISTRY
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_core.models import ImportHistory
 from horilla_generics.views import HorillaListView, HorillaTabView
@@ -39,7 +48,21 @@ from horilla_generics.views import HorillaListView, HorillaTabView
 logger = logging.getLogger(__name__)
 
 
+def get_model_verbose_name(module_name, app_label):
+    """Get the verbose name of a model from its module name and app label."""
+    if not module_name or not app_label:
+        return module_name or ""
+
+    try:
+        model = apps.get_model(app_label, module_name)
+        return model._meta.verbose_name
+    except (LookupError, AttributeError):
+        # If model not found, return the module_name as fallback
+        return module_name
+
+
 class ImportView(LoginRequiredMixin, TemplateView):
+    """A generic class-based view for rendering the Horilla import data page."""
 
     template_name = "import/import_view.html"
 
@@ -77,6 +100,8 @@ class ImportTabView(LoginRequiredMixin, HorillaTabView):
     name="dispatch",
 )
 class ImportDataView(TemplateView):
+    """View to handle data import process."""
+
     template_name = "import/import_data.html"
 
     def get(self, request, *args, **kwargs):
@@ -111,6 +136,7 @@ class ImportDataView(TemplateView):
         return context
 
     def get_available_models(self):
+        """Retrieve available models for import based on registry and session config."""
         single_import = self.request.GET.get("single_import", "false").lower() == "true"
         import_config = self.request.session.get("import_config", {})
         model_name = self.request.GET.get("model_name", "") or import_config.get(
@@ -144,7 +170,7 @@ class ImportDataView(TemplateView):
                 for model in import_models:
                     models.append(self._format_model_info(model))
         except Exception as e:
-            logger.error(f"Error getting available models: {e}")
+            logger.error("Error getting available models: %s", e)
 
         return models
 
@@ -164,13 +190,8 @@ class ImportDataView(TemplateView):
 class ImportStep1View(View):
     """Handle file upload and module selection"""
 
-    def get(self, request, *args, **kwargs):
-        """Handle navigation back to step 2"""
-        import_data = request.session.get("import_data", {})
-        if not import_data:
-            return redirect("horilla_core:import_data")
-
     def post(self, request, *args, **kwargs):
+        """Handle file upload and module selection"""
         import_config = request.session.get("import_config", {})
         single_import = import_config.get("single_import", False)
         restricted_model_name = import_config.get("model_name", "")
@@ -197,7 +218,9 @@ class ImportStep1View(View):
                     ]
                 except LookupError:
                     logger.error(
-                        f"Model {restricted_app_label}.{restricted_model_name} not found"
+                        "Model %s.%s not found",
+                        restricted_app_label,
+                        restricted_model_name,
                     )
                 context = {
                     "modules": modules,
@@ -569,11 +592,10 @@ class ImportStep1View(View):
 
     def get_app_label_for_model(self, model_name):
         """Find the app_label for a given model name"""
-        from django.apps import apps
 
         for app_config in apps.get_app_configs():
             try:
-                model = apps.get_model(app_config.label, model_name)
+                _model = apps.get_model(app_config.label, model_name)
                 return app_config.label
             except LookupError:
                 continue
@@ -639,7 +661,10 @@ class ImportStep1View(View):
             return fields
         except Exception as e:
             logger.error(
-                f"Error in get_model_fields (app_label: {app_label}, module: {module_name}): {str(e)}"
+                "Error in get_model_fields (app_label: %s, module: %s): %s",
+                app_label,
+                module_name,
+                e,
             )
             return []
 
@@ -733,7 +758,7 @@ class ImportStep2View(View):
         if not model_fields:
             return HttpResponse(
                 f"""
-                <div class="text-red-500 text-sm">No valid fields found for the selected model: {module}</div>
+                <div class="text-red-500 text-sm">{_('No valid fields found for the selected model')}: {module}</div>
             """
             )
 
@@ -773,7 +798,6 @@ class ImportStep2View(View):
 
     def get_model_fields(self, module_name, app_label):
         """Get fields from the selected model with choice and foreign key info"""
-        from django.db.models import CharField, EmailField, ForeignKey, URLField
 
         try:
             model = apps.get_model(app_label, module_name)
@@ -833,11 +857,15 @@ class ImportStep2View(View):
             return fields
         except Exception as e:
             logger.error(
-                f"Error in get_model_fields (app_label: {app_label}, module: {module_name}): {str(e)}"
+                "Error in get_model_fields (app_label: %s, module: %s): %s",
+                app_label,
+                module_name,
+                e,
             )
             return []
 
     def post(self, request, *args, **kwargs):
+        """Handle field mapping submission and validation"""
         import_data = request.session.get("import_data", {})
         import_config = request.session.get("import_config", {})
         single_import = import_config.get("single_import", False)
@@ -848,8 +876,8 @@ class ImportStep2View(View):
 
         if not module or not app_label:
             return HttpResponse(
-                """
-                <div class="text-red-500 text-sm">Missing module or app_label in session</div>
+                f"""
+                <div class="text-red-500 text-sm">{_('Missing module or app_label in session')}</div>
             """
             )
 
@@ -864,7 +892,7 @@ class ImportStep2View(View):
             if not model_fields:
                 return HttpResponse(
                     f"""
-                    <div class="text-red-500 text-sm">No valid fields found for the selected model: {module}</div>
+                    <div class="text-red-500 text-sm">{_('No valid fields found for the selected model')}: {module}</div>
                 """
                 )
 
@@ -926,16 +954,20 @@ class ImportStep2View(View):
                     if unmapped_values:
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
+                        ellipsis = "..." if len(unmapped_values) > 3 else ""
+                        values_str = ", ".join(unmapped_values[:3])
                         validation_errors[field_name].append(
-                            f"Unmapped choice values: {', '.join(unmapped_values[:3])}{'...' if len(unmapped_values) > 3 else ''}"
+                            _("Unmapped choice values: %(values)s%(ellipsis)s")
+                            % {"values": values_str, "ellipsis": ellipsis}
                         )
 
-                    for slug_val, mapped_choice in mapped_values.items():
+                    for _slug_val, mapped_choice in mapped_values.items():
                         if mapped_choice not in valid_choices:
                             if field_name not in validation_errors:
                                 validation_errors[field_name] = []
                             validation_errors[field_name].append(
-                                f"Invalid choice value: {mapped_choice}"
+                                _("Invalid choice value: %(value)s")
+                                % {"value": mapped_choice}
                             )
 
                 elif field["is_foreign_key"]:
@@ -950,25 +982,29 @@ class ImportStep2View(View):
                     if unmapped_values:
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
+                        ellipsis = "..." if len(unmapped_values) > 3 else ""
+                        values_str = ", ".join(unmapped_values[:3])
                         validation_errors[field_name].append(
-                            f"Unmapped foreign key values: {', '.join(unmapped_values[:3])}{'...' if len(unmapped_values) > 3 else ''}"
+                            _("Unmapped foreign key values: %(values)s%(ellipsis)s")
+                            % {"values": values_str, "ellipsis": ellipsis}
                         )
 
                     # Verify all mapped FKs are valid IDs
-                    for slug_val, mapped_id in mapped_fks.items():
+                    for _slug_val, mapped_id in mapped_fks.items():
                         try:
                             mapped_id_int = int(mapped_id)
                             if mapped_id_int not in valid_fk_ids:
                                 if field_name not in validation_errors:
                                     validation_errors[field_name] = []
                                 validation_errors[field_name].append(
-                                    f"Invalid foreign key ID: {mapped_id}"
+                                    _("Invalid foreign key ID: %(id)s")
+                                    % {"id": mapped_id}
                                 )
                         except (ValueError, TypeError):
                             if field_name not in validation_errors:
                                 validation_errors[field_name] = []
                             validation_errors[field_name].append(
-                                f"Foreign key must be a valid ID"
+                                _("Foreign key must be a valid ID")
                             )
 
                 elif field_type in ["DateField", "DateTimeField"]:
@@ -986,7 +1022,14 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         validation_errors[field_name].append(
-                            f"Field type mismatch: '{field['verbose_name']}' expects DATE format, but file column '{file_header}' contains invalid date: '{invalid_dates[0]}'"
+                            _(
+                                "Field type mismatch: '%(field)s' expects DATE format, but file column '%(column)s' contains invalid date: '%(value)s'"
+                            )
+                            % {
+                                "field": field["verbose_name"],
+                                "column": file_header,
+                                "value": invalid_dates[0],
+                            }
                         )
 
                 elif field_type in [
@@ -1011,10 +1054,18 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         number_type = (
-                            "INTEGER" if "Integer" in field_type else "DECIMAL"
+                            _("INTEGER") if "Integer" in field_type else _("DECIMAL")
                         )
                         validation_errors[field_name].append(
-                            f"Field type mismatch: '{field['verbose_name']}' expects {number_type} format, but file column '{file_header}' contains invalid number: '{invalid_numbers[0]}'"
+                            _(
+                                "Field type mismatch: '%(field)s' expects %(type)s format, but file column '%(column)s' contains invalid number: '%(value)s'"
+                            )
+                            % {
+                                "field": field["verbose_name"],
+                                "type": number_type,
+                                "column": file_header,
+                                "value": invalid_numbers[0],
+                            }
                         )
 
                 elif field_type == "BooleanField":
@@ -1031,7 +1082,14 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         validation_errors[field_name].append(
-                            f"Field type mismatch: '{field['verbose_name']}' expects BOOLEAN (true/false/yes/no/1/0), but file column '{file_header}' contains like: '{invalid_bools[0]}'"
+                            _(
+                                "Field type mismatch: '%(field)s' expects BOOLEAN (true/false/yes/no/1/0), but file column '%(column)s' contains like: '%(value)s'"
+                            )
+                            % {
+                                "field": field["verbose_name"],
+                                "column": file_header,
+                                "value": invalid_bools[0],
+                            }
                         )
 
                 elif field_type == "EmailField":
@@ -1048,7 +1106,10 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         validation_errors[field_name].append(
-                            f"Field type mismatch: '{field['verbose_name']}' expects EMAIL format, but file column '{file_header}' contains invalid email"
+                            _(
+                                "Field type mismatch: '%(field)s' expects EMAIL format, but file column '%(column)s' contains invalid email"
+                            )
+                            % {"field": field["verbose_name"], "column": file_header}
                         )
 
                 elif field_type == "URLField":
@@ -1065,10 +1126,19 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         validation_errors[field_name].append(
-                            f"Field type mismatch: '{field['verbose_name']}' expects URL format, but file column '{file_header}' contains invalid URL: '{invalid_urls[0]}'"
+                            _(
+                                "Field type mismatch: '%(field)s' expects URL format, but file column '%(column)s' contains invalid URL: '%(value)s'"
+                            )
+                            % {
+                                "field": field["verbose_name"],
+                                "column": file_header,
+                                "value": invalid_urls[0],
+                            }
                         )
 
-                elif field_type in ["CharField", "TextField"]:
+                elif (
+                    field_type in TABLE_FALLBACK_FIELD_TYPES[:2]
+                ):  # [CharField, TextField]
                     sample_values = [
                         v for v in file_values[:10] if v and str(v).strip()
                     ]
@@ -1091,7 +1161,13 @@ class ImportStep2View(View):
                             if field_name not in validation_errors:
                                 validation_errors[field_name] = []
                             validation_errors[field_name].append(
-                                f"Error: '{field['verbose_name']}' is a TEXT field, but file column '{file_header}' appears to contain DATES. Consider mapping to a DateField instead."
+                                _(
+                                    "Error: '%(field)s' is a TEXT field, but file column '%(column)s' appears to contain DATES. Consider mapping to a DateField instead."
+                                )
+                                % {
+                                    "field": field["verbose_name"],
+                                    "column": file_header,
+                                }
                             )
 
                         # If 80% or more values look like emails
@@ -1099,14 +1175,26 @@ class ImportStep2View(View):
                             if field_name not in validation_errors:
                                 validation_errors[field_name] = []
                             validation_errors[field_name].append(
-                                f"Error: '{field['verbose_name']}' is a TEXT field, but file column '{file_header}' appears to contain EMAIL addresses. Consider mapping to an EmailField instead."
+                                _(
+                                    "Error: '%(field)s' is a TEXT field, but file column '%(column)s' appears to contain EMAIL addresses. Consider mapping to an EmailField instead."
+                                )
+                                % {
+                                    "field": field["verbose_name"],
+                                    "column": file_header,
+                                }
                             )
 
                         elif number_count / total_samples >= 0.8:
                             if field_name not in validation_errors:
                                 validation_errors[field_name] = []
                             validation_errors[field_name].append(
-                                f"Error: '{field['verbose_name']}' is a TEXT field, but file column '{file_header}' appears to contain NUMBERS. Consider mapping to a numeric field instead."
+                                _(
+                                    "Error: '%(field)s' is a TEXT field, but file column '%(column)s' appears to contain NUMBERS. Consider mapping to a numeric field instead."
+                                )
+                                % {
+                                    "field": field["verbose_name"],
+                                    "column": file_header,
+                                }
                             )
 
             # Validate required fields are mapped
@@ -1123,7 +1211,10 @@ class ImportStep2View(View):
                         if field_name not in validation_errors:
                             validation_errors[field_name] = []
                         validation_errors[field_name].append(
-                            f"Required field '{field['verbose_name']}' must be mapped to a file column."
+                            _(
+                                "Required field '%(field)s' must be mapped to a file column."
+                            )
+                            % {"field": field["verbose_name"]}
                         )
                         continue
 
@@ -1180,12 +1271,12 @@ class ImportStep2View(View):
             )
 
         except Exception as e:
-            logger.error(f"Error in ImportStep2View.post: {str(e)}")
+            logger.error("Error in ImportStep2View.post: %s", e)
             tb = traceback.format_exc()
             logger.error(tb)
             return HttpResponse(
                 f"""
-                <div class="text-red-500 text-sm">Error processing field mappings: {str(e)}")
+                <div class="text-red-500 text-sm">{_('Error processing field mappings')}: {str(e)}</div>
             """
             )
 
@@ -1196,7 +1287,7 @@ class ImportStep2View(View):
 
             parser.parse(str(value))
             return True
-        except:
+        except Exception:
             return False
 
     def is_valid_number(self, value, field_type):
@@ -1276,6 +1367,7 @@ class ImportStep3View(View):
         )
 
     def post(self, request, *args, **kwargs):
+        """Handle import options submission"""
         import_data = request.session.get("import_data", {})
         module = import_data.get("module")
         app_label = import_data.get("app_label")
@@ -1321,6 +1413,9 @@ class ImportStep3View(View):
             mapped_count = len(field_mappings)
             unmapped_count = len(headers) - mapped_count
 
+            # Get the verbose name for the module
+            module_verbose_name = get_model_verbose_name(module, app_label)
+
             try:
                 return render(
                     request,
@@ -1330,12 +1425,13 @@ class ImportStep3View(View):
                         "mapped_count": mapped_count,
                         "unmapped_count": unmapped_count,
                         "module": module,
+                        "module_verbose_name": module_verbose_name,
                         "app_label": app_label,
                         "single_import": single_import,
                     },
                 )
             except Exception as e:
-                logger.error(f"Template rendering error in ImportStep3View: {str(e)}")
+                logger.error("Template rendering error in ImportStep3View: %s", e)
                 tb = traceback.format_exc()
                 logger.error(tb)
                 return HttpResponse(
@@ -1345,7 +1441,7 @@ class ImportStep3View(View):
                 )
 
         except Exception as e:
-            logger.error(f"Error in ImportStep3View.post: {str(e)}")
+            logger.error("Error in ImportStep3View.post: %s", e)
             tb = traceback.format_exc()
             logger.error(tb)
             return HttpResponse(
@@ -1356,8 +1452,6 @@ class ImportStep3View(View):
 
     def get_model_fields(self, module_name, app_label):
         """Get fields from the selected model with choice and foreign key info"""
-        from django.apps import apps
-        from django.db.models import CharField, ForeignKey
 
         try:
             model = apps.get_model(app_label, module_name)
@@ -1408,7 +1502,10 @@ class ImportStep3View(View):
             return fields
         except Exception as e:
             logger.error(
-                f"Error in get_model_fields (app_label: {app_label}, module: {module_name}): {str(e)}"
+                "Error in get_model_fields (app_label: %s, module: %s): %s",
+                app_label,
+                module_name,
+                e,
             )
             return []
 
@@ -1442,6 +1539,9 @@ class ImportStep4View(View):
         mapped_count = len(field_mappings)
         unmapped_count = len(headers) - mapped_count
 
+        # Get the verbose name for the module
+        module_verbose_name = get_model_verbose_name(module, app_label)
+
         return render(
             request,
             "import/import_step4.html",
@@ -1450,6 +1550,7 @@ class ImportStep4View(View):
                 "mapped_count": mapped_count,
                 "unmapped_count": unmapped_count,
                 "module": module,
+                "module_verbose_name": module_verbose_name,
                 "app_label": app_label,
                 "single_import": single_import,
             },
@@ -1457,7 +1558,6 @@ class ImportStep4View(View):
 
     def post(self, request, *args, **kwargs):
         """Handle the actual import when user clicks Import button"""
-        start_time = time.perf_counter()
 
         import_data = request.session.get("import_data", {})
         import_config = request.session.get("import_config", {})
@@ -1514,7 +1614,7 @@ class ImportStep4View(View):
             import_history.save()
 
             # Render success page with results
-            render_start = time.perf_counter()
+
             response = render(
                 request,
                 "import/import_success.html",
@@ -1545,7 +1645,6 @@ class ImportStep4View(View):
     def generate_error_csv(self, detailed_errors, import_data):
         """Generate a CSV file with original file structure plus error column"""
         try:
-            import_name = import_data.get("import_name", "import")
             original_filename = import_data.get("original_filename", "file")
 
             # Extract filename without extension for error file naming
@@ -1604,11 +1703,12 @@ class ImportStep4View(View):
             return full_file_path
 
         except Exception as e:
-            logger.error(f"Error generating error CSV: {str(e)}")
+            logger.error("Error generating error CSV: %s", e)
+
             return None
 
     def process_import(self, import_data):
-        start_time = time.perf_counter()
+        """Process the import based on the provided import_data"""
 
         # Database-specific batch size optimization
         is_postgres = connection.vendor == "postgresql"
@@ -1669,7 +1769,6 @@ class ImportStep4View(View):
 
         # Preload FK objects referenced in mappings
         fk_cache = {}
-        fk_start = time.perf_counter()
         for field, mapping in fk_mappings.items():
             related_model = field_metadata[field]["related_model"]
             fk_cache[field] = {
@@ -1678,7 +1777,6 @@ class ImportStep4View(View):
             }
 
         # Preload replace_values FKs
-        replace_start = time.perf_counter()
         for field, value in replace_values.items():
             if field_metadata[field]["is_fk"]:
                 related_model = field_metadata[field]["related_model"]
@@ -1690,7 +1788,6 @@ class ImportStep4View(View):
         with transaction.atomic():
             existing_objs = {}
             if match_fields and import_option in ["1", "2", "3"]:
-                filter_start = time.perf_counter()
                 filters = {
                     f"{f}__in": [
                         str(row.get(field_mappings.get(f, ""), "")).strip()
@@ -1706,7 +1803,6 @@ class ImportStep4View(View):
 
             # Group objects by changed fields for efficient updates
             updated_groups = defaultdict(list)
-            row_processing_start = time.perf_counter()
 
             for row_index, row_data in enumerate(data_rows, 1):
                 row_errors = []
@@ -2117,11 +2213,9 @@ class ImportStep4View(View):
                     )
 
             if created:
-                bulk_create_start = time.perf_counter()
                 model.objects.bulk_create(created, batch_size=create_batch_size)
                 created_count = len(created)
 
-            bulk_update_start = time.perf_counter()
             for fields, objs in updated_groups.items():
                 if fields:
                     for i in range(0, len(objs), update_batch_size):
@@ -2136,7 +2230,6 @@ class ImportStep4View(View):
         if detailed_errors:
             error_file_path = self.generate_error_csv(detailed_errors, import_data)
 
-        session_cleanup_start = time.perf_counter()
         if "import_data" in self.request.session:
             del self.request.session["import_data"]
             self.request.session.modified = True
@@ -2209,7 +2302,7 @@ class ImportStep4View(View):
 
     def read_file_data(self, file_path):
         """Read data from the uploaded file"""
-        start_time = time.perf_counter()
+
         full_path = default_storage.path(file_path)
         data_rows = []
         if file_path.endswith(".csv"):
@@ -2231,6 +2324,7 @@ class GetModelFieldsView(View):
     """HTMX view to get model fields when module is selected"""
 
     def get(self, request, *args, **kwargs):
+        """Retrieve model fields for the selected module"""
         import_data = request.session.get("import_data", {})
         unique_values = import_data.get("unique_values", {})
         field_name = request.GET.get("field_name", "")
@@ -2255,11 +2349,8 @@ class GetModelFieldsView(View):
                 if not value
             ]
             raise HorillaHttp404(f"Missing parameters: {', '.join(missing_params)}")
-            # return HttpResponse(f'<div class="text-xs p-2 border text-red-500">Missing parameters: {", ".join(missing_params)}</div>')
 
         try:
-            from django.apps import apps
-            from django.db.models import CharField, ForeignKey
 
             model = apps.get_model(app_label, module)
             field = next((f for f in model._meta.fields if f.name == field_name), None)
@@ -2325,6 +2416,7 @@ class UpdateFieldStatusView(View):
     """HTMX view to update field mapping status"""
 
     def post(self, request, *args, **kwargs):
+        """Update field mapping status based on user input"""
         field_name = request.GET.get("field_name")
         file_header = request.POST.get(f"file_header_{field_name}")
 
@@ -2344,6 +2436,7 @@ class GetUniqueValuesView(View):
     """HTMX view to get unique values for a selected file header with auto-mapping"""
 
     def get(self, request, *args, **kwargs):
+        """Retrieve unique values for the selected file header"""
         import_data = request.session.get("import_data", {})
         unique_values = import_data.get("unique_values", {})
         field_name = request.GET.get("field_name", "")
@@ -2370,8 +2463,6 @@ class GetUniqueValuesView(View):
             raise HorillaHttp404(f"Missing parameters: {', '.join(missing_params)}")
 
         try:
-            from django.apps import apps
-            from django.db.models import CharField, ForeignKey
 
             model = apps.get_model(app_label, module)
             field = next((f for f in model._meta.fields if f.name == field_name), None)
@@ -2434,7 +2525,10 @@ class GetUniqueValuesView(View):
     name="dispatch",
 )
 class UpdateValueMappingStatusView(View):
+    """View to update value mapping status"""
+
     def post(self, request, *args, **kwargs):
+        """Update value mapping status based on user input"""
         import_data = request.session.get("import_data", {})
         field_name = request.GET.get("field_name")
         slug_value = request.GET.get("slug_value")
@@ -2448,7 +2542,6 @@ class UpdateValueMappingStatusView(View):
             )
 
         try:
-            from django.apps import apps
 
             module = import_data.get("module")
             app_label = import_data.get("app_label")
@@ -2500,6 +2593,7 @@ class DownloadErrorFileView(LoginRequiredMixin, View):
     """Download error CSV file"""
 
     def get(self, request, *args, **kwargs):
+        """Download the error CSV file"""
         file_path = request.GET.get("file_path")
         if not file_path:
             raise HorillaHttp404("File path not provided")
@@ -2521,7 +2615,7 @@ class DownloadErrorFileView(LoginRequiredMixin, View):
                 return response
 
         except Exception as e:
-            logger.error(f"Error downloading error file: {str(e)}")
+            logger.error("Error downloading error file: %s", e)
             return HttpResponse("Error downloading file", status=500)
 
 
@@ -2531,6 +2625,7 @@ class DownloadErrorFileView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class ImportHistoryView(LoginRequiredMixin, HorillaListView):
+    """View to display import history records"""
 
     model = ImportHistory
     view_id = "import-history"
@@ -2547,7 +2642,7 @@ class ImportHistoryView(LoginRequiredMixin, HorillaListView):
 
     columns = [
         "import_name",
-        "module_name",
+        (_("Module"), "module_verbose_name"),
         "original_filename",
         "status",
         "success_rate",
@@ -2567,6 +2662,7 @@ class DownloadImportedFileView(LoginRequiredMixin, View):
     """Download the original imported file"""
 
     def get(self, request, *args, **kwargs):
+        """Download the original imported file"""
         file_path = request.GET.get("file_path")
 
         if not file_path:
@@ -2598,7 +2694,7 @@ class DownloadImportedFileView(LoginRequiredMixin, View):
                 return response
 
         except Exception as e:
-            logger.error(f"Error downloading imported file: {str(e)}")
+            logger.error("Error downloading imported file: %s", e)
             tb = traceback.format_exc()
             logger.error(tb)
             return HttpResponse(

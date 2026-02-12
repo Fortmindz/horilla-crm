@@ -2,18 +2,22 @@
 This view handles the methods for recycle bin view
 """
 
+# Standard library imports
 import json
+from functools import cached_property
 
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -131,7 +135,10 @@ class RecycleBinListView(LoginRequiredMixin, HorillaListView):
 
     @cached_property
     def columns(self):
-        instance = self.model()
+        """
+        Returns the list of columns to display in the recycle bin list view.
+        """
+        _instance = self.model()
         return [
             (_("Record Name"), "record_name"),
             (_("Type"), "get_model_display_name"),
@@ -139,42 +146,35 @@ class RecycleBinListView(LoginRequiredMixin, HorillaListView):
             (_("Deleted At"), "deleted_at"),
         ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_recyclebin"):
-            actions.append(
-                {
-                    "action": "Restore",
-                    "icon": "fa-solid fa-undo",
-                    "icon_class": "fa-solid fa-undo w-4 h-4",
-                    "attrs": """
-                            hx-post="{get_restore_url}"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            hx-trigger='confirmed'
-                            hx-on:click="hxConfirm(this,'Are you sure you want to restore this item?')"
-                            """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_recyclebin"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
-                        hx-swap="innerHTML"
-                        hx-trigger='confirmed'
-                        hx-on:click="hxConfirm(this,'Are you sure you want to delete this item?',
-                        'When deleting the item, its dependent data will be set to NULL or reassigned.')"
+    actions = [
+        {
+            "action": "Restore",
+            "icon": "fa-solid fa-undo",
+            "icon_class": "fa-solid fa-undo w-4 h-4",
+            "permission": "horilla_core.change_recyclebin",
+            "attrs": """
+                    hx-post="{get_restore_url}"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    hx-trigger='confirmed'
+                    hx-on:click="hxConfirm(this,'Are you sure you want to restore this item?')"
                     """,
-                }
-            )
-        return actions
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_recyclebin",
+            "attrs": """
+                hx-post="{get_delete_url}"
+                hx-target="#deleteModeBox"
+                hx-swap="innerHTML"
+                hx-trigger='confirmed'
+                hx-on:click="hxConfirm(this,'Are you sure you want to delete this item?',
+                'When deleting the item, its dependent data will be set to NULL or reassigned.')"
+            """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -187,9 +187,13 @@ class RecycleDeleteView(LoginRequiredMixin, View):
     """
 
     def post(self, request, pk, *args, **kwargs):
+        """
+        Handle POST request to delete a RecycleBin record.
+        """
+
         try:
             recycle_obj = get_object_or_404(RecycleBin, pk=pk)
-        except:
+        except Exception:
             messages.error(request, _("The requested data does not exist."))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
         deleted_count, failed_records = delete_recycle_bin_records(request, recycle_obj)
@@ -216,6 +220,9 @@ class BulkDeleteRecycleBinView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle POST request to bulk delete RecycleBin records.
+        """
         record_ids = json.loads(request.POST.get("selected_ids", "[]"))
         if not record_ids:
             messages.error(request, "No records selected for deletion.")
@@ -248,11 +255,17 @@ class BulkDeleteRecycleBinView(LoginRequiredMixin, View):
     permission_required_or_denied("horilla_core.change_recyclebin"), name="dispatch"
 )
 class RecycleRestoreView(LoginRequiredMixin, View):
+    """
+    View to handle restoration of a single RecycleBin record
+    """
 
     def post(self, request, pk, *args, **kwargs):
+        """
+        Handle POST request to restore a RecycleBin record.
+        """
         try:
             recycle_obj = get_object_or_404(RecycleBin, pk=pk)
-        except:
+        except Exception:
             messages.error(request, _("The requested data does not exist."))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
         restored_count, failed_records = restore_recycle_bin_records(
@@ -281,6 +294,9 @@ class BulkRestoreRecycleView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle POST request to bulk restore RecycleBin records.
+        """
         record_ids = json.loads(request.POST.get("selected_ids", "[]"))
         if not record_ids:
             messages.error(request, "No records selected for restoration.")
@@ -318,6 +334,9 @@ class EmptyRecycleBinView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle POST request to empty the recycle bin.
+        """
         deleted_count, _ = RecycleBin.objects.all().delete()
 
         messages.success(
@@ -342,6 +361,9 @@ class BinPolicyView(LoginRequiredMixin, View):
     template_name = "settings/recycle_bin/bin_policy.html"
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET request to display the recycle bin policy.
+        """
         company = request.active_company
         policy = RecycleBinPolicy.objects.filter(company=company).first()
         context = {
@@ -351,6 +373,10 @@ class BinPolicyView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle POST request to update the recycle bin policy.
+        """
+
         days = request.POST.get("days")
         company = request.active_company
 

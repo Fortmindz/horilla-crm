@@ -1,8 +1,18 @@
+"""
+URL patterns for horilla_generics.
+
+Provides routes for global search, kanban and AJAX helper views.
+"""
+
+# Third-party imports (Django)
 from django.urls import path
 
 from horilla_generics import horilla_support_views as view
+
+# First-party / Horilla imports
 from horilla_generics.global_search import GlobalSearchView
 
+# Local application imports
 from . import views
 
 app_name = "horilla_generics"
@@ -88,6 +98,11 @@ urlpatterns = [
         "get-field-value-widget/",
         view.GetFieldValueWidgetView.as_view(),
         name="get_field_value_widget",
+    ),
+    path(
+        "get-model-field-choices/",
+        view.GetModelFieldChoicesView.as_view(),
+        name="get_model_field_choices",
     ),
     path(
         "notes-attachment-create/",

@@ -2,26 +2,29 @@
 This view handles the methods for user view
 """
 
+# Standard library imports
+from functools import cached_property
 from urllib.parse import urlencode
 
-from django.contrib import messages
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, View
 
+# First-party / Horilla imports
+from horilla.auth.models import User
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
 from horilla_core.filters import UserFilter
-from horilla_core.forms import UserFormClass
-from horilla_core.models import HorillaUser
+from horilla_core.forms import ChangeUserCompanyForm, UserFormClass, UserFormSingle
+from horilla_core.models import Company, Department, MultipleCurrency, Role
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
     HorillaDetailView,
@@ -30,6 +33,7 @@ from horilla_generics.views import (
     HorillaMultiStepFormView,
     HorillaNavView,
     HorillaSingleDeleteView,
+    HorillaSingleFormView,
     HorillaView,
 )
 
@@ -46,19 +50,22 @@ class UserView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(permission_required("horilla_core.view_horillauser"), name="dispatch")
+@method_decorator(
+    permission_required(f"{User._meta.app_label}.view_{User._meta.model_name}"),
+    name="dispatch",
+)
 class UserNavbar(LoginRequiredMixin, HorillaNavView):
     """
     navbar view for users
     """
 
-    nav_title = HorillaUser._meta.verbose_name_plural
+    nav_title = User._meta.verbose_name_plural
     search_url = reverse_lazy("horilla_core:user_list_view")
     main_url = reverse_lazy("horilla_core:user_view")
     filterset_class = UserFilter
     kanban_url = reverse_lazy("horilla_core:user_kanban_view")
-    model_name = "HorillaUser"
-    model_app_label = "horilla_core"
+    model_name = str(User.__name__)
+    model_app_label = str(User._meta.app_label)
     nav_width = False
     gap_enabled = False
     exclude_kanban_fields = "country"
@@ -66,23 +73,32 @@ class UserNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
-        if self.request.user.has_perm("horilla_core.add_horillauser"):
+        """
+        Get the configuration for the "New" button in the navbar.
+        """
+        if self.request.user.has_perm(
+            f"{User._meta.app_label}.add_{User._meta.model_name}"
+        ):
             return {
                 "url": f"""{ reverse_lazy('horilla_core:user_create_form')}?new=true""",
                 "attrs": {"id": "user-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class UserListView(LoginRequiredMixin, HorillaListView):
     """
     List view of users
     """
 
-    model = HorillaUser
+    model = User
     view_id = "UsersList"
     filterset_class = UserFilter
     search_url = reverse_lazy("horilla_core:user_list_view")
@@ -94,11 +110,17 @@ class UserListView(LoginRequiredMixin, HorillaListView):
     table_height_as_class = "h-[calc(_100vh_-_310px_)]"
 
     def no_record_add_button(self):
-        if self.request.user.has_perm("horilla_core.add_horillauser"):
+        """
+        Get the configuration for the "Add" button when no record exist.
+        """
+        if self.request.user.has_perm(
+            f"{User._meta.app_label}.add_{User._meta.model_name}"
+        ):
             return {
                 "url": f"""{ reverse_lazy('horilla_core:user_create_form')}?new=true""",
                 "attrs": 'id="user-create"',
             }
+        return None
 
     bulk_update_fields = [
         "department",
@@ -124,60 +146,65 @@ class UserListView(LoginRequiredMixin, HorillaListView):
         "role",
     ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_horillauser"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                            hx-get="{get_edit_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_horillauser"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": f"{User._meta.app_label}.change_{User._meta.model_name}",
+            "attrs": """
+                        hx-get="{get_edit_url}?new=true"
+                        hx-target="#modalBox"
                         hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "true"}}'
-                        onclick="openDeleteModeModal()"
-                    """,
-                }
-            )
-        return actions
+                        onclick="openModal()"
+                        """,
+        },
+        {
+            "action": "Change Company",
+            "src": "assets/icons/change.svg",
+            "img_class": "w-4 h-4",
+            "permission": f"{User._meta.app_label}.change_{User._meta.model_name}",
+            "attrs": """
+                        hx-get="{get_change_company_url}?new=true"
+                        hx-target="#modalBox"
+                        hx-swap="innerHTML"
+                        onclick="openModal()"
+                        """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": f"{User._meta.app_label}.delete_{User._meta.model_name}",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]
 
     @cached_property
     def col_attrs(self):
+        """
+        Get the column attributes for the list view.
+        """
         query_params = self.request.GET.dict()
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
         query_string = urlencode(query_params)
-        attrs = {}
-        if self.request.user.has_perm("horilla_core.view_horillauser"):
-            attrs = {
-                "hx-get": f"{{get_detail_view_url}}?{query_string}",
-                "hx-target": "#users-view",
-                "hx-swap": "innerHTML",
-                "hx-push-url": "true",
-                "hx-select": "#users-view",
-                "style": "cursor:pointer",
-                "class": "hover:text-primary-600",
-            }
+        attrs = {
+            "hx-get": f"{{get_detail_view_url}}?{query_string}",
+            "hx-target": "#users-view",
+            "hx-swap": "innerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#users-view",
+            "permission": f"{User._meta.app_label}.view_{User._meta.model_name}",
+        }
         return [
             {
                 "get_avatar_with_name": {
@@ -187,22 +214,30 @@ class UserListView(LoginRequiredMixin, HorillaListView):
         ]
 
     def get_queryset(self):
+        """
+        Get the queryset for the list view, filtered by active company.
+        """
         queryset = super().get_queryset()
+        if self.request.session.get("show_all_companies", False):
+            return queryset
         company = getattr(self.request, "active_company", None)
-        queryset = queryset.filter(company=company)
+        queryset = queryset.filter(company=company, is_active=True)
         return queryset
 
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class UserKanbanView(LoginRequiredMixin, HorillaKanbanView):
     """
     Kanban View for user
     """
 
-    model = HorillaUser
+    model = User
     view_id = "UsersKanban"
     filterset_class = UserFilter
     search_url = reverse_lazy("horilla_core:user_list_view")
@@ -218,41 +253,7 @@ class UserKanbanView(LoginRequiredMixin, HorillaKanbanView):
         "country",
     ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_horillauser"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                            hx-get="{get_edit_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_horillauser"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "true"}}'
-                        onclick="openDeleteModeModal()"
-                    """,
-                }
-            )
-        return actions
+    actions = UserListView.actions
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -262,17 +263,26 @@ class UserFormView(LoginRequiredMixin, HorillaMultiStepFormView):
     """
 
     form_class = UserFormClass
-    model = HorillaUser
+    model = User
     total_steps = 4
     step_titles = {
-        "1": "Personal Information",
-        "2": "Address Information",
-        "3": "Work Information",
-        "4": "Localization Information",
+        "1": _("Personal Information"),
+        "2": _("Address Information"),
+        "3": _("Work Information"),
+        "4": _("Localization Information"),
     }
+
+    single_step_url_name = {
+        "create": "horilla_core:user_create_single_form",
+        "edit": "horilla_core:user_edit_single_form",
+    }
+    detail_url_name = "horilla_core:user_detail_view"
 
     @cached_property
     def form_url(self):
+        """
+        Get the form URL for create or edit actions.
+        """
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:user_edit_form", kwargs={"pk": pk})
@@ -288,21 +298,164 @@ class UserFormView(LoginRequiredMixin, HorillaMultiStepFormView):
         if pk:
             if int(pk) == user.pk:
                 return user.has_perm("horilla_core.can_change_profile")
-            else:
-                return user.has_perm("horilla_core.change_horillauser")
-        else:
-            return user.has_perm("horilla_core.add_horillauser")
+
+            return user.has_perm(
+                f"{User._meta.app_label}.change_{User._meta.model_name}"
+            )
+
+        return user.has_perm(f"{User._meta.app_label}.add_{User._meta.model_name}")
+
+
+class GetCompanyRelatedFieldsView(LoginRequiredMixin, View):
+    """HTMX endpoint to get role, department, and currency fields based on selected company"""
+
+    def get(self, request):
+        company_list = request.GET.getlist("company")
+        company_id = company_list[-1] if company_list else request.GET.get("company")
+        user_pk = request.GET.get("user_pk")
+
+        context = {
+            "roles": [],
+            "departments": [],
+            "currencies": [],
+            "selected_role": None,
+            "selected_department": None,
+            "selected_currency": None,
+        }
+
+        if company_id:
+            try:
+                company_id = (
+                    int(company_id) if isinstance(company_id, str) else company_id
+                )
+                company = Company.objects.get(pk=company_id)
+                context["roles"] = list(
+                    Role.all_objects.filter(company=company, is_active=True)
+                )
+                context["departments"] = list(
+                    Department.all_objects.filter(company=company, is_active=True)
+                )
+                context["currencies"] = list(
+                    MultipleCurrency.all_objects.filter(company=company, is_active=True)
+                )
+
+                # If editing existing user, try to maintain selections if they're valid
+                if user_pk:
+                    try:
+                        user_pk = int(user_pk) if isinstance(user_pk, str) else user_pk
+                        user = User.objects.get(pk=user_pk)
+                        if user.role and user.role.company == company:
+                            context["selected_role"] = user.role.pk
+                        if user.department and user.department.company == company:
+                            context["selected_department"] = user.department.pk
+                        if user.currency and user.currency.company == company:
+                            context["selected_currency"] = user.currency.pk
+                    except (User.DoesNotExist, ValueError, TypeError):
+                        pass
+
+            except (Company.DoesNotExist, ValueError, TypeError):
+                pass
+
+        html = render_to_string("settings/users/company_related_fields.html", context)
+        return HttpResponse(html)
 
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.delete_horillauser", modal=True),
+    permission_required_or_denied(
+        f"{User._meta.app_label}.change_{User._meta.model_name}"
+    ),
+    name="dispatch",
+)
+class ChangeUserCompanyView(LoginRequiredMixin, HorillaSingleFormView):
+    """View for changing user's company with custom template for chained form fields"""
+
+    model = User
+    form_title = _("Change Company")
+    form_class = ChangeUserCompanyForm
+    template_name = "settings/users/change_company_form.html"
+    view_id = "change-company-form"
+
+    @cached_property
+    def form_url(self):
+        """
+        Get the URL for form submission based on whether it's a create or update action.
+        """
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        if pk:
+            return reverse_lazy(
+                "horilla_core:user_change_company_form", kwargs={"pk": pk}
+            )
+        return None
+
+    def get_context_data(self, **kwargs):
+        """Add user_pk to context for HTMX requests"""
+        context = super().get_context_data(**kwargs)
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        context["user_pk"] = pk
+        return context
+
+
+@method_decorator(htmx_required, name="dispatch")
+class UserFormViewSingle(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    Single form view for user create and update
+    """
+
+    model = User
+    view_id = "user-form-view"
+    form_class = UserFormSingle
+    detail_url_name = "horilla_core:user_detail_view"
+
+    multi_step_url_name = {
+        "create": "horilla_core:user_create_form",
+        "edit": "horilla_core:user_edit_form",
+    }
+
+    @cached_property
+    def form_url(self):
+        """
+        Get the URL for form submission based on whether it's a create or update action.
+        """
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        if pk:
+            return reverse_lazy("horilla_core:user_edit_single_form", kwargs={"pk": pk})
+        return reverse_lazy("horilla_core:user_create_single_form")
+
+    def has_permission(self):
+        """
+        Override permission check for user profile editing.
+        """
+        user = self.request.user
+        pk = self.kwargs.get("pk")
+
+        if pk:
+            if int(pk) == user.pk:
+                return user.has_perm("horilla_core.can_change_profile")
+
+            return user.has_perm(
+                f"{User._meta.app_label}.change_{User._meta.model_name}"
+            )
+
+        return user.has_perm(f"{User._meta.app_label}.add_{User._meta.model_name}")
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        f"{User._meta.app_label}.delete_{User._meta.model_name}", modal=True
+    ),
     name="dispatch",
 )
 class UserDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
-    model = HorillaUser
+    """
+    View to delete a User
+    """
+
+    model = User
 
     def get_post_delete_response(self):
+        """Get the response after deleting a user."""
         return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
@@ -312,7 +465,7 @@ class UserDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailView)
     """
 
     template_name = "settings/users/user_detail_view.html"
-    model = HorillaUser
+    model = User
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -345,7 +498,10 @@ class LoginHistoryView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(permission_required("horilla_core.view_horillauser"), name="dispatch")
+@method_decorator(
+    permission_required(f"{User._meta.app_label}.view_{User._meta.model_name}"),
+    name="dispatch",
+)
 class LoginHistoryNavbar(LoginRequiredMixin, HorillaNavView):
     """
     Login history navbar
@@ -384,7 +540,10 @@ class LoginHistoryNavbar(LoginRequiredMixin, HorillaNavView):
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class LoginHistoryListView(LoginRequiredMixin, HorillaListView):
     """
@@ -419,10 +578,11 @@ class LoginHistoryListView(LoginRequiredMixin, HorillaListView):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        user_id = self.request.GET.get("pk")
-        if user_id:
-            queryset = queryset.filter(user_id=user_id)
-        return queryset
+        return (
+            queryset.filter(user_id=self.request.GET.get("pk"))
+            if self.request.GET.get("pk")
+            else queryset
+        )
 
     columns = [
         (_("Browser"), "user_agent"),

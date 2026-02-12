@@ -115,4 +115,13 @@ class OpportunitiesSettings:
             "perm": "opportunities.view_opportunitysplittype",
             "condition": staticmethod(OpportunitySettings.is_team_selling_enabled),
         },
+        {
+            "label": _("Big Deal Alerts"),
+            "url": reverse_lazy("opportunities:big_deal_alert_view"),
+            "hx-target": "#settings-content",
+            "hx-push-url": "true",
+            "hx-select": "#big-deal-alert-view",
+            "hx-select-oob": "#settings-sidebar",
+            "perm": "horilla_automations.view_horillaautomation",
+        },
     ]

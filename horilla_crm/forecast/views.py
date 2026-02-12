@@ -5,13 +5,15 @@ Django class-based views for managing and displaying sales forecast data in Hori
 Features: Period-based forecasts, trend analysis, user/aggregated views, optimized queries.
 """
 
+# Standard library imports
 from urllib.parse import urlencode
 
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -20,9 +22,14 @@ from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
 
+from horilla.auth.models import User
 from horilla.exceptions import HorillaHttp404
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required, permission_required_or_denied
-from horilla_core.models import Company, FiscalYearInstance, HorillaUser, Period
+from horilla_core.models import Company, FiscalYearInstance, Period
+from horilla_core.services.fiscal_year_service import FiscalYearService
 from horilla_crm.forecast.models import Forecast, ForecastTarget, ForecastType
 from horilla_crm.forecast.utils import ForecastCalculator
 from horilla_crm.opportunities.models import Opportunity
@@ -57,7 +64,7 @@ class ForecastView(LoginRequiredMixin, HorillaView):
 
         context.update(
             {
-                "users": HorillaUser.objects.filter(is_active=True),
+                "users": User.objects.filter(is_active=True),
                 "fiscal_years": fiscal_years,
                 "current_instance": current_instance,
                 "selected_instance": selected_instance,
@@ -99,6 +106,19 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
+        # Automatically check and update fiscal years before displaying
+        company = (
+            self.request.active_company
+            if hasattr(self.request, "active_company") and self.request.active_company
+            else (
+                self.request.user.company
+                if hasattr(self.request.user, "company")
+                else None
+            )
+        )
+        if company:
+            FiscalYearService.check_and_update_fiscal_years(company=company)
+
         forcast_types = ForecastType.objects.all()
         type_count = forcast_types.count()
         fiscal_years = FiscalYearInstance.objects.all()
@@ -124,20 +144,20 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
         # Determine user list and default selection based on permissions
         if has_view_all:
             # User can view all opportunities - show all users
-            users = HorillaUser.objects.filter(is_active=True)
+            users = User.objects.filter(is_active=True)
             show_all_users_option = True
             # If no user_id is specified, don't force one (show all by default)
             if not user_id:
                 user_id = None
         elif has_view_own:
             # User can only view their own opportunities - restrict to current user only
-            users = HorillaUser.objects.filter(id=self.request.user.id, is_active=True)
+            users = User.objects.filter(id=self.request.user.id, is_active=True)
             show_all_users_option = False
             # Force user_id to be the current user
             user_id = str(self.request.user.pk)
         else:
             # No permission - empty queryset
-            users = HorillaUser.objects.none()
+            users = User.objects.none()
             show_all_users_option = False
             user_id = None
 
@@ -253,6 +273,19 @@ class ForecastTypeView(TemplateView):
             messages.error(self.request, str(e))
             context["error"] = True
             return context
+
+        # Automatically check and update fiscal years before displaying
+        company = (
+            self.request.active_company
+            if hasattr(self.request, "active_company") and self.request.active_company
+            else (
+                self.request.user.company
+                if hasattr(self.request.user, "company")
+                else None
+            )
+        )
+        if company:
+            FiscalYearService.check_and_update_fiscal_years(company=company)
 
         fiscal_year_id = self.request.GET.get("fiscal_year_id")
         fiscal_year = (
@@ -433,7 +466,7 @@ class ForecastTypeView(TemplateView):
             missing_periods = [p for p in periods if p.id not in target_map]
             if missing_periods:
                 try:
-                    user = HorillaUser.objects.get(id=user_id)
+                    user = User.objects.get(id=user_id)
                     if hasattr(user, "role") and user.role:
                         role_targets = ForecastTarget.objects.filter(
                             is_active=True,
@@ -446,7 +479,7 @@ class ForecastTypeView(TemplateView):
                         for role_target in role_targets:
                             if role_target.period_id not in target_map:
                                 target_map[role_target.period_id] = role_target
-                except HorillaUser.DoesNotExist:
+                except User.DoesNotExist:
                     pass
 
             return target_map
@@ -475,7 +508,7 @@ class ForecastTypeView(TemplateView):
         """
         calculator = ForecastCalculator(user=self.request.user, fiscal_year=fiscal_year)
 
-        all_users = list(HorillaUser.objects.filter(is_active=True).values("id"))
+        all_users = list(User.objects.filter(is_active=True).values("id"))
         all_periods = list(
             Period.objects.filter(quarter__fiscal_year=fiscal_year).values("id")
         )
@@ -553,7 +586,7 @@ class ForecastTypeView(TemplateView):
                 if not user_forecasts:
                     # Create empty forecast for user with no data
                     try:
-                        user = HorillaUser.objects.get(id=user_id)
+                        user = User.objects.get(id=user_id)
                         empty_forecast = Forecast()
                         empty_forecast.id = f"empty_{period.id}_{user_id}"
                         empty_forecast.period = period
@@ -584,7 +617,7 @@ class ForecastTypeView(TemplateView):
                             empty_forecast.actual_amount = 0
 
                         user_forecasts = [empty_forecast]
-                    except HorillaUser.DoesNotExist:
+                    except User.DoesNotExist:
                         user_forecasts = []
 
                 # Create aggregated forecast
@@ -636,7 +669,7 @@ class ForecastTypeView(TemplateView):
             else:
                 users_with_data = []
                 users_without_data = []
-                all_active_users = HorillaUser.objects.select_related("role").filter(
+                all_active_users = User.objects.select_related("role").filter(
                     is_active=True
                 )
                 user_targets = self.get_target_for_period_bulk(
@@ -807,8 +840,8 @@ class ForecastTypeView(TemplateView):
         with no data - returns actual forecast object.
         """
         try:
-            user = HorillaUser.objects.get(id=user_id)
-        except HorillaUser.DoesNotExist:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
             return None
 
         # Create an actual Forecast object (not saved to DB) with proper attributes
@@ -1286,7 +1319,7 @@ class ForecastTypeView(TemplateView):
                 self.fiscal_year = period.quarter.fiscal_year
                 self.forecast_type = forecast_type
                 self.currency_symbol = currency_symbol
-                self.owner = HorillaUser.objects.get(id=user_id)
+                self.owner = User.objects.get(id=user_id)
 
                 if target and forecast_type.is_quantity_based:
                     self.target_quantity = target.target_amount
@@ -1499,6 +1532,7 @@ class ForecastOpportunitiesView(LoginRequiredMixin, View):
     """HTMX-enabled modal view for displaying opportunities categorized by forecast type."""
 
     def col_attrs(self):
+        """Return column attributes for forecast opportunities view."""
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
@@ -1675,7 +1709,7 @@ class ForecastOpportunitiesView(LoginRequiredMixin, View):
             return render(request, "forecast_opportunities_modal_content.html", context)
 
         except Exception as e:
-            raise HorillaHttp404(e)
+            raise HorillaHttp404(e) from e
 
     def get_forecast_object(self, forecast_id):
         """
@@ -1717,7 +1751,7 @@ class ForecastOpportunitiesView(LoginRequiredMixin, View):
                 Forecast, id=forecast_id, fiscal_year=fiscal_year
             )
         except Exception as e:
-            raise HorillaHttp404(e)
+            raise HorillaHttp404(e) from e
 
         return forecast
 

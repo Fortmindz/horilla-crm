@@ -1,8 +1,25 @@
+"""
+Django app configuration for horilla_notifications.
+
+This module defines the application configuration for the notifications app,
+including URL registration and signal imports.
+"""
+
 from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
 
-class NotificationsConfig(AppConfig):
+class HorillaNotificationsConfig(AppConfig):
+    """
+    Application configuration for horilla_notifications app.
+
+    This class configures the notifications app, including:
+    - App metadata (name, verbose_name)
+    - URL pattern registration
+    - Signal handler imports
+    - API path configurations
+    """
+
     default_auto_field = "django.db.models.BigAutoField"
     name = "horilla_notifications"
     verbose_name = _("Notifications")
@@ -35,11 +52,13 @@ class NotificationsConfig(AppConfig):
                 path("notifications/", include("horilla_notifications.urls")),
             )
 
+            __import__("horilla_notifications.registration")
             __import__("horilla_notifications.signals")
+            __import__("horilla_notifications.menu")
 
         except Exception as e:
             import logging
 
-            logging.warning(f"NotificationsConfig.ready failed: {e}")
+            logging.warning("HorillaNotificationsConfig.ready failed: %s", e)
 
         super().ready()

@@ -12,7 +12,7 @@
             hx-get="{% url 'horilla_generics:edit_field' pk=object_id field_name=field_info.name app_label=app_label model_name=model_name %}"
             hx-target="#field-{{ field_info.name }}"
             hx-swap="outerHTML">
-      <img src="{% static './assets/icons/edit.svg' %}" alt="Edit" width="13" />
+      <img src="{% static './assets/icons/edit.svg' %}" alt="{% trans 'Edit' %}" width="13" />
     </button>
   </div>
 </div>

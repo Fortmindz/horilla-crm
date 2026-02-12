@@ -22,13 +22,20 @@
                                 hx-trigger="load">
                             </div>
                         {% else %}
-                            <img src="{% static 'assets/img/not-found.svg' %}" alt="" class="w-60 m-auto mb-4 mt-5"/>
+                            <div class="flex justify-between items-center h-20">
+                            </div>
+                            <img src="{% static 'assets/img/not-found.svg' %}" alt="404" class="w-60 m-auto mb-4 mt-5"/>
                             <p class="text-sm text-center mb-3">{% trans 'No Forecast Type set. Set it from settings.' %}</p>
-                            <button onclick="window.location.href='/forecast/forecast-type-view/'" class="text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white] m-auto flex">{% trans "Go To Forecast Type" %}</button>
+                            {%  has_perm "forecast.add_forecastytpe"  as add_forcasttype %}
+                            {% if  add_forcasttype %}
+                                    <button onclick="window.location.href='/forecast/forecast-type-view/'" class="text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white] m-auto flex">
+                                        {% trans "Go To Forecast Type" %}
+                                    </button>
+                            {% endif %}
                         {% endif %}
                     {% else %}
                         <div class="flex justify-between items-center h-20"></div>
-                        <img src="{% static 'assets/img/activate-company.svg' %}" alt="" class="w-60 m-auto mb-4 mt-5"/>
+                        <img src="{% static 'assets/img/activate-company.svg' %}" alt="{% trans 'Activate company' %}" class="w-60 m-auto mb-4 mt-5"/>
                         <p class="text-sm text-center mb-3">{% trans "Please create or activate your company." %}</p>
                     {% endif %}
                 </div>
@@ -36,7 +43,7 @@
         </div>
     {% else %}
         <div class="flex-1 p-10 text-center">
-            <img src="{% static '/assets/img/permission.png' %}" alt="" width="300" class="flex justify-center m-auto">
+            <img src="{% static '/assets/img/permission.png' %}" alt="403" width="300" class="flex justify-center m-auto">
             <h2 class="error-title">{% trans "Permission Denied" %}</h2>
             <p class="error-description pb-3">{% trans "You do not have permission to view this page." %}</p>
         </div>

@@ -23,7 +23,7 @@
     <div class="p-5">
         <h2 class="text-lg font-semibold">{% trans "Sign Up" %}</h2>
         <p class="mb-5 text-sm text-color-600">
-            {% trans "Please sign up to access the Horilla CRM" %}
+            {{ SIGNUP_TAG_LINE }}
         </p>
         <div hx-get="{% url 'horilla_core:sign_up_user' %}" hx-trigger="load"></div>
     </div>

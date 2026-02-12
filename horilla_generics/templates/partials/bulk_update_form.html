@@ -4,7 +4,7 @@
 <div class="flex justify-between items-center p-5">
     <h2 class="text-md font-semibold">{% trans "Bulk Update Selected" %} {{ model_verbose_name }}</h2>
     <button onclick="closeModal()" class="text-gray-500 hover:text-gray-500 text-xl cursor-pointer">
-        <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
     </button>
 </div>
 
@@ -21,29 +21,29 @@
                         {% if field.type == 'text' or field.type == 'char' %}
                             <input type="text" id="bulkUpdateValue_{{ field.name }}" name="bulk_update_value_{{ field.name }}"
                                 class="h-[38px] text-color-600 p-2 placeholder:text-xs text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm transition focus:border-primary-600"
-                                placeholder="Enter {{ field.verbose_name|lower }}">
+                                placeholder="{% blocktrans with field=field.verbose_name|lower %}Enter {{ field }}{% endblocktrans %}">
                         {% elif field.type == 'number' or field.type == 'integer' %}
                             <input type="number" id="bulkUpdateValue_{{ field.name }}" name="bulk_update_value_{{ field.name }}"
                                 class="h-[38px] text-color-600 p-2 placeholder:text-xs text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm transition focus:border-primary-600"
-                                placeholder="Enter {{ field.verbose_name|lower }}">
+                                placeholder="{% blocktrans with field=field.verbose_name|lower %}Enter {{ field }}{% endblocktrans %}">
                         {% elif field.type == 'float' or field.type == 'decimal' %}
                             <input type="number" step="any" id="bulkUpdateValue_{{ field.name }}"
                                 name="bulk_update_value_{{ field.name }}"
                                 class="h-[38px] text-color-600 p-2 placeholder:text-xs text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm transition focus:border-primary-600"
-                                placeholder="Enter {{ field.verbose_name|lower }}">
+                                placeholder="{% blocktrans with field=field.verbose_name|lower %}Enter {{ field }}{% endblocktrans %}">
                         {% elif field.type == 'boolean' %}
                             <div class="flex w-full mb-3">
                                 <select id="bulkUpdateValue_{{ field.name }}" name="bulk_update_value_{{ field.name }}"
                                     class="js-example-basic-single headselect" style="width: 100%">
-                                    <option value="True">Yes</option>
-                                    <option value="False">No</option>
+                                    <option value="True">{% trans "Yes" %}</option>
+                                    <option value="False">{% trans "No" %}</option>
                                 </select>
                             </div>
                         {% elif field.type == 'choice' and field.choices %}
                             <div class="flex w-full mb-3">
                                 <select id="bulkUpdateValue_{{ field.name }}" name="bulk_update_value_{{ field.name }}"
                                     class="js-example-basic-single headselect" style="width: 100%">
-                                    <option value= "">Select {{ field.verbose_name|lower }}</option>
+                                    <option value= "">{% blocktrans with field=field.verbose_name|lower %}Select {{ field }}{% endblocktrans %}</option>
                                     {% for choice in field.choices %}
                                     <option value="{{ choice.value }}">{{ choice.label }}</option>
                                     {% endfor %}
@@ -68,7 +68,7 @@
                         {% else %}
                             <input type="text" id="bulkUpdateValue_{{ field.name }}" name="bulk_update_value_{{ field.name }}"
                                 class="h-[38px] text-color-600 p-2 placeholder:text-xs text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm transition focus:border-primary-600"
-                                placeholder="Enter {{ field.verbose_name|lower }}">
+                                placeholder="{% blocktrans with field=field.verbose_name|lower %}Enter {{ field }}{% endblocktrans %}">
                         {% endif %}
                     </div>
                 {% endfor %}

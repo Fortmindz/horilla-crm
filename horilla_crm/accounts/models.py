@@ -2,6 +2,7 @@
 Models for managing accounts in the CRM system, including account details,
 """
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.conf import settings
 from django.db import models
@@ -10,13 +11,12 @@ from django.dispatch import receiver
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
-from horilla.registry.feature import feature_enabled
+# First-party / Horilla imports
 from horilla_core.models import HorillaCoreModel
-from horilla_core.utils import compute_score
+from horilla_crm.leads.utils import compute_score
 from horilla_utils.middlewares import _thread_local
 
 
-@feature_enabled(all=True)
 class Account(HorillaCoreModel):
     """Model representing a business account."""
 

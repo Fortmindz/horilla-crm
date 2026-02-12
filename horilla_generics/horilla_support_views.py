@@ -1,40 +1,53 @@
+"""
+Support views for horilla_generics.
+
+This module provides various small helper views used by the horilla_generics app
+such as field editing, list management, pinning views, and select2 helpers.
+"""
+
+# Standard library
 import importlib
+import inspect
 import logging
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode, urlparse
 
+# Third-party
+import pytz
 from django.apps import apps
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import IntegrityError, models
 from django.db.models import CharField, Q, TextField
 from django.db.models.fields import Field
-from django.http import (
-    Http404,
-    HttpResponse,
-    HttpResponseRedirect,
-    JsonResponse,
-    QueryDict,
-)
-from django.shortcuts import get_object_or_404, render
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, QueryDict
+from django.shortcuts import render
 from django.template.loader import render_to_string
-from django.utils import translation
+from django.utils import timezone, translation
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_str
 from django.views import View
 from django.views.generic import FormView
 
-from horilla import settings
 from horilla.exceptions import HorillaHttp404
+
+# First-party (Horilla)
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required
-from horilla_core.models import KanbanGroupBy, ListColumnVisibility, PinnedView
+from horilla_core.models import (
+    HorillaContentType,
+    KanbanGroupBy,
+    ListColumnVisibility,
+    PinnedView,
+)
+from horilla_core.utils import filter_hidden_fields
 from horilla_generics.views import HorillaKanbanView
 
+# Local imports
 from .forms import ColumnSelectionForm, KanbanGroupByForm, SaveFilterListForm
 
 logger = logging.getLogger(__name__)
@@ -42,6 +55,7 @@ logger = logging.getLogger(__name__)
 
 @method_decorator(htmx_required, name="dispatch")
 class HorillaKanbanGroupByView(FormView):
+    """View for configuring kanban board group-by field settings."""
 
     template_name = "kanban_settings_form.html"
     form_class = KanbanGroupByForm
@@ -86,6 +100,8 @@ class HorillaKanbanGroupByView(FormView):
 
 @method_decorator(htmx_required, name="dispatch")
 class ListColumnSelectFormView(LoginRequiredMixin, FormView):
+    """View for selecting and adding columns to list views."""
+
     template_name = "add_column_to_list.html"
     form_class = ColumnSelectionForm
 
@@ -148,7 +164,10 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
 
         visible_fields = []
         all_fields = []
+        removed_custom_field_lists = []
         visibility = None
+        model = None
+
         if app_label and model_name:
             try:
                 model = apps.get_model(app_label=app_label, model_name=model_name)
@@ -171,6 +190,32 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                     else model_fields
                 )
 
+                # Filter out hidden fields based on field permissions
+                if all_fields:
+                    field_names = [
+                        f[1]
+                        for f in all_fields
+                        if isinstance(f, (list, tuple)) and len(f) >= 2
+                    ]
+
+                    # filter_hidden_fields now handles display methods internally
+                    visible_field_names_from_perms = filter_hidden_fields(
+                        self.request.user, model, field_names
+                    )
+
+                    # Filter all_fields - only keep fields that are visible
+                    filtered_all_fields = []
+                    for f in all_fields:
+                        field_name = (
+                            f[1]
+                            if isinstance(f, (list, tuple)) and len(f) >= 2
+                            else None
+                        )
+                        if field_name and field_name in visible_field_names_from_perms:
+                            filtered_all_fields.append(f)
+
+                    all_fields = filtered_all_fields
+
                 session_key = (
                     f"visible_fields_{app_label}_{model_name}_{path_context}_{url_name}"
                 )
@@ -183,31 +228,103 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                 ).first()
                 if visibility:
                     visible_fields = visibility.visible_fields
+                    # Filter out hidden fields from visible_fields as well
+                    if visible_fields:
+                        visible_field_names_list = [
+                            f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                            for f in visible_fields
+                        ]
+                        visible_field_names_from_perms = filter_hidden_fields(
+                            self.request.user, model, visible_field_names_list
+                        )
+                        visible_fields = [
+                            f
+                            for f in visible_fields
+                            if (
+                                f[1]
+                                if isinstance(f, (list, tuple)) and len(f) >= 2
+                                else f
+                            )
+                            in visible_field_names_from_perms
+                        ]
 
-                self.request.session[session_key] = [f[1] for f in visible_fields]
+                    # Get removed_custom_field_lists and filter hidden fields
+                    removed_custom_field_lists = visibility.removed_custom_fields or []
+                    # Filter out hidden fields from removed_custom_field_lists
+                    if removed_custom_field_lists:
+                        removed_field_names = [
+                            f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                            for f in removed_custom_field_lists
+                        ]
+                        visible_removed_field_names = filter_hidden_fields(
+                            self.request.user, model, removed_field_names
+                        )
+                        removed_custom_field_lists = [
+                            f
+                            for f in removed_custom_field_lists
+                            if (
+                                f[1]
+                                if isinstance(f, (list, tuple)) and len(f) >= 2
+                                else f
+                            )
+                            in visible_removed_field_names
+                        ]
+
+                self.request.session[session_key] = [
+                    f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                    for f in visible_fields
+                ]
                 self.request.session.modified = True
             except LookupError:
                 context["error"] = "Invalid model specified."
 
         context["visible_fields"] = visible_fields
-        removed_custom_field_lists = (
-            visibility.removed_custom_fields if visibility else []
-        )
-        visible_field_names = [f[1] for f in visible_fields]
+
+        visible_field_names = [
+            f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+            for f in visible_fields
+        ]
 
         related_field_parents = set()
         for _, field_name in visible_fields + removed_custom_field_lists:
-            if "__" in field_name:
-                parent_field = field_name.split("__")[0]
+            if isinstance(field_name, (list, tuple)) and len(field_name) >= 2:
+                field_name = field_name[1]
+            if "__" in str(field_name):
+                parent_field = str(field_name).split("__")[0]
                 related_field_parents.add(parent_field)
         exclude_fields = self.request.GET.get("exclude")
         exclude_fields_list = exclude_fields.split(",") if exclude_fields else []
         context["exclude_fields"] = exclude_fields
         sensitive_fields = ["id", "password"]
 
+        # Build available_fields - all_fields and removed_custom_field_lists are already filtered for hidden fields
+        # But do one final check to ensure no hidden fields slip through
+        combined_fields = all_fields + removed_custom_field_lists
+
+        if model and combined_fields:
+            # Final safety check: filter hidden fields one more time
+            combined_field_names = [
+                f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                for f in combined_fields
+            ]
+
+            # filter_hidden_fields now handles display methods internally
+            visible_combined_field_names = filter_hidden_fields(
+                self.request.user, model, combined_field_names
+            )
+
+            # Only include fields that passed the permission check
+            filtered_combined_fields = []
+            for f in combined_fields:
+                field_name = f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                if field_name in visible_combined_field_names:
+                    filtered_combined_fields.append(f)
+
+            combined_fields = filtered_combined_fields
+
         context["available_fields"] = [
             [verbose_name, field_name]
-            for verbose_name, field_name in all_fields + removed_custom_field_lists
+            for verbose_name, field_name in combined_fields
             if field_name not in visible_field_names
             and field_name not in related_field_parents
             and field_name not in exclude_fields_list
@@ -244,6 +361,12 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
             path_context = re.sub(r"_\d+$", "", path_context)
             try:
                 model = apps.get_model(app_label=app_label, model_name=model_name)
+
+                # Filter out hidden fields from field_names before processing
+                if field_names:
+                    field_names = filter_hidden_fields(
+                        self.request.user, model, field_names
+                    )
                 instance = model()
                 model_fields = [
                     [
@@ -262,6 +385,28 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                     if hasattr(instance, "columns")
                     else model_fields
                 )
+
+                # Filter out hidden fields based on field permissions
+                if all_fields:
+                    field_names_list = [
+                        f[1]
+                        for f in all_fields
+                        if isinstance(f, (list, tuple)) and len(f) >= 2
+                    ]
+                    visible_field_names_from_perms = filter_hidden_fields(
+                        self.request.user, model, field_names_list
+                    )
+                    all_fields = [
+                        f
+                        for f in all_fields
+                        if (
+                            f[1]
+                            if isinstance(f, (list, tuple)) and len(f) >= 2
+                            else None
+                        )
+                        in visible_field_names_from_perms
+                    ]
+
                 all_field_names = {item[1] for item in all_fields}
                 visibility = ListColumnVisibility.all_objects.filter(
                     user=self.request.user,
@@ -272,11 +417,33 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                 ).first()
                 custom_fields = []
                 if visibility:
-                    for display_name, field_name in visibility.visible_fields:
-                        if (
-                            field_name not in all_field_names
-                            and field_name not in model_fields
-                        ):
+                    visible_fields_from_db = visibility.visible_fields
+                    # Filter visible_fields from DB to exclude hidden fields
+                    if visible_fields_from_db:
+                        visible_field_names_list = [
+                            f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                            for f in visible_fields_from_db
+                        ]
+                        visible_field_names_from_perms = filter_hidden_fields(
+                            self.request.user, model, visible_field_names_list
+                        )
+                        visible_fields_from_db = [
+                            f
+                            for f in visible_fields_from_db
+                            if (
+                                f[1]
+                                if isinstance(f, (list, tuple)) and len(f) >= 2
+                                else f
+                            )
+                            in visible_field_names_from_perms
+                        ]
+
+                    for display_name, field_name in visible_fields_from_db:
+                        if field_name not in all_field_names and field_name not in [
+                            f[1]
+                            for f in model_fields
+                            if isinstance(f, (list, tuple)) and len(f) >= 2
+                        ]:
                             custom_fields.append([display_name, field_name])
                 all_fields = all_fields + custom_fields
                 verbose_name_map = {f[1]: f[0] for f in all_fields}
@@ -285,6 +452,22 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                 removed_custom_field_lists = (
                     visibility.removed_custom_fields if visibility else []
                 )
+                # Filter out hidden fields from removed_custom_field_lists
+                if removed_custom_field_lists:
+                    removed_field_names = [
+                        f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                        for f in removed_custom_field_lists
+                    ]
+                    visible_removed_field_names = filter_hidden_fields(
+                        self.request.user, model, removed_field_names
+                    )
+                    removed_custom_field_lists = [
+                        f
+                        for f in removed_custom_field_lists
+                        if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f)
+                        in visible_removed_field_names
+                    ]
+
                 for display_name, field_name in removed_custom_field_lists:
                     verbose_name_map[field_name] = display_name
 
@@ -372,9 +555,17 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
 
 @method_decorator(htmx_required, name="dispatch")
 class MoveFieldView(LoginRequiredMixin, View):
+    """View for reordering columns/fields in list views."""
+
     template_name = "add_column_to_list.html"
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle requests to move a column/field in a list's column order.
+
+        Expects query parameters indicating model, field, and action and returns
+        an updated column selection UI or appropriate error responses.
+        """
         app_label = request.GET.get("app_label")
         model_name = request.GET.get("model_name")
         url_name = request.GET.get("url_name")
@@ -408,6 +599,24 @@ class MoveFieldView(LoginRequiredMixin, View):
                 if hasattr(instance, "columns")
                 else model_fields
             )
+
+            # Filter out hidden fields based on field permissions
+            if all_fields:
+                field_names = [
+                    f[1]
+                    for f in all_fields
+                    if isinstance(f, (list, tuple)) and len(f) >= 2
+                ]
+                visible_field_names_from_perms = filter_hidden_fields(
+                    user, model, field_names
+                )
+                all_fields = [
+                    f
+                    for f in all_fields
+                    if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else None)
+                    in visible_field_names_from_perms
+                ]
+
             all_field_names = {item[1] for item in all_fields}
             visibility = ListColumnVisibility.all_objects.filter(
                 user=user,
@@ -418,11 +627,29 @@ class MoveFieldView(LoginRequiredMixin, View):
             ).first()
             custom_fields = []
             if visibility:
-                for display_name, field_name in visibility.visible_fields:
-                    if (
-                        field_name not in all_field_names
-                        and field_name not in model_fields
-                    ):
+                visible_fields_from_db = visibility.visible_fields
+                # Filter visible_fields from DB to exclude hidden fields
+                if visible_fields_from_db:
+                    visible_field_names_list = [
+                        f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                        for f in visible_fields_from_db
+                    ]
+                    visible_field_names_from_perms = filter_hidden_fields(
+                        user, model, visible_field_names_list
+                    )
+                    visible_fields_from_db = [
+                        f
+                        for f in visible_fields_from_db
+                        if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f)
+                        in visible_field_names_from_perms
+                    ]
+
+                for display_name, field_name in visible_fields_from_db:
+                    if field_name not in all_field_names and field_name not in [
+                        f[1]
+                        for f in model_fields
+                        if isinstance(f, (list, tuple)) and len(f) >= 2
+                    ]:
                         custom_fields.append([display_name, field_name])
             all_fields = all_fields + custom_fields
             session_key = (
@@ -438,6 +665,22 @@ class MoveFieldView(LoginRequiredMixin, View):
             removed_custom_field_lists = (
                 visibility.removed_custom_fields if visibility else []
             )
+
+            # Filter out hidden fields from removed_custom_field_lists
+            if removed_custom_field_lists:
+                removed_field_names = [
+                    f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                    for f in removed_custom_field_lists
+                ]
+                visible_removed_field_names = filter_hidden_fields(
+                    user, model, removed_field_names
+                )
+                removed_custom_field_lists = [
+                    f
+                    for f in removed_custom_field_lists
+                    if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f)
+                    in visible_removed_field_names
+                ]
 
             # Store original display name before modifying removed_custom_field_lists
             field_display_name = None
@@ -493,6 +736,12 @@ class MoveFieldView(LoginRequiredMixin, View):
             enhanced_verbose_name_map = verbose_name_map.copy()
             if field_display_name and action == "add":
                 enhanced_verbose_name_map[field] = field_display_name
+
+            # Filter visible_field_names to exclude hidden fields
+            if visible_field_names:
+                visible_field_names = filter_hidden_fields(
+                    user, model, visible_field_names
+                )
 
             visible_fields = [
                 [enhanced_verbose_name_map.get(f, f.replace("_", " ").title()), f]
@@ -567,6 +816,8 @@ class MoveFieldView(LoginRequiredMixin, View):
 
 @method_decorator(htmx_required, name="dispatch")
 class SaveFilterListView(FormView):
+    """View for saving filter configurations as reusable filter lists."""
+
     template_name = "save_filter_form.html"
     form_class = SaveFilterListForm
 
@@ -602,7 +853,7 @@ class SaveFilterListView(FormView):
             form.add_error(None, "At least one filter is required.")
             return self.form_invalid(form)
         try:
-            saved_filter_list, created = (
+            saved_filter_list, _created = (
                 self.request.user.saved_filter_lists.update_or_create(
                     name=list_name,
                     model_name=model_name,
@@ -633,7 +884,15 @@ class SaveFilterListView(FormView):
 
 @method_decorator(htmx_required, name="dispatch")
 class PinView(LoginRequiredMixin, View):
+    """View for pinning and unpinning filter lists for quick access."""
+
     def post(self, request):
+        """
+        Toggle a pinned view for the current user.
+
+        If `unpin` is provided, removes the pinned view; otherwise creates or
+        updates the pinned view and returns the updated navbar HTML.
+        """
         view_type = request.POST.get("view_type")
         model_name = request.POST.get("model_name")
         unpin = request.POST.get("unpin") or request.GET.get("unpin")
@@ -654,28 +913,37 @@ class PinView(LoginRequiredMixin, View):
                 }
                 html = render_to_string("navbar.html", context)
                 return HttpResponse(html)
-            else:
-                PinnedView.all_objects.update_or_create(
-                    user=request.user,
-                    model_name=model_name,
-                    defaults={"view_type": view_type},
-                )
-                context = {
-                    "request": request,
-                    "model_name": model_name,
-                    "view_type": view_type,
-                    "pinned_view": {"view_type": view_type},
-                    "all_view_types": True,
-                }
-                html = render_to_string("navbar.html", context)
-                return HttpResponse(html)
-        except Exception as e:
+
+            # else:
+            PinnedView.all_objects.update_or_create(
+                user=request.user,
+                model_name=model_name,
+                defaults={"view_type": view_type},
+            )
+            context = {
+                "request": request,
+                "model_name": model_name,
+                "view_type": view_type,
+                "pinned_view": {"view_type": view_type},
+                "all_view_types": True,
+            }
+            html = render_to_string("navbar.html", context)
+            return HttpResponse(html)
+        except Exception:
             return HttpResponse(status=500)
 
 
 @method_decorator(htmx_required, name="dispatch")
 class DeleteSavedListView(LoginRequiredMixin, View):
+    """View for deleting saved filter lists."""
+
     def post(self, request, *args, **kwargs):
+        """
+        Delete a user's saved filter list and update pinned views.
+
+        Validates the provided `saved_list_id`, deletes it if permitted, and
+        returns a redirect to `main_url` with an HTMX push header.
+        """
         saved_list_id = request.POST.get("saved_list_id")
         main_url = request.POST.get("main_url")
         model_name = request.POST.get("model_name")  # Fallback to a default URL
@@ -696,7 +964,7 @@ class DeleteSavedListView(LoginRequiredMixin, View):
             ).first()
             if pinned_view:
                 pinned_view.delete()
-                pass
+
             saved_list.delete()
             messages.success(
                 request, f"Saved list '{saved_list_name}' deleted successfully."
@@ -728,7 +996,7 @@ class EditFieldView(LoginRequiredMixin, View):
     template_name = "partials/edit_field.html"
     model = None
 
-    def get_field_info(self, field, obj):
+    def get_field_info(self, field, obj, user=None):
         """Get field information including type, choices, and current value"""
         field_info = {
             "name": field.name,
@@ -830,12 +1098,54 @@ class EditFieldView(LoginRequiredMixin, View):
         elif isinstance(field, models.DateTimeField):
             field_info["field_type"] = "datetime-local"
             if field_info["value"]:
-                field_info["value"] = field_info["value"].strftime("%Y-%m-%dT%H:%M")
+                dt_value = field_info["value"]
+
+                # Convert to user's timezone if available
+                if user and hasattr(user, "time_zone") and user.time_zone:
+                    try:
+                        user_tz = pytz.timezone(user.time_zone)
+                        # Make aware if naive
+                        if timezone.is_naive(dt_value):
+                            dt_value = timezone.make_aware(
+                                dt_value, timezone.get_default_timezone()
+                            )
+                        # Convert to user timezone
+                        dt_value = dt_value.astimezone(user_tz)
+                    except Exception:
+                        pass
+
+                # Format for datetime-local input (without timezone info)
+                field_info["value"] = dt_value.strftime("%Y-%m-%dT%H:%M")
+
+                # Display value with user's format
+                if user and hasattr(user, "date_time_format") and user.date_time_format:
+                    try:
+                        field_info["display_value"] = dt_value.strftime(
+                            user.date_time_format
+                        )
+                    except Exception:
+                        field_info["display_value"] = dt_value.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                else:
+                    field_info["display_value"] = dt_value.strftime("%Y-%m-%d %H:%M:%S")
 
         elif isinstance(field, models.DateField):
             field_info["field_type"] = "date"
             if field_info["value"]:
-                field_info["value"] = field_info["value"].strftime("%Y-%m-%d")
+                date_value = field_info["value"]
+                field_info["value"] = date_value.strftime("%Y-%m-%d")
+
+                # Display value with user's format
+                if user and hasattr(user, "date_format") and user.date_format:
+                    try:
+                        field_info["display_value"] = date_value.strftime(
+                            user.date_format
+                        )
+                    except Exception:
+                        field_info["display_value"] = date_value.strftime("%Y-%m-%d")
+                else:
+                    field_info["display_value"] = date_value.strftime("%Y-%m-%d")
 
         elif isinstance(field, models.TextField):
             field_info["field_type"] = "textarea"
@@ -843,6 +1153,12 @@ class EditFieldView(LoginRequiredMixin, View):
         return field_info
 
     def get(self, request, pk, field_name, app_label, model_name):
+        """
+        Render the editable field input for the given object and field.
+
+        Loads the object and field metadata and returns the rendered edit field
+        template or a JS snippet to trigger a page reload on error.
+        """
         pipeline_field = request.GET.get("pipeline_field", None)
         try:
             if not self.model:
@@ -855,7 +1171,7 @@ class EditFieldView(LoginRequiredMixin, View):
             messages.error(self.request, e)
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
-        field_info = self.get_field_info(field, obj)
+        field_info = self.get_field_info(field, obj, request.user)
 
         context = {
             "object_id": pk,
@@ -877,6 +1193,12 @@ class UpdateFieldView(LoginRequiredMixin, View):
     model = None
 
     def post(self, request, pk, field_name, app_label, model_name):
+        """
+        Update a single field on an object based on submitted POST data.
+
+        Handles many-to-many and simple field updates and returns an appropriate
+        HTTP response or error status on failure.
+        """
         try:
             if not self.model:
                 self.model = apps.get_model(app_label, model_name)
@@ -945,13 +1267,47 @@ class UpdateFieldView(LoginRequiredMixin, View):
                     elif isinstance(field, models.FloatField):
                         setattr(obj, field_name, float(value) if value else None)
 
-                    elif isinstance(field, (models.DateField, models.DateTimeField)):
+                    elif isinstance(field, models.DateTimeField):
                         if value:
                             try:
-                                if isinstance(field, models.DateTimeField):
-                                    parsed_value = datetime.fromisoformat(value)
-                                else:  # DateField
-                                    parsed_value = datetime.fromisoformat(value).date()
+                                # Parse the datetime from the input (in user's timezone)
+                                parsed_value = datetime.fromisoformat(value)
+
+                                # Get user's timezone
+                                user = request.user
+                                if hasattr(user, "time_zone") and user.time_zone:
+                                    try:
+                                        user_tz = pytz.timezone(user.time_zone)
+                                        # Make the parsed datetime aware in user's timezone
+                                        parsed_value = user_tz.localize(parsed_value)
+                                        # Convert to UTC or default timezone for storage
+                                        parsed_value = parsed_value.astimezone(
+                                            timezone.get_default_timezone()
+                                        )
+                                    except Exception:
+                                        # Fallback: make aware with default timezone
+                                        parsed_value = timezone.make_aware(
+                                            parsed_value,
+                                            timezone.get_default_timezone(),
+                                        )
+                                else:
+                                    # No user timezone, use default
+                                    parsed_value = timezone.make_aware(
+                                        parsed_value, timezone.get_default_timezone()
+                                    )
+
+                                setattr(obj, field_name, parsed_value)
+                            except ValueError as e:
+                                return HttpResponse(
+                                    f"Invalid datetime format: {value}", status=400
+                                )
+                        else:
+                            setattr(obj, field_name, None)
+
+                    elif isinstance(field, models.DateField):
+                        if value:
+                            try:
+                                parsed_value = datetime.fromisoformat(value).date()
                                 setattr(obj, field_name, parsed_value)
                             except ValueError:
                                 return HttpResponse(
@@ -970,7 +1326,7 @@ class UpdateFieldView(LoginRequiredMixin, View):
 
         # Get updated field info for display
         edit_view = EditFieldView()
-        field_info = edit_view.get_field_info(field, obj)
+        field_info = edit_view.get_field_info(field, obj, request.user)
 
         context = {
             "field_info": field_info,
@@ -991,6 +1347,12 @@ class CancelEditView(LoginRequiredMixin, View):
     model = None
 
     def get(self, request, pk, field_name, app_label, model_name):
+        """
+        Return the display mode for a field after canceling edit.
+
+        Re-uses EditFieldView.get_field_info to provide field rendering without
+        making changes to the object.
+        """
         try:
             if not self.model:
                 self.model = apps.get_model(app_label, model_name)
@@ -1034,17 +1396,28 @@ class KanbanLoadMoreView(LoginRequiredMixin, View):
                 messages.error(request, f"View class {model_name} not found")
                 return HttpResponse("<script>$('#reloadButton').click();")
 
+            # FIX: Properly initialize the view with model
             view = view_class()
             view.request = request
+            view.model = model
+            view.kwargs = kwargs  # Pass kwargs if needed
 
             return view.load_more_items(request)
         except Exception as e:
-            messages.error(request, f"Load More failed")
+            messages.error(request, f"Load More failed: {str(e)}")
             return HttpResponse("<script>$('#reloadButton').click();")
 
 
 class HorillaSelect2DataView(LoginRequiredMixin, View):
+    """View for providing JSON data to Select2 AJAX dropdowns with search and pagination."""
+
     def get(self, request, *args, **kwargs):
+        """
+        Return JSON data for select2 AJAX queries.
+
+        Expects `app_label` and `model_name` in `kwargs` and supports searching and
+        paging parameters for select2 results.
+        """
         if not request.headers.get("x-requested-with") == "XMLHttpRequest":
             return render(request, "error/405.html", status=405)
         app_label = kwargs.get("app_label")
@@ -1069,6 +1442,29 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
         per_page = 10
 
         queryset = None
+
+        # Try to get queryset from filter class first (NEW CODE)
+        filter_class = self._get_filter_class_from_request(
+            request, app_label, model_name
+        )
+        if filter_class and field_name:
+            try:
+                # Initialize filter with request to trigger OwnerFiltersetMixin
+                filterset = filter_class(request=request, data={})
+                if field_name in filterset.filters:
+                    filter_obj = filterset.filters[field_name]
+                    if hasattr(filter_obj, "field") and hasattr(
+                        filter_obj.field, "queryset"
+                    ):
+                        queryset = filter_obj.field.queryset
+                        logger.info(
+                            "[Select2] Using queryset from filter class for %s",
+                            field_name,
+                        )
+            except Exception as e:
+                logger.error("[Select2] Could not resolve queryset from filter: %s", e)
+
+        # Fallback to form class (EXISTING CODE)
         form_class = self._get_form_class_from_request(request)
         if form_class and field_name:
             try:
@@ -1076,25 +1472,22 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
                 if field_name in form.fields:
                     queryset = form.fields[field_name].queryset
             except Exception as e:
-                logger.error(f"[Select2] Could not resolve queryset from form: {e}")
+                logger.error("[Select2] Could not resolve queryset from form: %s", e)
 
         if queryset is None:
             queryset = model.objects.all()
 
-        # owner filtration
-        user_model = get_user_model()
-
-        if model is user_model:
-            queryset = self._apply_owner_filter(request.user, queryset)
-        elif hasattr(model, "OWNER_FIELDS") and model.OWNER_FIELDS:
-            allowed_user_ids = self._get_allowed_user_ids(request.user)
-            if allowed_user_ids:
-                query = Q()
-                for owner_field in model.OWNER_FIELDS:
-                    query |= Q(**{f"{owner_field}__id__in": allowed_user_ids})
-                queryset = queryset.filter(query)
-            else:
-                queryset = queryset.none()
+        # Apply company filtering if model has company field and active_company is set
+        company = getattr(request, "active_company", None)
+        if company:
+            # Check if the model has a company field
+            try:
+                model._meta.get_field("company")
+                # Filter queryset by company
+                queryset = queryset.filter(company=company)
+            except Exception:
+                # Model doesn't have a company field, skip filtering
+                pass
 
         if dependency_value and dependency_model and dependency_field:
             try:
@@ -1131,8 +1524,8 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
                     return JsonResponse(
                         {"results": results, "pagination": {"more": False}}
                     )
-                else:
-                    return JsonResponse({"results": [], "pagination": {"more": False}})
+                # else:
+                return JsonResponse({"results": [], "pagination": {"more": False}})
             except Exception:
                 return JsonResponse({"results": [], "pagination": {"more": False}})
 
@@ -1164,6 +1557,50 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
             {"results": results, "pagination": {"more": page_obj.has_next()}}
         )
 
+    def _get_filter_class_from_request(self, request, app_label, model_name):
+        """
+        Get the filter class for the model.
+
+        Discovery order:
+        1. Explicit filter_class parameter from request
+        2. Search all FilterSet classes in filters module and match by Meta.model
+        """
+        filter_path = request.GET.get("filter_class")
+        if filter_path:
+            try:
+                module_path, class_name = filter_path.rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                return getattr(module, class_name)
+            except Exception as e:
+                logger.error(
+                    "[Select2] Could not import filter_class %s: %s", filter_path, e
+                )
+
+        # Search all FilterSet classes in the module and match by Meta.model
+        try:
+            filters_module = importlib.import_module(f"{app_label}.filters")
+            import django_filters
+
+            model = apps.get_model(app_label=app_label, model_name=model_name)
+
+            for name, obj in inspect.getmembers(filters_module, inspect.isclass):
+                # Check if it's a FilterSet subclass (but not FilterSet itself)
+                if (
+                    issubclass(obj, django_filters.FilterSet)
+                    and obj is not django_filters.FilterSet
+                ):
+                    # Check if Meta.model matches the requested model
+                    if hasattr(obj, "Meta") and hasattr(obj.Meta, "model"):
+                        if obj.Meta.model == model:
+                            logger.info(
+                                "[Select2] Found filter class by model match: %s", name
+                            )
+                            return obj
+        except Exception as e:
+            logger.debug("[Select2] Could not auto-discover filter class: %s", e)
+
+        return None
+
     def _get_form_class_from_request(self, request):
         """
         Optional: resolve which form is being used.
@@ -1180,53 +1617,20 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
             module = importlib.import_module(module_path)
             return getattr(module, class_name)
         except Exception as e:
-            logger.error(f"[Select2] Could not import form_class {form_path}: {e}")
+            logger.error("[Select2] Could not import form_class %s: %s", form_path, e)
             return None
-
-    # owner filtration
-    def _get_allowed_user_ids(self, user):
-        """
-        Get list of allowed user IDs (self + subordinates) for filtering.
-        """
-        User = get_user_model()
-        if not user or not user.is_authenticated:
-            return []
-
-        if user.is_superuser:
-            return list(User.objects.values_list("id", flat=True))
-
-        user_role = getattr(user, "role", None)
-        if not user_role:
-            return [user.id]
-
-        def get_subordinate_roles(role):
-            sub_roles = role.subroles.all()
-            all_sub_roles = []
-            for sub_role in sub_roles:
-                all_sub_roles.append(sub_role)
-                all_sub_roles.extend(get_subordinate_roles(sub_role))
-            return all_sub_roles
-
-        subordinate_roles = get_subordinate_roles(user_role)
-        subordinate_users = User.objects.filter(role__in=subordinate_roles).distinct()
-
-        allowed_user_ids = [user.id] + list(
-            subordinate_users.values_list("id", flat=True)
-        )
-        return allowed_user_ids
-
-    # owner filtration
-    def _apply_owner_filter(self, user, queryset):
-        """
-        Filter User queryset based on user permissions.
-        """
-        allowed_user_ids = self._get_allowed_user_ids(user)
-        return queryset.filter(id__in=allowed_user_ids)
 
 
 @method_decorator(htmx_required, name="dispatch")
 class RemoveConditionRowView(LoginRequiredMixin, View):
+    """View for removing condition rows from multi-condition filter forms."""
+
     def delete(self, request, row_id, *args, **kwargs):
+        """
+        Remove a condition row from a multi-condition form via HTMX.
+
+        Returns an empty 200 response on success to indicate the row was removed.
+        """
 
         return HttpResponse("")
 
@@ -1236,6 +1640,12 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
     """HTMX view to return dynamic value field widget based on selected field"""
 
     def get(self, request):
+        """
+        Return HTML for the input widget corresponding to the chosen field.
+
+        Accepts query parameters to determine the row and field and returns the
+        rendered widget HTML to be injected by HTMX.
+        """
         row_id = request.GET.get("row_id")
         field_name = request.GET.get(f"field_{row_id}", request.GET.get("field", ""))
         model_name = request.GET.get("model_name", "")
@@ -1275,51 +1685,63 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
             # Get the field from the model
             try:
                 model_field = model._meta.get_field(field_name)
-            except:
+            except Exception:
                 return self._render_text_input(row_id, existing_value)
 
             # Determine widget type based on field type
             if isinstance(model_field, models.ForeignKey):
                 related_model = model_field.related_model
-                choices = [(obj.pk, str(obj)) for obj in related_model.objects.all()]
+                # Get all objects for the select, but ensure existing_value is included
+                queryset = related_model.objects.all()
+                choices = [(obj.pk, str(obj)) for obj in queryset]
+                # If existing_value is provided but not in choices, try to find the object
+                if existing_value and existing_value not in [
+                    str(c[0]) for c in choices
+                ]:
+                    try:
+                        existing_obj = related_model.objects.get(pk=existing_value)
+                        # Add it to choices if not already there
+                        if (existing_obj.pk, str(existing_obj)) not in choices:
+                            choices.insert(
+                                1, (existing_obj.pk, str(existing_obj))
+                            )  # Insert after empty option
+                    except (related_model.DoesNotExist, ValueError):
+                        pass
                 return self._render_select_input(choices, row_id, existing_value)
-            elif hasattr(model_field, "choices") and model_field.choices:
+            if hasattr(model_field, "choices") and model_field.choices:
                 return self._render_select_input(
                     model_field.choices, row_id, existing_value
                 )
-            elif isinstance(model_field, models.BooleanField):
+            if isinstance(model_field, models.BooleanField):
                 return self._render_boolean_input(row_id, existing_value)
-            elif isinstance(model_field, models.DateField):
+            if isinstance(model_field, models.DateField):
                 return self._render_date_input(row_id, existing_value)
-            elif isinstance(model_field, models.DateTimeField):
+            if isinstance(model_field, models.DateTimeField):
                 return self._render_datetime_input(row_id, existing_value)
-            elif isinstance(model_field, models.TimeField):
+            if isinstance(model_field, models.TimeField):
                 return self._render_time_input(row_id, existing_value)
-            elif isinstance(model_field, models.IntegerField):
+            if isinstance(model_field, models.IntegerField):
                 return self._render_number_input(row_id, existing_value)
-            elif isinstance(model_field, models.DecimalField):
+            if isinstance(model_field, models.DecimalField):
                 return self._render_number_input(row_id, existing_value, step="0.01")
-            elif isinstance(model_field, models.EmailField):
+            if isinstance(model_field, models.EmailField):
                 return self._render_email_input(row_id, existing_value)
-            elif isinstance(model_field, models.URLField):
+            if isinstance(model_field, models.URLField):
                 return self._render_url_input(row_id, existing_value)
-            elif isinstance(model_field, models.TextField):
+            if isinstance(model_field, models.TextField):
                 return self._render_textarea_input(row_id, existing_value)
-            else:
-                return self._render_text_input(row_id, existing_value)
+            # else:
+            return self._render_text_input(row_id, existing_value)
 
         except Exception as e:
-            logger.error(f"Error generating value widget: {str(e)}")
+            logger.error("Error generating value widget: %s", str(e))
             return self._render_text_input(row_id, existing_value)
 
     def _render_text_input(self, row_id, existing_value=""):
         return f"""
-        <input type="text"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
-               placeholder="Enter Value">
+        <input type="text" name="value_{row_id}"  id="id_value_{row_id}" value="{existing_value}" placeholder="Enter Value"
+            class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
+        >
         """
 
     def _render_select_input(self, choices, row_id, existing_value=""):
@@ -1330,13 +1752,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                 f'<option value="{choice_value}" {selected}>{choice_label}</option>'
             )
 
-        return f"""
-        <select name="value_{row_id}"
-                id="id_value_{row_id}"
-                class="js-example-basic-single headselect">
-            {options}
-        </select>
-        """
+        return f"""<select name="value_{row_id}" id="id_value_{row_id}" class="js-example-basic-single headselect">{options}</select>"""
 
     def _render_boolean_input(self, row_id, existing_value=""):
         true_selected = "selected" if existing_value == "True" else ""
@@ -1358,7 +1774,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                name="value_{row_id}"
                id="id_value_{row_id}"
                value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
         """
 
     def _render_datetime_input(self, row_id, existing_value=""):
@@ -1367,7 +1783,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                name="value_{row_id}"
                id="id_value_{row_id}"
                value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
         """
 
     def _render_time_input(self, row_id, existing_value=""):
@@ -1376,7 +1792,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                name="value_{row_id}"
                id="id_value_{row_id}"
                value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
         """
 
     def _render_number_input(self, row_id, existing_value="", step="1"):
@@ -1386,7 +1802,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                id="id_value_{row_id}"
                value="{existing_value}"
                step="{step}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
                placeholder="Enter Number">
         """
 
@@ -1396,7 +1812,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                name="value_{row_id}"
                id="id_value_{row_id}"
                value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
                placeholder="Enter Email">
         """
 
@@ -1406,7 +1822,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                name="value_{row_id}"
                id="id_value_{row_id}"
                value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
+               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
                placeholder="Enter URL">
         """
 
@@ -1418,3 +1834,131 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                   class="text-color-600 p-2 w-full border border-dark-50 rounded-md focus-visible:outline-0 text-sm transition focus:border-primary-600"
                   placeholder="Enter Value">{existing_value}</textarea>
         """
+
+
+@method_decorator(htmx_required, name="dispatch")
+class GetModelFieldChoicesView(LoginRequiredMixin, View):
+    """
+    Generic HTMX view to return field choices for a selected model/content_type.
+    Returns all fields by default, but can be filtered via query parameters.
+    """
+
+    def get(self, request, *args, **kwargs):
+        """Return a select element with field choices for the selected content type"""
+
+        # Get parameters - support both 'content_type' and 'model' parameter names
+        content_type_id = request.GET.get("content_type") or request.GET.get("model")
+        row_id = request.GET.get("row_id", "0")
+
+        # Get field name pattern - support different patterns
+        field_name_pattern = request.GET.get("field_name_pattern", "field_{row_id}")
+        field_name = field_name_pattern.format(row_id=row_id)
+        field_id = f"id_{field_name}"
+
+        if not content_type_id:
+            return HttpResponse(
+                f'<select name="{field_name}" id="{field_id}" '
+                f'class="js-example-basic-single headselect">'
+                f'<option value="">---------</option></select>'
+            )
+
+        try:
+            content_type = HorillaContentType.objects.get(pk=content_type_id)
+            model_name = content_type.model
+        except HorillaContentType.DoesNotExist:
+            return HttpResponse(
+                f'<select name="{field_name}" id="{field_id}" '
+                f'class="js-example-basic-single headselect">'
+                f'<option value="">---------</option></select>'
+            )
+
+        # Get the model class
+        model_class = None
+        for app_config in apps.get_app_configs():
+            try:
+                model_class = apps.get_model(app_config.label, model_name.lower())
+                break
+            except (LookupError, ValueError):
+                continue
+
+        if not model_class:
+            return HttpResponse(
+                f'<select name="{field_name}" id="{field_id}" '
+                f'class="js-example-basic-single headselect">'
+                f'<option value="">---------</option></select>'
+            )
+
+        # Get filter parameters
+        field_types = (
+            request.GET.get("field_types", "").split(",")
+            if request.GET.get("field_types")
+            else []
+        )
+        exclude_fields = (
+            request.GET.get("exclude_fields", "").split(",")
+            if request.GET.get("exclude_fields")
+            else []
+        )
+        exclude_choice_fields = (
+            request.GET.get("exclude_choice_fields", "false").lower() == "true"
+        )
+        only_text_fields = (
+            request.GET.get("only_text_fields", "false").lower() == "true"
+        )
+
+        # Default exclude fields
+        default_exclude = [
+            "id",
+            "pk",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "company",
+            "additional_info",
+        ]
+        exclude_fields = list(set(exclude_fields + default_exclude))
+
+        # Build field choices
+        # Use _meta.fields and _meta.many_to_many to get only forward fields (not reverse relations)
+        # This excludes one-to-many and many-to-many reverse relationships
+        field_choices = [("", "---------")]
+        all_forward_fields = list(model_class._meta.fields) + list(
+            model_class._meta.many_to_many
+        )
+
+        for field in all_forward_fields:
+            if field.name in exclude_fields:
+                continue
+
+            # Filter by field types if specified
+            if field_types:
+                field_type_name = field.__class__.__name__
+                if field_type_name not in field_types:
+                    continue
+
+            # If only_text_fields is true, only include CharField, TextField, EmailField
+            if only_text_fields:
+                if not isinstance(
+                    field, (models.CharField, models.TextField, models.EmailField)
+                ):
+                    continue
+
+            # Skip fields with choices if specified
+            if exclude_choice_fields:
+                if hasattr(field, "choices") and field.choices:
+                    continue
+
+            verbose_name = (
+                getattr(field, "verbose_name", None)
+                or field.name.replace("_", " ").title()
+            )
+            field_choices.append((field.name, str(verbose_name).title()))
+
+        # Build select HTML
+        select_html = f'<select name="{field_name}" id="{field_id}" class="js-example-basic-single headselect">'
+        for value, label in field_choices:
+            select_html += f'<option value="{value}">{label}</option>'
+        select_html += "</select>"
+
+        return HttpResponse(select_html)

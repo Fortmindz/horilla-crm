@@ -215,23 +215,21 @@
 
   {% elif row.type == 'boolean' %}
   <!-- Boolean field uses radio buttons -->
-  <div class="flex gap-4">
-    <label class="inline-flex items-center">
-      <input
-        type="radio"
-        name="value[{{ row_id }}]"
+  <div class="radio-group flex gap-4 mt-2">
+    <label class="flex items-center gap-2">
+      <input hidden type="radio" name="value"
         value="true"
-        class="mr-2"
+        {% if row.value == 'true' or row.value == 'True' %}checked{% endif %}
       />
+      <span class="custom-radio"></span>
       <span>True</span>
     </label>
-    <label class="inline-flex items-center">
-      <input
-        type="radio"
-        name="value[{{ row_id }}]"
+    <label class="flex items-center gap-2">
+      <input hidden type="radio" name="value"
         value="false"
-        class="mr-2"
+        {% if row.value == 'false' or row.value == 'False' %}checked{% endif %}
       />
+      <span class="custom-radio"></span>
       <span>False</span>
     </label>
   </div>
@@ -247,7 +245,12 @@
 
   {% elif row.type == 'foreignkey' %}
   <!-- Choice field uses dropdown -->
-  <select name="value" class="select2-pagination w-full" data-url="{% url 'horilla_generics:model_select2' row.app_label row.model %}">
+  <select name="value"
+          class="select2-pagination w-full"
+          data-url="{% url 'horilla_generics:model_select2' row.app_label row.model %}"
+          data-field-name="{{ row.field }}"
+          {% if filter_class_path %}data-filter-class="{{ filter_class_path }}"{% endif %}
+          {% if parent_model_path %}data-parent-model="{{ parent_model_path }}"{% endif %}>
     <option value="">{%  trans 'Select an option' %}</option>
     {% for choice in row.choices %}
     <option value="{{ choice.value }}"{% if row.value == choice.value %}selected {% endif %}>{{ choice.label }}</option>
@@ -349,7 +352,7 @@
         hx-push-url="false"
         hx-swap="outerHTML"
       >
-        <img src="{% static 'assets/icons/close1.svg' %}" alt="Remove filter" />
+        <img src="{% static 'assets/icons/close1.svg' %}" alt="{% trans 'Remove filter' %}" />
       </button>
       {% endif %}
     </div>

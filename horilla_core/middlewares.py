@@ -6,14 +6,23 @@ This module provides middleware for:
 - Handling custom Horilla exceptions.
 """
 
-from django.conf import settings
+# Standard library imports
+import logging
+
+# Django imports
 from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect, render
+from django.urls import Resolver404, resolve
 from django.utils import timezone
+from django.utils.deprecation import MiddlewareMixin
 
+# Local application imports
 from horilla.exceptions import HorillaHttp404
+from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
 
 from .models import Company
+
+logger = logging.getLogger(__name__)
 
 
 class ActiveCompanyMiddleware:
@@ -89,12 +98,15 @@ class Horilla405Middleware:
         response = self.get_response(request)
 
         if isinstance(response, HttpResponseNotAllowed):
+            """Render a custom 405 error page."""
             return render(request, "error/405.html", status=405)
 
         return response
 
 
 class SVGSecurityMiddleware:
+    """Middleware to add security headers for SVG files."""
+
     def __init__(self, get_response):
         self.get_response = get_response
 
@@ -167,3 +179,112 @@ class HTMXRedirectMiddleware:
             return new_response
 
         return response
+
+
+class EnsureSectionMiddleware(MiddlewareMixin):
+    """Middleware to ensure 'section' parameter is present and valid in URLs."""
+
+    def process_request(self, request):
+        """Check and enforce 'section' parameter in GET requests."""
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return None
+
+        # Skip for static files, admin, etc.
+        if request.path.startswith("/static/") or request.path.startswith("/admin/"):
+            return None
+
+        # Skip all POST requests (API endpoints, form submissions, etc.)
+        if request.method == "POST":
+            return None
+
+        # Check if this is an HTMX request
+        is_htmx = request.headers.get("HX-Request") == "true"
+
+        # Check if this is an AJAX/API request
+        is_ajax = (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or request.content_type == "application/json"
+            or "application/json" in request.headers.get("Accept", "")
+        )
+
+        # If it's HTMX request or AJAX request, skip all section validation/modification
+        # (whether hx-push-url is true or false, we don't modify sections for HTMX/AJAX)
+        if is_htmx or is_ajax:
+            return None
+
+        # Get current section value
+        current_section = request.GET.get("section", "").strip()
+
+        # Check if section parameter is missing or empty
+        if not current_section:
+            section = self.get_section_from_path(request.path)
+
+            # Only redirect if a valid section was found
+            if section:
+                query_params = request.GET.copy()
+                query_params["section"] = section
+
+                new_url = f"{request.path}?{query_params.urlencode()}"
+                return redirect(new_url)
+        else:
+            # Validate if the current section exists in menu_registry
+            valid_sections = self.get_valid_sections()
+
+            # If current section is invalid, try to get the correct one
+            if current_section not in valid_sections:
+                section = self.get_section_from_path(request.path)
+
+                if section:
+                    query_params = request.GET.copy()
+                    query_params["section"] = section
+
+                    new_url = f"{request.path}?{query_params.urlencode()}"
+                    return redirect(new_url)
+
+        return None
+
+    def get_valid_sections(self):
+        """Get all valid section values from menu_registry"""
+        valid_sections = set()
+        try:
+            for menu_cls in menu_registry:
+                section = getattr(menu_cls, "section", None)
+                if section:
+                    valid_sections.add(section)
+        except Exception as e:
+            logger.warning("Error getting valid sections: %s", e)
+
+        return valid_sections
+
+    def get_section_from_path(self, path):
+        """Extract section by matching path with menu_registry URLs"""
+        try:
+            # First, try to match by URL
+            for menu_cls in menu_registry:
+                menu_url = str(getattr(menu_cls, "url", ""))
+
+                # Check if the current path matches the menu URL
+                if menu_url and path.startswith(menu_url):
+                    section = getattr(menu_cls, "section", None)
+                    if section:
+                        return section
+
+            # If no match found by URL, try to resolve and match by app_label
+            try:
+                resolved = resolve(path)
+                if hasattr(resolved, "app_name") and resolved.app_name:
+                    for menu_cls in menu_registry:
+                        if hasattr(menu_cls, "app_label"):
+                            cls_app_label = getattr(menu_cls, "app_label", None)
+                            if cls_app_label == resolved.app_name:
+                                section = getattr(menu_cls, "section", None)
+                                if section:
+                                    return section
+            except Resolver404:
+                pass
+
+        except Exception as e:
+            logger.warning("Error in get_section_from_path: %s", e)
+
+        return None

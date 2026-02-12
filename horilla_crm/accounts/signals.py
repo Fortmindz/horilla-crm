@@ -1,7 +1,9 @@
-from django.db.models.signals import post_save, pre_save
+"""Signal handlers for accounts module."""
+
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from horilla_core.models import HorillaUser
+from horilla.auth.models import User
 from horilla_core.signals import company_currency_changed
 from horilla_crm.accounts.models import Account
 from horilla_keys.models import ShortcutKey
@@ -9,21 +11,23 @@ from horilla_keys.models import ShortcutKey
 # Define your accounts signals here
 
 
-@receiver(post_save, sender=HorillaUser)
+@receiver(post_save, sender=User)
 def create_account_shortcuts(sender, instance, created, **kwargs):
+    """Create default keyboard shortcuts for accounts when a user is created."""
     predefined = [
         {"page": "/accounts/accounts-view/", "key": "A", "command": "alt"},
     ]
 
     for item in predefined:
-        if not ShortcutKey.objects.filter(user=instance, page=item["page"]).exists():
-            ShortcutKey.objects.create(
-                user=instance,
-                page=item["page"],
-                key=item["key"],
-                command=item["command"],
-                company=instance.company,
-            )
+        ShortcutKey.all_objects.get_or_create(
+            user=instance,
+            key=item["key"],
+            command=item["command"],
+            defaults={
+                "page": item["page"],
+                "company": instance.company,
+            },
+        )
 
 
 @receiver(company_currency_changed)

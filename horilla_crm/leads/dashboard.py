@@ -1,9 +1,15 @@
+"""Dashboard utilities for leads module."""
+
+# Third-party imports (Django)
 from django.db.models import Count
 from django.utils.http import urlencode
 
+# First-party / Horilla imports
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla_dashboard.utils import DefaultDashboardGenerator
 from horilla_utils.methods import get_section_info_for_model
 
+# Local application imports
 from .models import Lead
 
 
@@ -125,11 +131,10 @@ def lead_table_fields(model_class):
         for f in model_class._meta.fields:
             if len(fields) >= 4:
                 break
-            if f.name not in [x["name"] for x in fields] and f.get_internal_type() in [
-                "CharField",
-                "TextField",
-                "EmailField",
-            ]:
+            if (
+                f.name not in [x["name"] for x in fields]
+                and f.get_internal_type() in TABLE_FALLBACK_FIELD_TYPES
+            ):
                 fields.append(
                     {
                         "name": f.name,
@@ -141,20 +146,7 @@ def lead_table_fields(model_class):
 
 
 def lead_table_func(generator, model_info):
-    filter_kwargs = (
-        {"is_convert": True} if hasattr(model_info["model"], "is_convert") else {}
-    )
-    return generator.build_table_context(
-        model_info=model_info,
-        title="Won Leads",
-        filter_kwargs=filter_kwargs,
-        no_record_msg="No won leads found.",
-        view_id="leads_dashboard_list",
-        table_fields=lead_table_fields(model_info["model"]),
-    )
-
-
-def lead_table_func(generator, model_info):
+    """Generate table context for won leads."""
     filter_kwargs = (
         {"is_convert": True} if hasattr(model_info["model"], "is_convert") else {}
     )
@@ -163,6 +155,7 @@ def lead_table_func(generator, model_info):
         model_info=model_info,
         title="Won Leads",
         filter_kwargs=filter_kwargs,
+        no_found_img="assets/img/not-found-list.svg",
         no_record_msg="No won leads found.",
         view_id="leads_dashboard_list",
     )
@@ -174,8 +167,9 @@ DefaultDashboardGenerator.extra_models.append(
         "name": "Leads",
         "icon": "fa-user-plus",
         "color": "blue",
-        "chart_func": create_lead_charts,
-        "table_func": lead_table_func,
+        "include_kpi": True,  # Set to True to show KPI (optional, you can remove this if you don't want KPI)
+        "chart_func": create_lead_charts,  # Shows chart
+        "table_func": lead_table_func,  # Shows table
         "table_fields_func": lead_table_fields,
     }
 )

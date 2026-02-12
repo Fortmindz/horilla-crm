@@ -6,15 +6,25 @@ Usage:
     python manage.py build_app app_name
 """
 
+# Standard library imports
 import os
 import re
 import shutil
 
+# Third-party imports (Django)
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
+    """
+    Django management command to create a Horilla app with extended structure.
+
+    This command creates a Django app with additional files and directories
+    (templates, static files, locale folders, etc.) and automatically configures
+    URLs and settings for the Horilla framework.
+    """
+
     help = "Creates a Django app with additional files and directories and auto-configures it"
 
     def add_arguments(self, parser):
@@ -28,11 +38,29 @@ class Command(BaseCommand):
             dest="project_name",
             help="Project name for URL configuration (default: derived from settings)",
         )
+        parser.add_argument(
+            "--languages",
+            "-l",
+            dest="languages",
+            nargs="+",
+            default=None,
+            help="Language codes to create locale folders for (default: all languages from settings.LANGUAGES)",
+        )
 
     def handle(self, *args, **options):
         app_name = options["app_name"]
         directory = options["directory"]
         project_name = "horilla"
+        languages = options["languages"]
+
+        # If no languages specified, get all languages from settings.LANGUAGES
+        if languages is None:
+            languages = [lang_code for lang_code, lang_name in settings.LANGUAGES]
+            self.stdout.write(
+                self.style.WARNING(
+                    f"No languages specified. Using all {len(languages)} languages from settings.LANGUAGES"
+                )
+            )
 
         # If no project name specified, try to get it from settings module
         if not project_name:
@@ -68,6 +96,9 @@ class Command(BaseCommand):
             # Create static directory
             self._create_static_directory(target_dir, app_name)
 
+            # Create locale directory with language folders
+            self._create_locale_directory(target_dir, languages)
+
         except Exception as e:
             self.stderr.write(f"Error creating app: {str(e)}")
             # Clean up if there was an error
@@ -86,20 +117,28 @@ class Command(BaseCommand):
         """Create the basic Django app structure"""
 
         # __init__.py
-        with open(os.path.join(target_dir, "__init__.py"), "w") as f:
-            f.write(f'"""\nPackage initialization for the {app_name} app\n"""\n\n')
+        with open(os.path.join(target_dir, "__init__.py"), "w", encoding="utf-8") as f:
+            f.write(f'"""\nPackage initialization for the {app_name} app\n"""\n')
 
         # apps.py
-        with open(os.path.join(target_dir, "apps.py"), "w") as f:
+        # Convert app_name to proper class name (e.g., 'my_app' -> 'MyAppConfig')
+        class_name = (
+            "".join(word.capitalize() for word in app_name.split("_")) + "Config"
+        )
+
+        # Convert app_name to verbose name with spaces (e.g., 'my_app' -> 'My App')
+        verbose_name = " ".join(word.capitalize() for word in app_name.split("_"))
+
+        with open(os.path.join(target_dir, "apps.py"), "w", encoding="utf-8") as f:
             f.write(
                 f'"""\nAppConfig for the {app_name} app\n"""\n\n'
                 "from django.apps import AppConfig\n"
-                "from django.utils.translation import gettext_lazy as _\n\n"
-                f"class {app_name.capitalize()}Config(AppConfig):\n"
-                f'    """App configuration class for {app_name}."""\n'
-                "    default_auto_field = 'django.db.models.BigAutoField'\n"
-                f"    name = '{app_name}'\n"
-                f"    verbose_name = _('{app_name.title()}')\n\n"
+                "from django.utils.translation import gettext_lazy as _\n\n\n"
+                f"class {class_name}(AppConfig):\n"
+                f'    """App configuration class for {app_name}."""\n\n'
+                '    default_auto_field = "django.db.models.BigAutoField"\n'
+                f'    name = "{app_name}"\n'
+                f'    verbose_name = _("{verbose_name}")\n\n'
                 "    def ready(self):\n"
                 '        """Run app initialization logic (executed after Django setup).\n'
                 "        Used to auto-register URLs and connect signals if required.\n"
@@ -113,51 +152,49 @@ class Command(BaseCommand):
                 f"                path('{app_name}/', include('{app_name}.urls')),\n"
                 "            )\n"
                 "        except Exception as e:\n"
-                "            import logging\n"
-                f'            logging.warning(f"{app_name.capitalize()}Config.ready failed: {{e}}")\n'
-                "            pass\n\n"
+                "            import logging\n\n"
+                f'            logging.warning("{class_name}.ready failed: %s", e)\n'
                 "        super().ready()\n"
             )
 
         # models.py
-        with open(os.path.join(target_dir, "models.py"), "w") as f:
+        with open(os.path.join(target_dir, "models.py"), "w", encoding="utf-8") as f:
             f.write(
                 f'"""\nModels for the {app_name} app\n"""\n\n'
-                "from django.db import models\n\n"
                 f"# Create your {app_name} models here.\n"
             )
 
         # views.py
-        with open(os.path.join(target_dir, "views.py"), "w") as f:
-            f.write(
-                f'"""\nViews for the {app_name} app\n"""\n\n'
-                "from django.shortcuts import render\n"
-            )
+        with open(os.path.join(target_dir, "views.py"), "w", encoding="utf-8") as f:
+            f.write(f'"""\nViews for the {app_name} app\n"""\n')
 
         # admin.py
-        with open(os.path.join(target_dir, "admin.py"), "w") as f:
+        with open(os.path.join(target_dir, "admin.py"), "w", encoding="utf-8") as f:
             f.write(
                 f'"""\nAdmin registration for the {app_name} app\n"""\n\n'
-                "from django.contrib import admin\n\n"
                 f"# Register your {app_name} models here.\n"
             )
 
         # tests.py
-        with open(os.path.join(target_dir, "tests.py"), "w") as f:
+        with open(os.path.join(target_dir, "tests.py"), "w", encoding="utf-8") as f:
             f.write(
                 f'"""\nTests for the {app_name} app\n"""\n\n'
-                "from django.test import TestCase\n\n"
                 f"# Create your {app_name} tests here.\n"
             )
 
         # migrations directory
         migrations_dir = os.path.join(target_dir, "migrations")
         os.makedirs(migrations_dir, exist_ok=True)
-        with open(os.path.join(migrations_dir, "__init__.py"), "w") as f:
-            f.write('"""\nMigration package for the {app_name} app\n"""\n')
+        with open(
+            os.path.join(migrations_dir, "__init__.py"), "w", encoding="utf-8"
+        ) as f:
+            f.write(f'"""\nMigration package for the {app_name} app\n"""\n')
 
     def _create_additional_files(self, app_name, target_dir):
         """Create additional Python files for the app"""
+        # Convert app_name to verbose name with spaces (e.g., 'my_app' -> 'My App')
+        verbose_name = " ".join(word.capitalize() for word in app_name.split("_"))
+
         additional_files = {
             "scheduler.py": (
                 f'"""\nScheduler for the {app_name} app\n"""\n\n'
@@ -165,24 +202,18 @@ class Command(BaseCommand):
             ),
             "signals.py": (
                 f'"""\nSignals for the {app_name} app\n"""\n\n'
-                "from django.db.models.signals import pre_save, post_save\n"
-                "from django.dispatch import receiver\n\n"
                 f"# Define your {app_name} signals here\n"
             ),
             "filters.py": (
                 f'"""\nFilters for the {app_name} app\n"""\n\n'
-                "import django_filters\n\n"
                 f"# Define your {app_name} filters here\n"
             ),
             "forms.py": (
                 f'"""\nForms for the {app_name} app\n"""\n\n'
-                "from django import forms\n\n"
                 f"# Define your {app_name} forms here\n"
             ),
             "urls.py": (
                 f'"""\nURLs for the {app_name} app\n"""\n\n'
-                "from django.urls import path\n"
-                "from . import views\n\n"
                 f"app_name = '{app_name}'\n\n"
                 "urlpatterns = [\n"
                 "    # Define your URL patterns here\n"
@@ -199,14 +230,24 @@ class Command(BaseCommand):
                 "    sub_section_menu,\n"
                 "    settings_menu,\n"
                 "    my_settings_menu,\n"
-                ")\n"
+                ")\n\n"
                 "# Define your menu registration logic here\n"
+            ),
+            "registration.py": (
+                f'"""\nFeature registration for the {app_name} app.\n"""\n\n'
+                "from horilla.registry.feature import register_feature, register_model_for_feature\n\n"
+                "# Register your app features and models here\n"
+            ),
+            "__version__.py": (
+                f'"""\nVersion information for the {app_name} app\n"""\n\n'
+                f'__version__ = "0.1.0"\n'  # Initial version
+                f'__module_name__ = "{verbose_name}"\n'
             ),
         }
 
         for file_name, content in additional_files.items():
             file_path = os.path.join(target_dir, file_name)
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             self.stdout.write(f"  Created {file_name}")
 
@@ -243,11 +284,32 @@ class Command(BaseCommand):
         os.makedirs(templatetags_dir, exist_ok=True)
 
         # Create __init__.py
-        with open(os.path.join(templatetags_dir, "__init__.py"), "w") as f:
+        with open(
+            os.path.join(templatetags_dir, "__init__.py"), "w", encoding="utf-8"
+        ) as f:
             f.write("")
-
-        # Create custom tags file
 
         self.stdout.write(
             "Created templatetags/ directory with __init__.py and custom tags file"
+        )
+
+    def _create_locale_directory(self, target_dir, languages):
+        """
+        Create locale directory structure for internationalization (i18n).
+        Works across macOS, Windows, and Linux.
+
+        Args:
+            target_dir (str): Path to the app folder
+            languages (list): List of language codes (e.g., ['en', 'es', 'fr'])
+        """
+        locale_base_dir = os.path.join(target_dir, "locale")
+
+        # Create locale folders for each language
+        for lang_code in languages:
+            # Create the LC_MESSAGES directory for each language
+            lc_messages_dir = os.path.join(locale_base_dir, lang_code, "LC_MESSAGES")
+            os.makedirs(lc_messages_dir, exist_ok=True)
+
+        self.stdout.write(
+            f"Created locale/ directory with {len(languages)} language folders"
         )

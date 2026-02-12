@@ -52,7 +52,13 @@
 
                 <div class="flex">
                     <span class="font-medium text-gray-700 w-20">{% trans "Subject" %}:</span>
-                    <span class="text-gray-900">{{ subject|default:"<em class='text-gray-500'>No subject</em>" }}</span>
+                    <span class="text-gray-900">
+                        {% if subject %}
+                            {{ subject|escape }}
+                        {% else %}
+                            <em class="text-gray-500">{% trans "No subject" %}</em>
+                        {% endif %}
+                    </span>
                 </div>
             </div>
         </div>

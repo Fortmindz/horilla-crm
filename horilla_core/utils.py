@@ -1,18 +1,22 @@
+"""Utility functions for Horilla Core app."""
+
+# Standard library imports
 import json
 import logging
 
+# Third-party imports
 from dateutil.parser import parse
+
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.db.models import QuerySet
 
-from horilla_core.models import (
-    FieldPermission,
-    MultipleCurrency,
-    RecycleBin,
-    ScoringRule,
-)
+# First-party / Horilla imports
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
+from horilla_core.models import FieldPermission, MultipleCurrency, RecycleBin
+from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +94,7 @@ def restore_recycle_bin_records(request, recycle_objs):
                                         if parsed_list
                                         else ""
                                     )
-                                except:
+                                except Exception:
                                     # If parsing fails, treat as comma-separated string
                                     processed_data[field_name] = field_value
                             else:
@@ -116,11 +120,7 @@ def restore_recycle_bin_records(request, recycle_objs):
                                 else:
                                     if hasattr(field, "get_internal_type"):
                                         field_type = field.get_internal_type()
-                                        if field_type in [
-                                            "CharField",
-                                            "TextField",
-                                            "EmailField",
-                                        ]:
+                                        if field_type in TABLE_FALLBACK_FIELD_TYPES:
                                             processed_data[field_name] = ""
                                         else:
                                             continue
@@ -181,7 +181,10 @@ def restore_recycle_bin_records(request, recycle_objs):
                                             TypeError,
                                         ) as e:
                                             logger.warning(
-                                                f"ForeignKey error for field {field_name} in {recycle_obj.record_name()}: {str(e)}"
+                                                "ForeignKey error for field %s in %s: %s",
+                                                field_name,
+                                                recycle_obj.record_name(),
+                                                e,
                                             )
                                             if field.null:
                                                 field_value = None
@@ -193,7 +196,11 @@ def restore_recycle_bin_records(request, recycle_objs):
                                                 if default_obj:
                                                     field_value = default_obj
                                                     logger.info(
-                                                        f"Assigned default {related_model.__name__} ID {default_obj.pk} to {recycle_obj.record_name()} for field {field_name}"
+                                                        "Assigned default %s ID %s to %s for field %s",
+                                                        related_model.__name__,
+                                                        default_obj.pk,
+                                                        recycle_obj.record_name(),
+                                                        field_name,
                                                     )
                                                 else:
                                                     failed_records.append(
@@ -204,7 +211,9 @@ def restore_recycle_bin_records(request, recycle_objs):
                                                     )
                                     else:
                                         field_value = None
-                                elif field_type in ["CharField", "TextField"]:
+                                elif (
+                                    field_type in TABLE_FALLBACK_FIELD_TYPES[:2]
+                                ):  # [CharField, TextField]
                                     if field_value == "null":
                                         field_value = None if field.null else ""
                                     else:
@@ -217,8 +226,12 @@ def restore_recycle_bin_records(request, recycle_objs):
 
                             except (ValueError, TypeError) as e:
                                 logger.warning(
-                                    f"Error processing field {field_name} in {recycle_obj.record_name()}: {str(e)}"
+                                    "Error processing field %s in %s: %s",
+                                    field_name,
+                                    recycle_obj.record_name(),
+                                    e,
                                 )
+
                                 if field.null:
                                     field_value = None
                                 else:
@@ -232,7 +245,7 @@ def restore_recycle_bin_records(request, recycle_objs):
                 restored_count += 1
         except Exception as e:
             failed_records.append(f"{recycle_obj.record_name()}: {str(e)}")
-            logger.error(f"Failed to restore {recycle_obj.record_name()}: {str(e)}")
+            logger.error("Failed to restore %s: %s", recycle_obj.record_name(), e)
 
     return restored_count, failed_records
 
@@ -272,41 +285,9 @@ def delete_recycle_bin_records(request, recycle_objs):
                 deleted_count += 1
         except Exception as e:
             failed_records.append(f"{recycle_obj.record_name()}: {str(e)}")
-            logger.error(f"Failed to delete {recycle_obj.record_name()}: {str(e)}")
+            logger.error("Failed to delete %s: %s", recycle_obj.record_name(), e)
 
     return deleted_count, failed_records
-
-
-def compute_score(instance):
-    """
-    Compute the score for a given instance (Lead, Opportunity, Account, or Contact)
-    based on active ScoringRules for the instance's module.
-
-    Args:
-        instance: A model instance (e.g., Lead, Opportunity) to score.
-
-    Returns:
-        int: The computed score (sum of points from matching criteria).
-
-    Logic:
-        - Filters active rules for the instance's module (e.g., 'lead').
-        - For each rule, evaluates criteria in order.
-        - If a criterion's conditions are met, adds/subtracts points based on operation_type.
-        - Returns the total score.
-    """
-    module = instance._meta.model_name  # e.g., 'lead', 'opportunity'
-    rules = ScoringRule.objects.filter(module=module, is_active=True)
-    score = 0
-
-    for rule in rules:
-        for criterion in rule.criteria.all().order_by("order"):
-            if criterion.evaluate_conditions(instance):
-                points = criterion.points
-                if criterion.operation_type == "sub":
-                    points = -points
-                score += points
-
-    return score
 
 
 def get_currency_display_value(obj, field_name, user):
@@ -441,11 +422,23 @@ def filter_hidden_fields(user, model, fields_list):
 
     field_permissions = get_field_permissions_for_model(user, model)
 
-    return [
-        field_name
-        for field_name in fields_list
-        if field_permissions.get(field_name, "readwrite") != "hidden"
-    ]
+    visible_fields = []
+    for field_name in fields_list:
+        # Check the field itself first
+        permission = field_permissions.get(field_name, "readwrite")
+
+        # If it's a display method (get_*_display), always check the base field permission
+        # Display methods should inherit the base field's permission
+        if field_name.startswith("get_") and field_name.endswith("_display"):
+            base_field = field_name.replace("get_", "").replace("_display", "")
+            base_permission = field_permissions.get(base_field, "readwrite")
+            # Use base field permission (it takes precedence for display methods)
+            permission = base_permission
+
+        if permission != "hidden":
+            visible_fields.append(field_name)
+
+    return visible_fields
 
 
 def is_field_editable(user, model, field_name):
@@ -482,3 +475,57 @@ def get_editable_fields(user, model, fields_list):
         for field_name in fields_list
         if field_permissions.get(field_name, "readwrite") == "readwrite"
     ]
+
+
+def is_owner(model_class, pk):
+    """
+    Generic method to check if the current user is the owner of a model instance.
+    Uses thread local to get the current user from the request.
+
+    Args:
+        model_class: The Django model class (e.g., Lead, Campaign)
+        pk: Primary key of the instance to check
+
+    Returns:
+        bool: True if user is an owner, False otherwise
+    """
+    request = getattr(_thread_local, "request", None)
+    user = request.user
+
+    if not user or not user.is_authenticated:
+        return False
+
+    # Check if model has OWNER_FIELDS defined
+    if not hasattr(model_class, "OWNER_FIELDS") or not model_class.OWNER_FIELDS:
+        return False
+
+    try:
+        instance = model_class.objects.get(pk=pk)
+    except Exception:
+        return False
+
+    for field_name in model_class.OWNER_FIELDS:
+        try:
+            field_value = getattr(instance, field_name, None)
+
+            if field_value is None:
+                continue
+
+            # Handle ForeignKey (single user)
+            if hasattr(field_value, "pk"):
+                if field_value.pk == user.pk:
+                    return True
+
+            # Handle ManyToManyField (multiple users)
+            elif hasattr(field_value, "filter"):
+                if field_value.filter(pk=user.pk).exists():
+                    return True
+
+            # Handle direct ID comparison
+            elif field_value == user.pk:
+                return True
+
+        except (AttributeError, TypeError):
+            continue
+
+    return False

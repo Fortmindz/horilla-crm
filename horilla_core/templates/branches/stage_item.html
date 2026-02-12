@@ -1,9 +1,10 @@
 {% load horilla_tags %}
 {% load static %}
+{% load i18n %}
 <div class="stage-item bg-[#efefef96] rounded-md px-3 py-2 flex gap-2 justify-between items-center mb-2 w-full">
   <div class="flex gap-2 items-center w-full">
     <div class="cursor-move drag-handle">
-      <img src="{% static 'assets/icons/drag.svg' %}" alt="Drag" width="16" />
+      <img src="{% static 'assets/icons/drag.svg' %}" alt="{% trans 'Drag' %}" width="16" />
     </div>
     <div class="w-[60%]">
       <input type="text" name="stage_name_custom[]" value="{{ stage.name }}" class="w-full border border-[#efefef] rounded-md px-2 py-1">
@@ -28,7 +29,7 @@
         hx-swap="innerHTML"
         hx-include="closest form"
         hx-vals='{"remove_index": {{ forloop.counter0 }}}'>
-        <img src="{% static '/assets/icons/close.svg' %}" alt="" width="10">
+        <img src="{% static '/assets/icons/close.svg' %}" alt="{% trans 'Close' %}" width="10">
       </button>
     </div>
   </div>

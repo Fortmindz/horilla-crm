@@ -1,3 +1,7 @@
+"""
+Mail Template Views
+"""
+
 from functools import cached_property
 
 from django.contrib import messages
@@ -7,7 +11,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.safestring import mark_safe
@@ -16,6 +20,7 @@ from django.views import View
 from django.views.generic import DetailView, FormView, TemplateView
 
 from horilla.exceptions import HorillaHttp404
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_generics.views import (
     HorillaListView,
@@ -71,6 +76,7 @@ class MailTemplateNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
+        """Get the new button configuration if the user has permission to add mail templates"""
         if self.request.user.has_perm("horilla_mail.add_horillamailtemplate"):
             return {
                 "url": f"""{ reverse_lazy('horilla_mail:mail_template_create_view')}""",
@@ -78,6 +84,7 @@ class MailTemplateNavbar(LoginRequiredMixin, HorillaNavView):
                 "onclick": "openhorillaModal();",
                 "attrs": {"id": "mail-template-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -104,6 +111,7 @@ class MailTemplateListView(LoginRequiredMixin, HorillaListView):
     filterset_class = HorillaMailTemplateFilter
 
     def no_record_add_button(self):
+        """Get the add button configuration when there are no records."""
         if self.request.user.has_perm("horilla_mail.add_horillamailtemplate"):
             return {
                 "url": f"""{ reverse_lazy('horilla_mail:mail_template_create_view')}""",
@@ -111,47 +119,41 @@ class MailTemplateListView(LoginRequiredMixin, HorillaListView):
                 "onclick": "openhorillaModal();",
                 "attrs": {"id": "mail-template-create"},
             }
+        return None
 
     columns = ["title", (_("Related Model"), "get_related_model")]
-
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_mail.change_horillaemailconfiguration"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                            hx-get="{get_edit_url}"
-                            hx-target="#horillaModalBox"
-                            hx-swap="innerHTML"
-                            onclick="openhorillaModal()"
-                            """,
-                },
-            )
-        if self.request.user.has_perm("horilla_mail.delete_horillaemailconfiguration"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#modalBox"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_mail.change_horillaemailconfiguration",
+            "attrs": """
+                        hx-get="{get_edit_url}"
+                        hx-target="#horillaModalBox"
                         hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "false"}}'
-                        onclick="openModal()"
-                    """,
-                }
-            )
-        return actions
+                        onclick="openhorillaModal()"
+                        """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_mail.delete_horillaemailconfiguration",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "false"}}'
+                    onclick="openModal()"
+                """,
+        },
+    ]
 
     @cached_property
     def raw_attrs(self):
+        """Get row attributes for HTMX detail view loading"""
         if self.request.user.has_perm("horilla_mail.view_horillamailtemplate"):
             return {
                 "hx-get": "{get_detail_view_url}",
@@ -177,18 +179,22 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
     form_class = HorillaMailTemplateForm
     template_name = "mail_template/mail_template_form.html"
 
-    def dispatch(self, request, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.template_id = None
+        self.object = None
 
+    def dispatch(self, request, *args, **kwargs):
         self.template_id = kwargs.get("pk")
         if self.template_id:
             try:
                 self.object = get_object_or_404(
                     HorillaMailTemplate, pk=self.template_id
                 )
-            except:
+            except Exception as e:
                 messages.error(
                     request,
-                    f"{HorillaMailTemplate._meta.verbose_name.title()} not found or no longer exists.",
+                    e,
                 )
                 return HttpResponse(
                     "<script>$('#reloadButton').click();closeModal();</script>"
@@ -232,7 +238,19 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
                 if hasattr(_thread_local, "request")
                 else self.request.user.company
             )
+
+            # Set created_by and updated_by before saving
+            # This is required by HorillaCoreModel validation
+            if not mail_template.pk:
+                # New object - set both created_by and updated_by
+                mail_template.created_by = self.request.user
+                mail_template.updated_by = self.request.user
+            else:
+                # Existing object - only update updated_by
+                mail_template.updated_by = self.request.user
+
             mail_template.save()
+
             if self.object:
                 messages.success(
                     self.request,
@@ -255,10 +273,9 @@ class MailTemplateCreateUpdateView(LoginRequiredMixin, FormView):
         except ValidationError as e:
             messages.error(self.request, str(e))
             return self.form_invalid(form)
-
-    def form_invalid(self, form):
-        messages.error(self.request, _("Please correct the errors below."))
-        return super().form_invalid(form)
+        except Exception as e:
+            messages.error(self.request, f"An error occurred: {str(e)}")
+            return self.form_invalid(form)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -281,8 +298,9 @@ class MailTemplatePreviewView(LoginRequiredMixin, TemplateView):
         """Handle POST for large body content"""
         context = self.get_context_data(**kwargs)
         body_content = request.POST.get("body")
-        if body_content:
-            context["body"] = mark_safe(body_content)
+        subject = request.POST.get("subject")
+        context["body"] = body_content
+        context["subject"] = subject
         return self.render_to_response(context)
 
 
@@ -294,6 +312,7 @@ class TemplateContentView(LoginRequiredMixin, View):
     """Get template content by ID via AJAX"""
 
     def get(self, request, *args, **kwargs):
+        """Handle GET request to fetch template content"""
         template_id = request.GET.get("template_id")
 
         if not template_id:
@@ -308,7 +327,12 @@ class TemplateContentView(LoginRequiredMixin, View):
             template = get_object_or_404(queryset, id=template_id)
 
             return JsonResponse(
-                {"success": True, "body": template.body, "title": template.title}
+                {
+                    "success": True,
+                    "body": template.body,
+                    "title": template.title,
+                    "subject": template.subject,
+                }
             )
 
         except Exception as e:
@@ -321,13 +345,21 @@ class TemplateContentView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class MailTemplateSelectView(LoginRequiredMixin, View):
+    """View to select mail template for a given model"""
+
     template_name = "mail_template/select_mail_template.html"
 
     def get(self, request, *args, **kwargs):
+        """Handle GET request to display the mail template selection form"""
         model_name = request.GET.get("model_name")
         form = MailTemplateSelectForm(model_name=model_name)
         return render(
-            request, self.template_name, {"form": form, "model_name": model_name}
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "model_name": model_name,
+            },
         )
 
 
@@ -336,9 +368,12 @@ class MailTemplateSelectView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class SaveAsMailTemplateView(LoginRequiredMixin, View):
+    """View to save a mail template for a given model"""
+
     template_name = "mail_template/save_mail_template.html"
 
     def post(self, request, *args, **kwargs):
+        """Handle POST request to save the mail template"""
         model_name = request.GET.get("model_name", "") or request.POST.get(
             "model_name", ""
         )
@@ -411,7 +446,7 @@ class SaveAsMailTemplateView(LoginRequiredMixin, View):
                     None, "A template with this title already exists for this company."
                 )
             except Exception as e:
-                form.add_error(None, "A database error occurred. Please try again.")
+                form.add_error(None, str(e))
 
         context = {
             "form": form,
@@ -431,6 +466,7 @@ class SaveAsMailTemplateView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class MailTemplateDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """View to delete a mail template"""
 
     model = HorillaMailTemplate
 
@@ -443,6 +479,11 @@ class MailTemplateDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     name="dispatch",
 )
 class MailTemplateDetailView(LoginRequiredMixin, DetailView):
+    """ " View to display mail template details"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.object = None
 
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:

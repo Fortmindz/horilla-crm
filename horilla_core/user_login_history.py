@@ -2,12 +2,13 @@
 This view handles the methods for user login history view
 """
 
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla_core.decorators import htmx_required
 from horilla_generics.views import HorillaListView, HorillaNavView, HorillaView
 
@@ -67,18 +68,17 @@ class UserloginHistoryListView(LoginRequiredMixin, HorillaListView):
 
     def get_queryset(self):
         user = self.request.user
-        app_label = self.model._meta.app_label
-        model_name = self.model._meta.model_name
-
-        queryset = self.model.objects.all()
-
-        if user.has_perm(f"{app_label}.view_{model_name}"):
-            pass
-        elif user.has_perm(f"{app_label}.view_own_{model_name}"):
-            queryset = queryset.filter(user_id=user)
-        else:
-            queryset = queryset.none()
-
+        opts = self.model._meta
+        perm = f"{opts.app_label}.view_{opts.model_name}"
+        queryset = (
+            self.model.objects.all()
+            if user.has_perm(perm)
+            else (
+                self.model.objects.filter(user_id=user)
+                if user.has_perm(f"{opts.app_label}.view_own_{opts.model_name}")
+                else self.model.objects.none()
+            )
+        )
         return queryset
 
     columns = [

@@ -1,8 +1,12 @@
+"""Django app configuration for the Horilla mail system."""
+
 from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
 
-class Horilla_mailConfig(AppConfig):
+class HorillaMailConfig(AppConfig):
+    """Configuration class for the Horilla mail application."""
+
     default_auto_field = "django.db.models.BigAutoField"
     name = "horilla_mail"
     verbose_name = _("Mail System")
@@ -25,6 +29,7 @@ class Horilla_mailConfig(AppConfig):
 
     def ready(self):
         try:
+
             # Auto-register this app's main URLs (non-API)
             from django.urls import include, path
 
@@ -35,6 +40,7 @@ class Horilla_mailConfig(AppConfig):
                 path("mail/", include("horilla_mail.urls")),
             )
 
+            __import__("horilla_mail.registration")
             __import__("horilla_mail.signals")
             __import__("horilla_mail.scheduler")
             __import__("horilla_mail.menu")
@@ -51,7 +57,6 @@ class Horilla_mailConfig(AppConfig):
         except Exception as e:
             import logging
 
-            logging.warning(f"Command.ready failed  :   ", e)
-            pass
+            logging.warning("Command.ready failed: %s", e)
 
         super().ready()

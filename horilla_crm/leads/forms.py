@@ -1,18 +1,34 @@
 """Forms for Lead model and Lead conversion process."""
 
+# Standard library imports
+import logging
+
+# Third-party imports
 import pycountry
+
+# Third-party imports (Django)
 from django import forms
 from django.urls import reverse, reverse_lazy
 
+# First-party / Horilla imports
+from horilla.auth.models import User
 from horilla_core.mixins import OwnerQuerysetMixin
-from horilla_core.models import HorillaUser
 from horilla_crm.accounts.models import Account
 from horilla_crm.contacts.models import Contact
 from horilla_crm.opportunities.models import Opportunity
 from horilla_generics.forms import HorillaModelForm, HorillaMultiStepForm
 from horilla_mail.models import HorillaMailConfiguration
 
-from .models import EmailToLeadConfig, Lead, LeadStatus
+# Local application imports
+from .models import (
+    EmailToLeadConfig,
+    Lead,
+    LeadStatus,
+    ScoringCondition,
+    ScoringCriterion,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class LeadFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
@@ -52,6 +68,7 @@ class LeadFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
                 "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
                 "hx-target": "#id_state",
                 "hx-trigger": "change",
+                "hx-swap": "innerHTML",
             }
         )
         self.fields["state"] = forms.ChoiceField(
@@ -71,16 +88,17 @@ class LeadFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
             )
 
     def get_subdivision_choices(self, country_code):
+        """Get subdivision choices for a given country code."""
         try:
             subdivisions = list(
                 pycountry.subdivisions.get(country_code=country_code.upper())
             )
             return [(sub.code, sub.name) for sub in subdivisions]
-        except:
+        except Exception:
             return []
 
 
-class LeadSingleForm(HorillaModelForm):
+class LeadSingleForm(OwnerQuerysetMixin, HorillaModelForm):
     """
     Custom form for Lead to add HTMX attributes
     Inherits from HorillaModelForm to preserve all existing behavior.
@@ -138,12 +156,13 @@ class LeadSingleForm(HorillaModelForm):
             )
 
     def get_subdivision_choices(self, country_code):
+        """Get subdivision choices for a given country code."""
         try:
             subdivisions = list(
                 pycountry.subdivisions.get(country_code=country_code.upper())
             )
             return [(sub.code, sub.name) for sub in subdivisions]
-        except:
+        except Exception:
             return []
 
 
@@ -251,7 +270,7 @@ class LeadConversionForm(forms.Form):
 
     # Owner field
     owner = forms.ModelChoiceField(
-        queryset=HorillaUser.objects.all(),
+        queryset=User.objects.all(),
         required=True,
         empty_label="Select Owner",
         widget=forms.Select(
@@ -378,3 +397,38 @@ class EmailToLeadForm(HorillaModelForm):
         self.fields["mail"].queryset = HorillaMailConfiguration.objects.filter(
             mail_channel="incoming", is_active=True
         )
+
+
+class ScoringCriterionForm(HorillaModelForm):
+    """Form for creating and editing scoring criteria."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize scoring criterion form with condition model."""
+        kwargs["condition_model"] = ScoringCondition
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        """Process multiple condition rows from form data"""
+        cleaned_data = super().clean()
+
+        condition_rows = self._extract_condition_rows()
+
+        if not condition_rows:
+            raise forms.ValidationError("At least one condition must be provided.")
+
+        cleaned_data["condition_rows"] = condition_rows
+
+        return cleaned_data
+
+    class Meta:
+        """Meta options for ScoringCriterionForm."""
+
+        model = ScoringCriterion
+        fields = ["rule", "points", "operation_type"]
+        widgets = {
+            "points": forms.NumberInput(
+                attrs={
+                    "class": "text-color-600 p-2 w-full border border-dark-50 rounded-md mt-1"
+                }
+            ),
+        }

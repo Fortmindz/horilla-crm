@@ -4,17 +4,25 @@
 <style>
     .htmx-indicator {
         display: none;
+        pointer-events: none;
     }
     .htmx-request .htmx-indicator {
-        display: inline;
+        display: flex !important;
+        pointer-events: auto;
     }
     .htmx-request.htmx-indicator {
-        display: inline;
+        display: flex !important;
+        pointer-events: auto;
     }
 </style>
 
 {% csrf_token %}
-<div id="{{ view_id|safe }}" class="custom-scroll overflow-hidden overflow-x-auto">
+<div id="{{ view_id|safe }}" class="custom-scroll overflow-hidden overflow-x-auto" style="position: relative;">
+    <div id="loading-indicator" class="htmx-indicator" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.8); pointer-events: none;">
+        <div class="flex justify-center items-center p-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+        </div>
+    </div>
     {% if filter_set_class %}
         {% include "filterpanel.html" %}
     {% endif %}
@@ -23,7 +31,8 @@
             hx-target="#kanbanview"
             hx-trigger="click"
             hx-swap="outerHTML"
-            hx-select="#kanbanview">
+            hx-select="#kanbanview"
+            hx-indicator="#loading-indicator">
         click
     </button>
 
@@ -45,7 +54,7 @@
         </div>
         <img
             src="{% static 'assets/img/not-found.svg' %}"
-            alt="" class="w-60  m-auto mb-4 mt-5"
+            alt="404" class="w-60  m-auto mb-4 mt-5"
         />
         <p class="text-sm text-center mb-3">
             {% if no_record_add_button.message %}
@@ -59,10 +68,10 @@
                 hx-get="{{ no_record_add_button.url }}"
                 hx-target="{{ no_record_add_button.target|default:'#modalBox' }}"
                 hx-swap="{{ no_record_add_button.swap|default:'innerHTML' }}"
-                onclick="{{ no_record_add_button.after_request|default:'openModal()' }}"
+                onclick="{{ no_record_add_button.onclick|default:'openModal()' }}"
                 class="{{ no_record_add_button.class|default:'text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white] m-auto flex' }}"
                 {% if no_record_add_button.attrs %}{{ no_record_add_button.attrs|safe }}{% endif %}>
-                {{ no_record_add_button.title|default:" Add New" }}
+                {{ no_record_add_button.title|default:_("Add New") }}
             </button>
         {% endif %}
     {% endif %}

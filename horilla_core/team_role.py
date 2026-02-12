@@ -2,14 +2,18 @@
 This view handles the methods for team role view
 """
 
+# Standard library imports
+from functools import cached_property
+
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -59,14 +63,21 @@ class TeamRoleNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
+        """
+        Get the configuration for the "New" button in the navbar.
+        """
         if self.request.user.has_perm("horilla_core.add_teamrole"):
             return {
                 "url": f"""{ reverse_lazy('horilla_core:team_role_create_form')}?new=true""",
                 "attrs": {"id": "team-role-create"},
             }
+        return None
 
     @cached_property
     def actions(self):
+        """
+        Get the list of actions available in the navbar.
+        """
         if self.request.user.has_perm("horilla_core.view_teamrole"):
             return [
                 {
@@ -79,6 +90,7 @@ class TeamRoleNavbar(LoginRequiredMixin, HorillaNavView):
                             """,
                 }
             ]
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -103,41 +115,34 @@ class TeamRoleListView(LoginRequiredMixin, HorillaListView):
 
     columns = ["team_role_name", "description"]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_teamrole"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                }
-            )
-        if self.request.user.has_perm("horilla_core.delete_teamrole"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "true"}}'
-                        onclick="openDeleteModeModal()"
-                    """,
-                }
-            )
-        return actions
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.change_teamrole",
+            "attrs": """
+                hx-get="{get_edit_url}?new=true"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
+                """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_teamrole",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -157,12 +162,18 @@ class TeamRoleFormView(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """
+        Get the URL for form submission based on whether it's a create or update action.
+        """
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:team_role_update_form", kwargs={"pk": pk})
         return reverse_lazy("horilla_core:team_role_create_form")
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET requests to ensure the requested TeamRole exists for editing.
+        """
         pk = kwargs.get("pk")
         if pk:
             try:
@@ -180,6 +191,10 @@ class TeamRoleFormView(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class TeamRoleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    View to delete a Team Role
+    """
+
     model = TeamRole
 
     def get_post_delete_response(self):

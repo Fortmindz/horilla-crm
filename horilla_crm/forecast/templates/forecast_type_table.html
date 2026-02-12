@@ -215,9 +215,9 @@
                                         <p class="mb-0">{{ forecast.closed_amount|floatformat:0 }} {{ forecast.currency_symbol }}</p>
                                     {% endif %}
                                     {% if forecast.closed_trend == 'up' %}
-                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                     {% elif forecast.closed_trend == 'down' %}
-                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                     {% endif %}
                                 </button>
                                 {% if forecast.closed_change_text %}
@@ -244,9 +244,9 @@
                                         {{ forecast.commit_amount|floatformat:0 }} {{ forecast.currency_symbol }}
                                     {% endif %}
                                     {% if forecast.commit_trend == 'up' %}
-                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                     {% elif forecast.commit_trend == 'down' %}
-                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                     {% endif %}
                                 </button>
                                 {% if forecast.commit_change_text %}
@@ -272,9 +272,9 @@
                                         {{ forecast.best_case_amount|floatformat:0 }} {{ forecast.currency_symbol }}
                                     {% endif %}
                                     {% if forecast.best_case_trend == 'up' %}
-                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                     {% elif forecast.best_case_trend == 'down' %}
-                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                     {% endif %}
                                 </button>
                                 {% if forecast.best_case_change_text %}
@@ -300,9 +300,9 @@
                                         {{ forecast.pipeline_amount|floatformat:0 }} {{ forecast.currency_symbol }}
                                     {% endif %}
                                     {% if forecast.pipeline_trend == 'up' %}
-                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                        <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                     {% elif forecast.pipeline_trend == 'down' %}
-                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                        <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                     {% endif %}
                                 </button>
                                 {% if forecast.pipeline_change_text %}
@@ -389,9 +389,9 @@
                                                     <p class="mb-0">{{ user_forecast.closed_amount|floatformat:0 }} {{ currency_symbol }}</p>
                                                 {% endif %}
                                                 {% if user_forecast.closed_trend == 'up' %}
-                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                                 {% elif user_forecast.closed_trend == 'down' %}
-                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                                 {% endif %}
                                             </button>
                                             {% if user_forecast.closed_change_text %}
@@ -414,9 +414,9 @@
                                                     {{ user_forecast.commit_amount|floatformat:0 }} {{ currency_symbol }}
                                                 {% endif %}
                                                 {% if user_forecast.commit_trend == 'up' %}
-                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                                 {% elif user_forecast.commit_trend == 'down' %}
-                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                                 {% endif %}
                                             </button>
                                             {% if user_forecast.commit_change_text %}
@@ -439,9 +439,9 @@
                                                     {{ user_forecast.best_case_amount|floatformat:0 }} {{ currency_symbol }}
                                                 {% endif %}
                                                 {% if user_forecast.best_case_trend == 'up' %}
-                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                                 {% elif user_forecast.best_case_trend == 'down' %}
-                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                                 {% endif %}
                                             </button>
                                             {% if user_forecast.best_case_change_text %}
@@ -464,9 +464,9 @@
                                                     {{ user_forecast.pipeline_amount|floatformat:0 }} {{ currency_symbol }}
                                                 {% endif %}
                                                 {% if user_forecast.pipeline_trend == 'up' %}
-                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="Up trend" width="15" />
+                                                    <img src="{% static 'assets/icons/up-arrow.svg' %}" alt="{% trans 'Up trend' %}" width="15" />
                                                 {% elif user_forecast.pipeline_trend == 'down' %}
-                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="Down trend" width="15" />
+                                                    <img src="{% static 'assets/icons/down-arrow.svg' %}" alt="{% trans 'Down trend' %}" width="15" />
                                                 {% endif %}
                                             </button>
                                             {% if user_forecast.pipeline_change_text %}
@@ -483,8 +483,8 @@
                                     <tr id="scrollHint-{{ forecast_type.id }}-{{ forecast.view_id }}" class="bg-gray-50">
                                         <td colspan="100%" class="p-3 text-center border border-[#dddddd]">
                                             <div id="loadingIndicator-{{ forecast_type.id }}-{{ forecast.view_id }}" class="flex justify-center items-center gap-3 htmx-indicator">
-                                                <div class="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-[#e54f38]"></div>
-                                                <span class="text-[13px] text-[#e54f38] font-medium">
+                                                <div class="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-primary-600"></div>
+                                                <span class="text-[13px] text-primary-600 font-medium">
                                                     {% trans "Loading more users for" %} {{ forecast.period.name }}
                                                 </span>
                                             </div>

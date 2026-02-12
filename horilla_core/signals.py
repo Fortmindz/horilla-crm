@@ -1,46 +1,47 @@
 """
 This module contains signal handlers and utility functions for Horilla's core
-models such as Company, FiscalYear, MultipleCurrency, ScoringRule, and related
+models such as Company, FiscalYear, MultipleCurrency, and related
 models.
 
 Features implemented in this module include:
 - Automatic fiscal year configuration when a company is created or updated.
 - Default currency initialization and handling of multi-currency configurations.
-- Custom permission creation during migrations (e.g., 'can_import', 'view_own').
-- Automatic recalculation of scores when scoring rules, criteria, or conditions change.
+- Custom permission creation during migrations.
 - Helper utilities to dynamically discover models and build filter queries.
 
-This ensures automation, consistency, and configurable scoring logic across the Horilla ERP system.
 """
 
+import logging
 from decimal import Decimal
-from venv import logger
 
 from django.apps import apps
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import FieldDoesNotExist
+from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Case, F, IntegerField, Q, When
-from django.db.models.signals import post_migrate, post_save, pre_delete
+from django.db.models import Q
+from django.db.models.signals import post_delete, post_migrate, post_save
 from django.dispatch import Signal, receiver
 
+from horilla.auth.models import User
 from horilla_core.models import (
     Company,
     FieldPermission,
     FiscalYear,
-    HorillaUser,
+    ListColumnVisibility,
     MultipleCurrency,
     Role,
-    ScoringCondition,
-    ScoringCriterion,
-    ScoringRule,
 )
 from horilla_core.services.fiscal_year_service import FiscalYearService
-from horilla_keys.models import ShortcutKey
-from horilla_utils.middlewares import _thread_local
+from horilla_core.utils import get_user_field_permission
+
+logger = logging.getLogger(__name__)
+
 
 company_currency_changed = Signal()
+company_created = Signal()
+pre_logout_signal = Signal()
+pre_login_render_signal = Signal()
 
 
 @receiver(post_save, sender="horilla_core.Company")
@@ -100,13 +101,15 @@ def create_default_currency(sender, instance, created, **kwargs):
                             curr.save()
         except Exception as e:
             logger.error(
-                f"Error creating default currency for company {instance.id}: {str(e)}"
+                "Error creating default currency for company %s: %s",
+                instance.id,
+                e,
             )
 
 
 def add_custom_permissions(sender, **kwargs):
     """
-    Add custom permissions ('can_import' and 'view_own') for models
+    Add custom permissions for models
     that define default Django permissions.
     """
     for model in apps.get_models():
@@ -118,11 +121,6 @@ def add_custom_permissions(sender, **kwargs):
 
         content_type = ContentType.objects.get_for_model(model)
 
-        add_import = (
-            "can_import" in opts.default_permissions
-            or opts.default_permissions == ("add", "change", "delete", "view")
-        )
-
         add_view_own = (
             "view_own" in opts.default_permissions
             or opts.default_permissions == ("add", "change", "delete", "view")
@@ -133,9 +131,17 @@ def add_custom_permissions(sender, **kwargs):
             or opts.default_permissions == ("add", "change", "delete", "view")
         )
 
+        add_create_own = (
+            "create_own" in opts.default_permissions
+            or opts.default_permissions == ("add", "change", "delete", "view")
+        )
+
+        add_delete_own = (
+            "delete_own" in opts.default_permissions
+            or opts.default_permissions == ("add", "change", "delete", "view")
+        )
+
         custom_perms = []
-        if add_import:
-            custom_perms.append(("can_import", f"Can import {opts.verbose_name_raw}"))
 
         if add_view_own:
             custom_perms.append(("view_own", f"Can view own {opts.verbose_name_raw}"))
@@ -143,6 +149,14 @@ def add_custom_permissions(sender, **kwargs):
         if add_change_own:
             custom_perms.append(
                 ("change_own", f"Can change own {opts.verbose_name_raw}")
+            )
+
+        if add_create_own:
+            custom_perms.append(("add_own", f"Can create own {opts.verbose_name_raw}"))
+
+        if add_delete_own:
+            custom_perms.append(
+                ("delete_own", f"Can delete own {opts.verbose_name_raw}")
             )
 
         for code_prefix, name in custom_perms:
@@ -160,221 +174,7 @@ def add_custom_permissions(sender, **kwargs):
 post_migrate.connect(add_custom_permissions)
 
 
-def get_score_field(model):
-    score_fields = {
-        "lead": "lead_score",
-        "opportunity": "opportunity_score",
-        "account": "account_score",
-        "contact": "contact_score",
-    }
-    return score_fields.get(model._meta.model_name)
-
-
-def get_models_for_module(module):
-    """
-    Dynamically find models matching a module name (e.g., 'lead') across installed apps.
-    Only includes models that have a corresponding score field.
-    """
-    models = []
-    for app_config in apps.get_app_configs():
-        for model in app_config.get_models():
-            if model._meta.model_name == module:
-                score_field = get_score_field(model)
-                if score_field and score_field in [f.name for f in model._meta.fields]:
-                    models.append(model)
-    return models
-
-
-def build_query_from_conditions(criterion, Model):
-    """
-    Build a Django ORM query to filter instances that match a criterion's conditions.
-
-    Args:
-        criterion: ScoringCriterion instance.
-        Model: The Django model class (e.g., Lead).
-
-    Returns:
-        Q object representing the combined conditions.
-    """
-    query = Q()
-    for condition in criterion.conditions.all().order_by("order"):
-        field = condition.field
-        operator = condition.operator
-        value = condition.value
-        logical_operator = condition.logical_operator
-
-        try:
-            Model._meta.get_field(field)
-            if operator == "equals":
-                if Model._meta.get_field(field).get_internal_type() == "ForeignKey":
-                    condition_query = Q(**{f"{field}_id__exact": value})
-                else:
-                    condition_query = Q(**{f"{field}__exact": value})
-            elif operator == "not_equals":
-                if Model._meta.get_field(field).get_internal_type() == "ForeignKey":
-                    condition_query = ~Q(**{f"{field}_id__exact": value})
-                else:
-                    condition_query = ~Q(**{f"{field}__exact": value})
-            elif operator == "contains":
-                condition_query = Q(**{f"{field}__icontains": value})
-            elif operator == "not_contains":
-                condition_query = ~Q(**{f"{field}__icontains": value})
-            elif operator == "starts_with":
-                condition_query = Q(**{f"{field}__istartswith": value})
-            elif operator == "ends_with":
-                condition_query = Q(**{f"{field}__iendswith": value})
-            elif operator == "greater_than":
-                try:
-                    condition_query = Q(**{f"{field}__gt": float(value)})
-                except (ValueError, TypeError):
-                    condition_query = Q(pk__in=[])
-            elif operator == "greater_than_equal":
-                try:
-                    condition_query = Q(**{f"{field}__gte": float(value)})
-                except (ValueError, TypeError):
-                    condition_query = Q(pk__in=[])
-            elif operator == "less_than":
-                try:
-                    condition_query = Q(**{f"{field}__lt": float(value)})
-                except (ValueError, TypeError):
-                    condition_query = Q(pk__in=[])
-            elif operator == "less_than_equal":
-                try:
-                    condition_query = Q(**{f"{field}__lte": float(value)})
-                except (ValueError, TypeError):
-                    condition_query = Q(pk__in=[])
-            elif operator == "is_empty":
-                condition_query = Q(**{field: None}) | Q(**{f"{field}__exact": ""})
-            elif operator == "is_not_empty":
-                condition_query = ~Q(**{field: None}) & ~Q(**{f"{field}__exact": ""})
-            else:
-                logger.warning(f"Unsupported operator {operator} for field {field}")
-                condition_query = Q(pk__in=[])
-            if logical_operator == "and":
-                query &= condition_query
-            else:
-                query |= condition_query
-        except FieldDoesNotExist:
-            logger.warning(f"Field {field} does not exist on {Model._meta.model_name}")
-            query &= Q(pk__in=[])
-
-    return query
-
-
-def update_all_scores_for_module(module):
-    """
-    Update score fields for instances matching active scoring rules' conditions
-    using direct database UPDATE queries.
-
-    Args:
-        module: String (e.g., 'lead', 'opportunity') indicating the module.
-    """
-    models = get_models_for_module(module)
-    for Model in models:
-        score_field = get_score_field(Model)
-        if not score_field:
-            continue
-
-        with transaction.atomic():
-            try:
-                Model.objects.update(**{score_field: 0})
-                logger.info(
-                    f"Reset {score_field} to 0 for all {Model._meta.model_name} instances"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error resetting {score_field} for {Model._meta.model_name}: {e}"
-                )
-                raise
-
-            rules = ScoringRule.objects.filter(module=module, is_active=True)
-            if not rules.exists():
-                continue
-
-            for rule in rules:
-                for criterion in rule.criteria.all().order_by("order"):
-                    query = build_query_from_conditions(criterion, Model)
-                    if not query:
-                        continue
-
-                    points = criterion.points
-                    if criterion.operation_type == "sub":
-                        points = -points
-
-                    try:
-                        Model.objects.filter(query).update(
-                            **{
-                                score_field: Case(
-                                    When(query, then=F(score_field) + points),
-                                    default=F(score_field),
-                                    output_field=IntegerField(),
-                                )
-                            }
-                        )
-                        logger.info(
-                            f"Updated {score_field} for {Model._meta.model_name} instances matching criterion {criterion.id}"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Error updating {score_field} for {Model._meta.model_name} with criterion {criterion.id}: {e}"
-                        )
-                        raise
-
-
-@receiver(post_save, sender=ScoringRule)
-@receiver(pre_delete, sender=ScoringRule)
-def handle_rule_change(sender, instance, **kwargs):
-    """
-    Signal handler triggered when a scoring rule is created, updated, or deleted.
-    Automatically triggers recalculation of all scores for the associated module.
-    """
-    update_all_scores_for_module(instance.module)
-
-
-@receiver(post_save, sender=ScoringCriterion)
-@receiver(pre_delete, sender=ScoringCriterion)
-def handle_criterion_change(sender, instance, **kwargs):
-    """
-    Signal handler triggered when a scoring criterion is created, updated, or deleted.
-    Ensures scores are recalculated for all modules affected by this criterion.
-    """
-    update_all_scores_for_module(instance.rule.module)
-
-
-@receiver(post_save, sender=ScoringCondition)
-@receiver(pre_delete, sender=ScoringCondition)
-def handle_condition_change(sender, instance, **kwargs):
-    """
-    Signal handler triggered when a scoring condition is created, updated, or deleted.
-    Rebuilds and applies scoring rules to update scores for affected module instances.
-    """
-    update_all_scores_for_module(instance.criterion.rule.module)
-
-
-@receiver(post_save, sender=HorillaUser)
-def create_default_shortcuts(sender, instance, created, **kwargs):
-    predefined = [
-        {"page": "/", "key": "H", "command": "alt"},
-        {"page": "/my-profile-view/", "key": "P", "command": "alt"},
-        {"page": "/regional-formating-view/", "key": "G", "command": "alt"},
-        {"page": "/user-login-history-view/", "key": "L", "command": "alt"},
-        {"page": "/user-holiday-view/", "key": "V", "command": "alt"},
-        {"page": "/shortkeys/short-key-view/", "key": "K", "command": "alt"},
-        {"page": "/user-view/", "key": "U", "command": "alt"},
-        {"page": "/branches-view/", "key": "B", "command": "alt"},
-    ]
-    for item in predefined:
-        if not ShortcutKey.objects.filter(user=instance, page=item["page"]).exists():
-            ShortcutKey.objects.create(
-                user=instance,
-                page=item["page"],
-                key=item["key"],
-                command=item["command"],
-                company=instance.company,
-            )
-
-
-@receiver(post_save, sender=HorillaUser)
+@receiver(post_save, sender=User)
 def ensure_view_own_permissions(sender, instance, created, **kwargs):
     """
     Assign view_own permissions to newly created non-superuser users.
@@ -443,7 +243,7 @@ def ensure_role_view_own_permissions(sender, instance, created, **kwargs):
     transaction.on_commit(assign_permissions)
 
 
-@receiver(post_save, sender=HorillaUser)
+@receiver(post_save, sender=User)
 def user_default_field_permissions(sender, instance, created, **kwargs):
     """
     Assign default field permissions to newly created users.
@@ -514,3 +314,346 @@ def role_default_field_permissions(sender, instance, created, **kwargs):
             )
 
     transaction.on_commit(assign_permissions)
+
+
+@receiver(post_save, sender=FieldPermission)
+@receiver(post_delete, sender=FieldPermission)
+def clear_column_visibility_cache_on_permission_change(sender, instance, **kwargs):
+    """
+    Clear column visibility cache and clean up ListColumnVisibility records
+    when field permissions are created, updated, or deleted.
+    This ensures that list/kanban views reflect permission changes immediately.
+    """
+
+    def cleanup_visibility_records():
+        try:
+
+            content_type = instance.content_type
+            app_label = content_type.app_label
+            field_name = instance.field_name
+
+            # Get the model class - use model_name from content_type first, then get class name
+            try:
+                model = content_type.model_class()
+                if not model:
+                    # Fallback: try to get model using content_type.model (lowercase)
+                    model = apps.get_model(
+                        app_label=app_label, model_name=content_type.model
+                    )
+                model_name = (
+                    model.__name__
+                )  # Use class name (capitalized) as stored in ListColumnVisibility
+            except (LookupError, AttributeError) as e:
+                logger.error(
+                    "Model not found: %s.%s: %s",
+                    app_label,
+                    content_type.model,
+                    e,
+                )
+                return
+
+            # Determine affected users
+            affected_users = []
+            if instance.user:
+                affected_users = [instance.user]
+            elif instance.role:
+                affected_users = list(instance.role.users.all())
+
+            # Get the permission type (if it's a save, check the new permission; if delete, field is now visible)
+            _permission_type = None
+            if hasattr(instance, "permission_type"):
+                _permission_type = instance.permission_type
+
+            # Process each affected user
+            for user in affected_users:
+                # Get all ListColumnVisibility entries for this user and model
+                # Try both model_name formats (class name and lowercase) to be safe
+                visibility_entries = ListColumnVisibility.all_objects.filter(
+                    user=user, app_label=app_label
+                ).filter(Q(model_name=model_name) | Q(model_name=model_name.lower()))
+                for entry in visibility_entries:
+                    updated = False
+
+                    # Check current permission for this user and field
+                    current_permission = get_user_field_permission(
+                        user, model, field_name
+                    )
+
+                    # If field is now hidden, remove it from visible_fields and removed_custom_fields
+                    if current_permission == "hidden":
+                        # Remove from visible_fields
+                        original_visible_fields = (
+                            entry.visible_fields.copy() if entry.visible_fields else []
+                        )
+                        updated_visible_fields = []
+
+                        for field_item in original_visible_fields:
+                            # Handle both [verbose_name, field_name] and field_name formats
+                            if (
+                                isinstance(field_item, (list, tuple))
+                                and len(field_item) >= 2
+                            ):
+                                item_field_name = field_item[1]
+                            else:
+                                item_field_name = field_item
+
+                            # Check if this field matches the hidden field
+                            # Handle both direct field name and display method (get_*_display)
+                            field_matches = (
+                                item_field_name == field_name
+                                or item_field_name == f"get_{field_name}_display"
+                                or (
+                                    item_field_name.startswith("get_")
+                                    and item_field_name.endswith("_display")
+                                    and item_field_name.replace("get_", "").replace(
+                                        "_display", ""
+                                    )
+                                    == field_name
+                                )
+                            )
+
+                            if not field_matches:
+                                updated_visible_fields.append(field_item)
+                            else:
+                                updated = True
+
+                        # Remove from removed_custom_fields
+                        original_removed_fields = (
+                            entry.removed_custom_fields.copy()
+                            if entry.removed_custom_fields
+                            else []
+                        )
+                        updated_removed_fields = []
+
+                        for field_item in original_removed_fields:
+                            if (
+                                isinstance(field_item, (list, tuple))
+                                and len(field_item) >= 2
+                            ):
+                                item_field_name = field_item[1]
+                            else:
+                                item_field_name = field_item
+
+                            # Check if this field matches the hidden field
+                            field_matches = (
+                                item_field_name == field_name
+                                or item_field_name == f"get_{field_name}_display"
+                                or (
+                                    item_field_name.startswith("get_")
+                                    and item_field_name.endswith("_display")
+                                    and item_field_name.replace("get_", "").replace(
+                                        "_display", ""
+                                    )
+                                    == field_name
+                                )
+                            )
+
+                            if not field_matches:
+                                updated_removed_fields.append(field_item)
+                            else:
+                                updated = True
+
+                        # Update the entry if changes were made
+                        if updated:
+                            entry.visible_fields = updated_visible_fields
+                            entry.removed_custom_fields = updated_removed_fields
+                            entry.save(
+                                update_fields=[
+                                    "visible_fields",
+                                    "removed_custom_fields",
+                                ]
+                            )
+
+                    # If field is now visible (not hidden), ensure it's available and re-add if it was previously visible
+                    elif current_permission != "hidden":
+
+                        # Get the model's default fields to check if this is a standard field
+                        try:
+                            from django.db.models import Field as ModelField
+                            from django.utils.encoding import force_str
+
+                            model_instance = model()
+                            model_fields = [
+                                [
+                                    force_str(f.verbose_name or f.name.title()),
+                                    (
+                                        f.name
+                                        if not getattr(f, "choices", None)
+                                        else f"get_{f.name}_display"
+                                    ),
+                                ]
+                                for f in model._meta.get_fields()
+                                if isinstance(f, ModelField)
+                                and f.name not in ["history"]
+                            ]
+
+                            # Check if model has a columns property
+                            default_fields = (
+                                getattr(model_instance, "columns", model_fields)
+                                if hasattr(model_instance, "columns")
+                                else model_fields
+                            )
+
+                            # Find the field in default fields (check both field_name and get_*_display)
+                            field_to_add = None
+                            for default_field in default_fields:
+                                if (
+                                    isinstance(default_field, (list, tuple))
+                                    and len(default_field) >= 2
+                                ):
+                                    default_field_name = default_field[1]
+                                    default_verbose_name = default_field[0]
+
+                                    # Check if this default field matches our field
+                                    field_matches = (
+                                        default_field_name == field_name
+                                        or default_field_name
+                                        == f"get_{field_name}_display"
+                                        or (
+                                            default_field_name.startswith("get_")
+                                            and default_field_name.endswith("_display")
+                                            and default_field_name.replace(
+                                                "get_", ""
+                                            ).replace("_display", "")
+                                            == field_name
+                                        )
+                                    )
+
+                                    if field_matches:
+                                        field_to_add = [
+                                            default_verbose_name,
+                                            default_field_name,
+                                        ]
+                                        break
+
+                            # If field is in default fields and not in visible_fields, add it back
+                            if field_to_add:
+                                current_visible_fields = (
+                                    entry.visible_fields.copy()
+                                    if entry.visible_fields
+                                    else []
+                                )
+                                field_already_in_visible = any(
+                                    (
+                                        isinstance(item, (list, tuple))
+                                        and len(item) >= 2
+                                        and item[1] == field_to_add[1]
+                                    )
+                                    or (
+                                        not isinstance(item, (list, tuple))
+                                        and item == field_to_add[1]
+                                    )
+                                    for item in current_visible_fields
+                                )
+
+                                if not field_already_in_visible:
+                                    current_visible_fields.append(field_to_add)
+                                    entry.visible_fields = current_visible_fields
+                                    updated = True
+
+                            # Remove from removed_custom_fields if it's there
+                            original_removed_fields = (
+                                entry.removed_custom_fields.copy()
+                                if entry.removed_custom_fields
+                                else []
+                            )
+                            updated_removed_fields = []
+
+                            for field_item in original_removed_fields:
+                                if (
+                                    isinstance(field_item, (list, tuple))
+                                    and len(field_item) >= 2
+                                ):
+                                    item_field_name = field_item[1]
+                                else:
+                                    item_field_name = field_item
+
+                                # Check if this field matches the now-visible field
+                                field_matches = (
+                                    item_field_name == field_name
+                                    or item_field_name == f"get_{field_name}_display"
+                                    or (
+                                        item_field_name.startswith("get_")
+                                        and item_field_name.endswith("_display")
+                                        and item_field_name.replace("get_", "").replace(
+                                            "_display", ""
+                                        )
+                                        == field_name
+                                    )
+                                )
+
+                                if not field_matches:
+                                    updated_removed_fields.append(field_item)
+                                else:
+                                    updated = True
+
+                            if updated:
+                                entry.removed_custom_fields = updated_removed_fields
+                                entry.save(
+                                    update_fields=[
+                                        "visible_fields",
+                                        "removed_custom_fields",
+                                    ]
+                                )
+                        except Exception as e:
+                            logger.error(
+                                "Error checking default fields for re-adding: %s",
+                                e,
+                            )
+
+                    # Clear cache for this entry
+                    cache_key = f"visible_columns_{entry.user.id}_{entry.app_label}_{entry.model_name}_{entry.context}_{entry.url_name}"
+                    cache.delete(cache_key)
+
+        except Exception as e:
+            logger.error(
+                "Error cleaning up column visibility records on permission change: %s",
+                e,
+            )
+
+    transaction.on_commit(cleanup_visibility_records)
+
+
+def clear_list_column_cache_for_model(content_type, affected_users=None):
+    """
+    Clear list column visibility cache for all users who have ListColumnVisibility
+    for the given model (content_type).
+
+    Args:
+        content_type: ContentType instance for the model
+        affected_users: Optional list of user IDs to limit cache clearing to specific users
+    """
+    try:
+
+        app_label = content_type.app_label
+        model_name = (
+            content_type.model_class().__name__ if content_type.model_class() else None
+        )
+
+        if not model_name:
+            return
+
+        # Get all ListColumnVisibility records for this model
+        visibility_queryset = ListColumnVisibility.all_objects.filter(
+            app_label=app_label, model_name=model_name
+        )
+
+        # If specific users are provided, filter to those users
+        if affected_users:
+            visibility_queryset = visibility_queryset.filter(user_id__in=affected_users)
+
+        # Clear cache for each visibility record
+        for visibility in visibility_queryset:
+            cache_key = f"visible_columns_{visibility.user.id}_{app_label}_{model_name}_{visibility.context}_{visibility.url_name}"
+            cache.delete(cache_key)
+
+    except Exception as e:
+        logger.error("Error clearing list column cache: %s", e)
+
+
+@receiver(post_save, sender=Company)
+def assign_first_company_to_all_users(sender, instance, created, **kwargs):
+    """Assign the first company created to all users"""
+    if created:
+        if Company.objects.count() == 1:
+            User.objects.filter(company__isnull=True).update(company=instance)

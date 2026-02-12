@@ -1,7 +1,6 @@
 """Leads app configuration."""
 
 from django.apps import AppConfig
-from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
 
@@ -42,11 +41,13 @@ class LeadsConfig(AppConfig):
 
     def ready(self):
         try:
+
             # Auto-register this app's URLs and add to installed apps
             from django.urls import include, path
 
             from horilla.urls import urlpatterns
 
+            __import__("horilla_crm.leads.registration")
             __import__("horilla_crm.leads.signals")  # noqa: F401
             __import__("horilla_crm.leads.menu")  # noqa: F401
             __import__("horilla_crm.leads.dashboard")

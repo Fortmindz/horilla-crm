@@ -1,14 +1,22 @@
+"""
+Forms for Horilla Core application.
+
+This module contains Django form classes used across the Horilla Core app
+"""
+
+# Standard library imports
 import logging
 
+# Third-party imports
 import pycountry
 from django import forms
-from django.apps import apps
-from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import models
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
+from horilla.auth.models import User
+from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_generics.forms import (
     HorillaModelForm,
     HorillaMultiStepForm,
@@ -16,24 +24,27 @@ from horilla_generics.forms import (
 )
 from horilla_utils.middlewares import _thread_local
 
+# Local / relative imports
 from .models import (
     BusinessHour,
     Company,
     DatedConversionRate,
+    Department,
     FiscalYear,
     Holiday,
-    HorillaUser,
     MultipleCurrency,
     Role,
-    ScoringCondition,
-    ScoringCriterion,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class FiscalYearForm(HorillaModelForm):
+    """Form class for FiscalYear model."""
+
     class Meta:
+        """Meta options for FiscalYearForm."""
+
         model = FiscalYear
         fields = [
             "fiscal_year_type",
@@ -51,20 +62,49 @@ class FiscalYearForm(HorillaModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Get fiscal_year_type from POST or instance
+
+        # Get fiscal_year_type and format_type from POST or instance
         fiscal_year_type = (
             self.data.get("fiscal_year_type")
             if self.data
             else getattr(self.instance, "fiscal_year_type", None)
         )
 
+        format_type = (
+            self.data.get("format_type")
+            if self.data
+            else getattr(self.instance, "format_type", None)
+        )
+
         if fiscal_year_type == "standard":
+            # For standard type, start_date_day is optional
             self.fields["start_date_day"].required = False
             self.initial["start_date_day"] = None
 
+        elif fiscal_year_type == "custom":
+            self.fields["format_type"].required = True
+            self.fields["start_date_month"].required = True
+            self.fields["display_year_based_on"].required = True
+            self.fields["start_date_day"].required = True
+            self.fields["week_start_day"].required = True
+            self.fields["number_weeks_by"].required = True
+            self.fields["period_display_option"].required = True
+
+            # Based on format_type, require specific format fields
+            if format_type == "year_based":
+                self.fields["year_based_format"].required = True
+                self.fields["quarter_based_format"].required = False
+            elif format_type == "quarter_based":
+                self.fields["quarter_based_format"].required = True
+                self.fields["year_based_format"].required = False
+
 
 class HolidayForm(HorillaModelForm):
+    """Form class for Holiday model."""
+
     class Meta:
+        """Meta options for HolidayForm."""
+
         model = Holiday
         fields = "__all__"
         exclude = [
@@ -291,6 +331,8 @@ class HolidayForm(HorillaModelForm):
 
 
 class CurrencyForm(forms.Form):
+    """Form to add a new currency for the company."""
+
     currency = forms.ModelChoiceField(
         queryset=MultipleCurrency.objects.none(),
         empty_label="Select a currency",
@@ -309,6 +351,8 @@ class CurrencyForm(forms.Form):
 
 
 class ConversionRateForm(forms.Form):
+    """Form to update conversion rates and change default currency."""
+
     new_default_currency = forms.ModelChoiceField(
         queryset=MultipleCurrency.objects.none(),
         empty_label="Select a new default currency",
@@ -343,6 +387,8 @@ class ConversionRateForm(forms.Form):
 
 
 class DatedConversionRateForm(forms.Form):
+    """Form to add dated conversion rates for multiple currencies."""
+
     start_date = forms.DateField(
         label=_("Start Date"),
         help_text=_("Effective date for these conversion rates"),
@@ -403,7 +449,11 @@ class DatedConversionRateForm(forms.Form):
 
 
 class BusinessHourForm(HorillaModelForm):
+    """Form class for BusinessHour model."""
+
     class Meta:
+        """Meta options for BusinessHourForm."""
+
         model = BusinessHour
         fields = [
             "company",
@@ -477,7 +527,7 @@ class BusinessHourForm(HorillaModelForm):
             if name in self.fields:
                 self.fields[name].widget.attrs["hx-get"] = base_url
 
-        has_existing_default = (
+        _has_existing_default = (
             BusinessHour.objects.filter(is_default=True)
             .exclude(pk=instance.pk if instance.pk else None)
             .exists()
@@ -621,8 +671,12 @@ class BusinessHourForm(HorillaModelForm):
 
 
 class UserFormClass(HorillaMultiStepForm):
+    """Form class for User model with password fields."""
+
     class Meta:
-        model = HorillaUser
+        """Meta options for UserFormClass."""
+
+        model = User
         fields = "__all__"
         # exclude = ['profile']
 
@@ -636,7 +690,7 @@ class UserFormClass(HorillaMultiStepForm):
             "is_active",
         ],
         2: ["country", "state", "city", "zip_code"],
-        3: ["department", "role"],
+        3: ["department", "role", "company"],
         4: [
             "language",
             "time_zone",
@@ -652,7 +706,7 @@ class UserFormClass(HorillaMultiStepForm):
         email = self.cleaned_data.get("email")
 
         if email:
-            queryset = HorillaUser.objects.filter(email=email)
+            queryset = User.objects.filter(email=email)
             if self.instance and self.instance.pk:
                 queryset = queryset.exclude(pk=self.instance.pk)
 
@@ -673,6 +727,7 @@ class UserFormClass(HorillaMultiStepForm):
                 "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
                 "hx-target": "#id_state",
                 "hx-trigger": "change",
+                "hx-swap": "innerHTML",
             }
         )
 
@@ -693,16 +748,91 @@ class UserFormClass(HorillaMultiStepForm):
             )
 
     def get_subdivision_choices(self, country_code):
+        """Get subdivisions for a given country code."""
         try:
             subdivisions = list(
                 pycountry.subdivisions.get(country_code=country_code.upper())
             )
             return [(sub.code, sub.name) for sub in subdivisions]
-        except:
+        except Exception:
+            return []
+
+
+class UserFormSingle(HorillaModelForm):
+    """Form class for User model."""
+
+    class Meta:
+        """Meta options for UserFormSingle."""
+
+        model = User
+        fields = [
+            "profile",
+            "email",
+            "first_name",
+            "last_name",
+            "contact_number",
+            "is_active",
+            "country",
+            "state",
+            "city",
+            "zip_code",
+            "department",
+            "role",
+            "company",
+            "language",
+            "time_zone",
+            "date_format",
+            "time_format",
+            "date_time_format",
+            "currency",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for field in ["first_name", "last_name", "email", "contact_number"]:
+            if field in self.fields:
+                self.fields[field].required = True
+
+        self.fields["country"].widget.attrs.update(
+            {
+                "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
+                "hx-target": "#id_state",
+                "hx-trigger": "change",
+                "hx-swap": "innerHTML",
+            }
+        )
+
+        self.fields["state"] = forms.ChoiceField(
+            choices=[],
+            required=False,
+            widget=forms.Select(
+                attrs={"id": "id_state", "class": "js-example-basic-single headselect"}
+            ),
+        )
+
+        if "country" in self.data:
+            country_code = self.data.get("country")
+            self.fields["state"].choices = self.get_subdivision_choices(country_code)
+        elif self.instance.pk and self.instance.country:
+            self.fields["state"].choices = self.get_subdivision_choices(
+                self.instance.country.code
+            )
+
+    def get_subdivision_choices(self, country_code):
+        """Get subdivisions for a given country code."""
+        try:
+            subdivisions = list(
+                pycountry.subdivisions.get(country_code=country_code.upper())
+            )
+            return [(sub.code, sub.name) for sub in subdivisions]
+        except Exception:
             return []
 
 
 class UserFormClassSingle(HorillaModelForm):
+    """Form class for User model with password fields."""
+
     # Add password fields that are not part of the model
     password = forms.CharField(
         widget=PasswordInputWithEye(),
@@ -719,7 +849,9 @@ class UserFormClassSingle(HorillaModelForm):
     )
 
     class Meta:
-        model = HorillaUser
+        """Meta options for UserFormClassSingle."""
+
+        model = User
         fields = [
             "profile",
             "email",
@@ -758,11 +890,12 @@ class UserFormClassSingle(HorillaModelForm):
             )
 
     def clean_username(self):
+        """Validate that username is unique & required."""
         username = self.cleaned_data.get("username")
         if not username:
             raise ValidationError(_("Username is required."))
 
-        existing_user = HorillaUser.objects.filter(username=username)
+        existing_user = User.objects.filter(username=username)
         if self.instance and self.instance.pk:
             existing_user = existing_user.exclude(pk=self.instance.pk)
 
@@ -772,6 +905,7 @@ class UserFormClassSingle(HorillaModelForm):
         return username
 
     def clean_confirm_password(self):
+        """Validate that password and confirm_password match."""
         password = self.cleaned_data.get("password")
         confirm_password = self.cleaned_data.get("confirm_password")
 
@@ -782,6 +916,7 @@ class UserFormClassSingle(HorillaModelForm):
         return confirm_password
 
     def clean_password(self):
+        """Validate password strength."""
         password = self.cleaned_data.get("password")
 
         if not self.instance or not self.instance.pk:
@@ -794,6 +929,7 @@ class UserFormClassSingle(HorillaModelForm):
         return password
 
     def save(self, commit=True):
+        """Override save method to handle password setting."""
         user = super().save(commit=False)
 
         # Handle password
@@ -808,8 +944,92 @@ class UserFormClassSingle(HorillaModelForm):
         return user
 
 
-class CompanyFormClass(HorillaModelForm):
+class CompanyMultistepFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
+    """Form class for company model"""
+
     class Meta:
+        """Meta options for CompanyMultistepFormClass."""
+
+        model = Company
+        fields = "__all__"
+
+    step_fields = {
+        1: [
+            "name",
+            "icon",
+            "email",
+            "website",
+            "contact_number",
+            "fax",
+        ],
+        2: [
+            "annual_revenue",
+            "no_of_employees",
+            "hq",
+        ],
+        3: [
+            "country",
+            "state",
+            "city",
+            "zip_code",
+            "language",
+            "time_zone",
+        ],
+        4: [
+            "currency",
+            "time_format",
+            "date_format",
+            "activate_multiple_currencies",
+        ],
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.current_step < len(self.step_fields):
+            self.fields["created_by"].required = False
+            self.fields["updated_by"].required = False
+
+        self.fields["country"].widget.attrs.update(
+            {
+                "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
+                "hx-target": "#id_state",
+                "hx-trigger": "change",
+                "hx-swap": "innerHTML",
+            }
+        )
+        self.fields["state"] = forms.ChoiceField(
+            choices=[],
+            required=False,
+            widget=forms.Select(
+                attrs={"id": "id_state", "class": "js-example-basic-single headselect"}
+            ),
+        )
+
+        if "country" in self.data:
+            country_code = self.data.get("country")
+            self.fields["state"].choices = self.get_subdivision_choices(country_code)
+        elif self.instance.pk and self.instance.country:
+            self.fields["state"].choices = self.get_subdivision_choices(
+                self.instance.country.code
+            )
+
+    def get_subdivision_choices(self, country_code):
+        """Get subdivisions for a given country code."""
+        try:
+            subdivisions = list(
+                pycountry.subdivisions.get(country_code=country_code.upper())
+            )
+            return [(sub.code, sub.name) for sub in subdivisions]
+        except Exception:
+            return []
+
+
+class CompanyFormClass(HorillaModelForm):
+    """Form class for Company model."""
+
+    class Meta:
+        """Meta options for CompanyFormClass."""
+
         model = Company
         fields = [
             "name",
@@ -824,39 +1044,98 @@ class CompanyFormClass(HorillaModelForm):
         ]
 
 
+class CompanyFormClassSingle(HorillaModelForm):
+    """Form class for Company model with all fields."""
+
+    class Meta:
+        """Meta options for CompanyFormClassSingle."""
+
+        model = Company
+        fields = [
+            "name",
+            "email",
+            "website",
+            "icon",
+            "contact_number",
+            "fax",
+            "annual_revenue",
+            "no_of_employees",
+            "country",
+            "state",
+            "city",
+            "zip_code",
+            "language",
+            "time_zone",
+            "currency",
+            "time_format",
+            "date_format",
+            "hq",
+            "activate_multiple_currencies",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["country"].widget.attrs.update(
+            {
+                "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
+                "hx-target": "#id_state",
+                "hx-trigger": "change",
+                "hx-swap": "innerHTML",
+            }
+        )
+
+        self.fields["state"] = forms.ChoiceField(
+            choices=[],
+            required=False,
+            widget=forms.Select(
+                attrs={"id": "id_state", "class": "js-example-basic-single headselect"}
+            ),
+        )
+
+        if "country" in self.data:
+            country_code = self.data.get("country")
+            self.fields["state"].choices = self.get_subdivision_choices(country_code)
+        elif self.instance.pk and self.instance.country:
+            self.fields["state"].choices = self.get_subdivision_choices(
+                self.instance.country.code
+            )
+
+    def get_subdivision_choices(self, country_code):
+        """Get subdivisions for a given country code."""
+        try:
+            subdivisions = list(
+                pycountry.subdivisions.get(country_code=country_code.upper())
+            )
+            return [(sub.code, sub.name) for sub in subdivisions]
+        except Exception:
+            return []
+
+
 class AddUsersToRoleForm(forms.Form):
+    """Form to add users to a specific role."""
+
     role = forms.ModelChoiceField(
         queryset=Role.objects.all(),
-        label=_("Role"),
-        help_text=_("Select the role to assign to users."),
-        widget=forms.Select(
-            attrs={
-                "class": "select2-pagination w-full",
-                "data-url": reverse_lazy(
-                    f"horilla_generics:model_select2",
-                    kwargs={"app_label": "horilla_core", "model_name": "Role"},
-                ),
-                "data-placeholder": f"Select role",
-                "data-field-name": "role",
-                "id": f"id_role",
-            }
-        ),
     )
     users = forms.ModelMultipleChoiceField(
-        queryset=HorillaUser.objects.all(),
+        queryset=User.objects.all(),
         label=_("Users"),
         help_text=_("Select one or more users to assign to the role."),
         widget=forms.SelectMultiple(
             attrs={
                 "class": "select2-pagination w-full",
                 "data-url": reverse_lazy(
-                    f"horilla_generics:model_select2",
-                    kwargs={"app_label": "horilla_core", "model_name": "HorillaUser"},
+                    "horilla_generics:model_select2",
+                    kwargs={
+                        "app_label": "horilla_core",
+                        "model_name": str(User.__name__),
+                    },
                 ),
-                "data-placeholder": f"Select user",
+                "data-placeholder": "Select user",
                 "multiple": "multiple",
                 "data-field-name": "users",
-                "id": f"id_users",
+                "id": "id_users",
             }
         ),
     )
@@ -869,6 +1148,10 @@ class AddUsersToRoleForm(forms.Form):
         self.condition_model = kwargs.pop("condition_model", None)
         self.condition_field_choices = kwargs.pop("condition_field_choices", {})
         self.request = kwargs.pop("request", None)
+        self.condition_hx_include = kwargs.pop("condition_hx_include", "")
+        self.field_permissions = kwargs.pop("field_permissions", {})
+        self.save_and_new = kwargs.pop("save_and_new", "")
+        self.duplicate_mode = kwargs.pop("duplicate_mode", False)
         super().__init__(*args, **kwargs)
         for field_name in self.hidden_fields:
             if field_name in self.fields:
@@ -884,12 +1167,13 @@ class AddUsersToRoleForm(forms.Form):
             duplicates = users.filter(role=role)
             if duplicates.exists():
                 raise forms.ValidationError(
-                    _(f"The following user(s) are already assigned to this role")
+                    _("The following user(s) are already assigned to this role")
                 )
 
         return cleaned_data
 
     def save(self, commit=True):
+        """Assign the selected role to the selected users."""
         role = self.cleaned_data["role"]
         users = self.cleaned_data["users"]
         if commit:
@@ -899,341 +1183,13 @@ class AddUsersToRoleForm(forms.Form):
         return users
 
 
-class ScoringCriterionForm(HorillaModelForm):
-    def __init__(self, *args, **kwargs):
-        self.row_id = kwargs.pop("row_id", "0")
-        kwargs["condition_model"] = ScoringCondition
-        self.instance_obj = kwargs.get("instance")
-
-        model_name = None
-        request = kwargs.get("request")
-        if request:
-            model_name = request.GET.get("model_name") or request.POST.get("model_name")
-        if self.instance_obj:
-            model_name = self.instance_obj.rule.module
-
-        condition_field_choices = {
-            "field": self._get_model_field_choices(model_name),
-            "operator": [
-                ("", "---------"),
-                ("equals", "Equals"),
-                ("not_equals", "Not Equals"),
-                ("contains", "Contains"),
-                ("not_contains", "Does Not Contain"),
-                ("starts_with", "Starts With"),
-                ("ends_with", "Ends With"),
-                ("greater_than", "Greater Than"),
-                ("greater_than_equal", "Greater Than or Equal"),
-                ("less_than", "Less Than"),
-                ("less_than_equal", "Less Than or Equal"),
-                ("is_empty", "Is Empty"),
-                ("is_not_empty", "Is Not Empty"),
-            ],
-            "logical_operator": [
-                ("", "---------"),
-                ("and", "AND"),
-                ("or", "OR"),
-            ],
-        }
-        kwargs["condition_field_choices"] = condition_field_choices
-
-        super().__init__(*args, **kwargs)
-        self.model_name = model_name or ""
-        self._add_htmx_to_field_selects()
-
-        if self.instance_obj and self.instance_obj.pk:
-            self._set_initial_condition_values()
-
-    def _set_initial_condition_values(self):
-        """Set initial values for condition fields in edit mode"""
-        if not self.instance_obj or not self.instance_obj.pk:
-            return
-
-        existing_conditions = self.instance_obj.conditions.all().order_by("order")
-        if hasattr(self, "row_id") and self.row_id != "0":
-            return
-
-        if existing_conditions.exists():
-            first_condition = existing_conditions.first()
-            for field_name in self.condition_fields:
-                if field_name in self.fields:
-                    value = getattr(first_condition, field_name, "")
-                    self.fields[field_name].initial = value
-                    field_key_0 = f"{field_name}_0"
-                    if field_key_0 in self.fields:
-                        self.fields[field_key_0].initial = value
-
-    def _add_htmx_to_field_selects(self):
-        """Add HTMX attributes to field select widgets for dynamic value field updates"""
-        model_name = getattr(self, "model_name", "")
-        row_id = getattr(self, "row_id", "0")
-
-        for field_name, field in self.fields.items():
-            if field_name.startswith("field") or field_name == "field":
-                if hasattr(field.widget, "attrs"):
-                    field.widget.attrs.update(
-                        {
-                            "name": f"field_{row_id}",
-                            "id": f"id_field_{row_id}",
-                            "hx-get": reverse_lazy(
-                                "horilla_generics:get_field_value_widget"
-                            ),
-                            "hx-target": f"#id_value_{row_id}_container",
-                            "hx-swap": "innerHTML",
-                            "hx-include": f'[name="field_{row_id}"],#id_value_{row_id}',
-                            "hx-vals": f'{{"model_name": "{model_name}", "row_id": "{row_id}"}}',
-                            "hx-trigger": "change,load",
-                        }
-                    )
-
-    def _get_model_field_choices(self, model_name):
-        """Get field choices for the specified model"""
-        field_choices = [("", "---------")]
-
-        if model_name:
-            try:
-                model = None
-                for app_config in apps.get_app_configs():
-                    try:
-                        model = apps.get_model(
-                            app_label=app_config.label, model_name=model_name
-                        )
-                        break
-                    except LookupError:
-                        continue
-
-                if model:
-                    model_fields = [
-                        (field.name, field.verbose_name or field.name)
-                        for field in model._meta.get_fields()
-                        if field.concrete and not field.is_relation
-                    ]
-                    field_choices.extend(model_fields)
-
-            except Exception as e:
-                logger.error(
-                    f"Error fetching model {model_name}: {str(e)}", exc_info=True
-                )
-
-        return field_choices
-
-    def _add_condition_fields(self):
-        """Override to add HTMX-enabled condition fields with proper initialization"""
-        for field_name in self.condition_fields:
-            try:
-                model_field = self.condition_model._meta.get_field(field_name)
-
-                # Create base field (for row 0 and template access)
-                if field_name == "field" and field_name in self.condition_field_choices:
-                    model_name = getattr(self, "model_name", "")
-                    form_field = forms.ChoiceField(
-                        choices=self.condition_field_choices[field_name],
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.Select(
-                            attrs={
-                                "class": "js-example-basic-single headselect",
-                                "data-placeholder": f'Select {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                                "hx-get": reverse_lazy(
-                                    "horilla_generics:get_field_value_widget"
-                                ),
-                                "hx-target": f"#id_value_0_container",
-                                "hx-swap": "innerHTML",
-                                "hx-vals": f'{{"model_name": "{model_name}", "row_id": "0"}}',
-                                "hx-include": f'[name="{field_name}_0"]',
-                                "hx-trigger": "change,load",
-                            }
-                        ),
-                    )
-                elif field_name == "value":
-                    form_field = forms.CharField(
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.TextInput(
-                            attrs={
-                                "class": "text-color-600 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600",
-                                "placeholder": f'Enter {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                                "data-container-id": f"value-field-container-0",
-                            }
-                        ),
-                    )
-                elif field_name in self.condition_field_choices:
-                    form_field = forms.ChoiceField(
-                        choices=self.condition_field_choices[field_name],
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.Select(
-                            attrs={
-                                "class": "js-example-basic-single headselect",
-                                "data-placeholder": f'Select {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-                elif hasattr(model_field, "choices") and model_field.choices:
-                    form_field = forms.ChoiceField(
-                        choices=[("", "---------")] + list(model_field.choices),
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.Select(
-                            attrs={
-                                "class": "js-example-basic-single headselect",
-                                "data-placeholder": f'Select {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-                elif isinstance(model_field, models.CharField):
-                    form_field = forms.CharField(
-                        max_length=model_field.max_length,
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.TextInput(
-                            attrs={
-                                "class": "text-color-600 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600",
-                                "placeholder": f'Enter {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-                elif isinstance(model_field, models.IntegerField):
-                    form_field = forms.IntegerField(
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.NumberInput(
-                            attrs={
-                                "class": "text-color-600 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600",
-                                "placeholder": f'Enter {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-                elif isinstance(model_field, models.BooleanField):
-                    form_field = forms.BooleanField(
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.CheckboxInput(
-                            attrs={
-                                "class": "sr-only peer",
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-                else:
-                    form_field = forms.CharField(
-                        required=False,
-                        label=model_field.verbose_name
-                        or field_name.replace("_", " ").title(),
-                        widget=forms.TextInput(
-                            attrs={
-                                "class": "text-color-600 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600",
-                                "placeholder": f'Enter {field_name.replace("_", " ").title()}',
-                                "id": f"id_{field_name}_0",
-                                "name": f"{field_name}_0",
-                            }
-                        ),
-                    )
-
-                form_field.is_custom_field = True
-                self.fields[field_name] = form_field
-
-            except Exception as e:
-                logger.error(f"Error adding condition field {field_name}: {str(e)}")
-
-        # Set initial values for edit mode
-        self._set_initial_condition_values()
-
-    def clean(self):
-        """Process multiple condition rows from form data"""
-        cleaned_data = super().clean()
-
-        condition_rows = self._extract_condition_rows()
-
-        if not condition_rows:
-            raise forms.ValidationError("At least one condition must be provided.")
-
-        cleaned_data["condition_rows"] = condition_rows
-
-        return cleaned_data
-
-    def _extract_condition_rows(self):
-        condition_rows = []
-        condition_fields = ["field", "operator", "value", "logical_operator"]
-
-        if not self.data:
-            return condition_rows
-
-        row_ids = set()
-
-        for key in self.data.keys():
-            for field_name in condition_fields:
-                if key.startswith(f"{field_name}_"):
-                    row_id = key.replace(f"{field_name}_", "")
-                    if row_id.isdigit():
-                        row_ids.add(row_id)
-
-        if any(f in self.data for f in condition_fields) or any(
-            f"{f}_0" in self.data for f in condition_fields
-        ):
-            row_ids.add("0")
-
-        for row_id in sorted(row_ids, key=lambda x: int(x)):
-            row_data = {}
-            has_required_data = True
-
-            for field_name in condition_fields:
-                if row_id == "0":
-                    field_key = (
-                        f"{field_name}_0"
-                        if f"{field_name}_0" in self.data
-                        else field_name
-                    )
-                else:
-                    field_key = f"{field_name}_{row_id}"
-
-                value = self.data.get(field_key, "").strip()
-                row_data[field_name] = value
-
-                if field_name in ["field", "operator"] and not value:
-                    has_required_data = False
-
-            if has_required_data and row_data.get("field") and row_data.get("operator"):
-                row_data["order"] = int(row_id)
-                condition_rows.append(row_data)
-
-        return condition_rows
-
-    class Meta:
-        model = ScoringCriterion
-        fields = ["rule", "points", "operation_type"]
-        widgets = {
-            "points": forms.NumberInput(
-                attrs={
-                    "class": "text-color-600 p-2 w-full border border-dark-50 rounded-md mt-1"
-                }
-            ),
-        }
-
-
 class RegionalFormattingForm(HorillaModelForm):
+    """Form class for updating user's regional formatting settings."""
+
     class Meta:
-        model = HorillaUser
+        """Meta options for RegionalFormattingForm."""
+
+        model = User
         fields = [
             "date_format",
             "time_format",
@@ -1283,6 +1239,7 @@ class ChangePasswordForm(forms.Form):
         super().__init__(*args, **kwargs)
 
     def clean_current_password(self):
+        """Validate that the current password is correct."""
         current_password = self.cleaned_data.get("current_password")
         if not self.user.check_password(current_password):
             self.add_error("current_password", _("Current password is incorrect."))
@@ -1306,5 +1263,141 @@ class ChangePasswordForm(forms.Form):
                     "new_password",
                     _("New password must be different from current password."),
                 )
+
+        return cleaned_data
+
+
+class ChangeUserCompanyForm(HorillaModelForm):
+    """Form for changing user's company with dynamic role, department, and currency filtering"""
+
+    class Meta:
+        model = User
+        fields = ["company", "role", "department", "currency"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "company" in self.fields:
+            self.fields["company"].queryset = Company.objects.all().order_by("name")
+            if hasattr(self, "field_permissions") and self.field_permissions:
+                self.field_permissions["company"] = "readwrite"
+
+        if "company" in self.fields:
+            hx_vals = {}
+            if self.instance and self.instance.pk:
+                hx_vals["user_pk"] = str(self.instance.pk)
+
+            attrs = {
+                "hx-get": reverse_lazy("horilla_core:get_company_related_fields"),
+                "hx-target": "#company-related-fields",
+                "hx-swap": "innerHTML",
+                "hx-trigger": "change",
+                "hx-include": "#id_company",  # Only include the select element by ID
+            }
+
+            if hx_vals:
+                import json
+
+                attrs["hx-vals"] = json.dumps(hx_vals)
+
+            self.fields["company"].widget.attrs.update(attrs)
+
+        company = None
+        if self.data and self.data.get("company"):
+            try:
+                company = Company.objects.get(pk=self.data.get("company"))
+            except (Company.DoesNotExist, ValueError, TypeError):
+                pass
+
+        if not company and self.instance and self.instance.pk and self.instance.company:
+            company = self.instance.company
+
+        if company:
+            self._filter_fields_by_company(company)
+
+    def _filter_fields_by_company(self, company):
+        """Filter role, department, and currency fields by company"""
+
+        if "role" in self.fields:
+            self.fields["role"].queryset = Role.all_objects.filter(
+                company=company, is_active=True
+            )
+
+        if "department" in self.fields:
+            self.fields["department"].queryset = Department.all_objects.filter(
+                company=company, is_active=True
+            )
+
+        if "currency" in self.fields:
+            self.fields["currency"].queryset = MultipleCurrency.all_objects.filter(
+                company=company, is_active=True
+            )
+
+    def _get_fresh_queryset(self, field_name, related_model):
+        """
+        Override to bypass permission filtering for role, department, and currency fields.
+        These fields are filtered by company, not by user permissions.
+        """
+        if field_name in ["role", "department", "currency"]:
+            company = None
+            if self.data and self.data.get("company"):
+                try:
+                    from horilla_core.models import Company
+
+                    company_id = self.data.get("company")
+                    if isinstance(company_id, list):
+                        company_id = company_id[-1] if company_id else None
+                    if company_id:
+                        company = Company.objects.get(pk=company_id)
+                except (Company.DoesNotExist, ValueError, TypeError):
+                    pass
+            elif self.instance and self.instance.pk and self.instance.company:
+                company = self.instance.company
+
+            if company:
+                return related_model.all_objects.filter(company=company, is_active=True)
+            else:
+                return related_model.all_objects.none()
+
+        return super()._get_fresh_queryset(field_name, related_model)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        company = cleaned_data.get("company")
+        role = cleaned_data.get("role")
+        department = cleaned_data.get("department")
+        currency = cleaned_data.get("currency")
+
+        if company and role:
+            if role.company != company:
+                self.add_error(
+                    "role", f"Selected role does not belong to {company.name}"
+                )
+
+        if company and department:
+            if department.company != company:
+                self.add_error(
+                    "department",
+                    f"Selected department does not belong to {company.name}",
+                )
+
+        if company and currency:
+            if currency.company != company:
+                self.add_error(
+                    "currency", f"Selected currency does not belong to {company.name}"
+                )
+
+        if self.instance and self.instance.pk and role:
+            current_role = getattr(self.instance, "role", None)
+
+            if current_role != role:
+                username = self.instance.username
+                existing_user = User.all_objects.filter(
+                    username=username, role=role
+                ).exclude(pk=self.instance.pk)
+                if existing_user.exists():
+                    self.add_error(
+                        "role",
+                        f'Another user with username "{username}" already has this role. Please select a different role.',
+                    )
 
         return cleaned_data

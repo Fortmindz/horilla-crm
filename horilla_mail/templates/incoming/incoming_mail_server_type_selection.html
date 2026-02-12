@@ -1,9 +1,9 @@
-{% load static %}
+{% load static i18n %}
 <div class="bg-white rounded-lg shadow-lg p-5">
     <div class="flex justify-between items-center mb-2">
-        <h2 class="text-md font-semibold">Select Mail Server Type</h2>
+        <h2 class="text-md font-semibold">{% trans 'Select Mail Server Type' %}</h2>
         <button type="button" onclick="closehorillaModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     <div class="pt-2">
@@ -12,15 +12,15 @@
             <div
                 class="bg-white p-6 border-[2px] border-primary-300 rounded-xl shadow-sm  transition-shadow cursor-pointer">
                 <div class="p-6 text-center h-full flex flex-col">
-                    <img src="{% static 'assets/icons/outlook.svg' %}" alt="Outlook" class="w-16 h-16 mx-auto mb-4" />
-                    <h5 class="text-lg font-semibold mb-2">Outlook Mail Server</h5>
-                    <p class="text-gray-500 text-sm mb-4 flex-grow">Configure using Microsoft Azure/Office 365 OAuth authentication</p>
+                    <img src="{% static 'assets/icons/outlook.svg' %}" alt="{% trans 'Outlook' %}" class="w-16 h-16 mx-auto mb-4" />
+                    <h5 class="text-lg font-semibold mb-2">{% trans 'Outlook Mail Server' %}</h5>
+                    <p class="text-gray-500 text-sm mb-4 flex-grow">{% trans 'Configure using Microsoft Azure/Office 365 OAuth authentication' %}</p>
                     <button hx-get="{% url 'horilla_mail:outlook_mail_server_form_view' %}?type=incoming"
                         hx-target="#modalBox"
                         hx-swap="innerHTML"
                         hx-on:click="openModal()"
                         class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded transition-colors">
-                        Select Outlook
+                        {% trans "Select Outlook" %}
                     </button>
                 </div>
             </div>
@@ -28,16 +28,16 @@
             <div
                 class="bg-white p-6 border-[2px] border-primary-300 rounded-xl shadow-sm  transition-shadow cursor-pointer">
                 <div class="p-6 text-center h-full flex flex-col">
-                    <img src="{% static 'assets/icons/email.svg' %}" alt="mail" class="w-16 h-16 mx-auto mb-4" />
-                    <h5 class="text-lg font-semibold mb-2">Other Mail Servers</h5>
-                    <p class="text-gray-500 text-sm mb-4 flex-grow">Configure SMTP, Gmail, Yahoo, or any other mail server</p>
+                    <img src="{% static 'assets/icons/email.svg' %}" alt="{% trans 'mail' %}" class="w-16 h-16 mx-auto mb-4" />
+                    <h5 class="text-lg font-semibold mb-2">{% trans "Other Mail Servers" %}</h5>
+                    <p class="text-gray-500 text-sm mb-4 flex-grow">{% trans "Configure SMTP, Gmail, Yahoo, or any other mail server" %}</p>
                     <button
                         hx-get="{% url 'horilla_mail:incoming_mail_server_form_view' %}"
                         hx-target="#modalBox"
                         hx-swap="innerHTML"
                         hx-on:click="openModal()"
                         class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded transition-colors">
-                        Select Other
+                        {% trans "Select Other" %}
                     </button>
                 </div>
             </div>

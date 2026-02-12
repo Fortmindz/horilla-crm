@@ -1,6 +1,17 @@
+"""
+Filtering utilities for horilla_generics.
+
+Provides the HorillaFilterSet and operator choices used by generic filtering forms.
+"""
+
+# Standard library imports
 import logging
 
+# Third-party imports (Others)
 import django_filters
+
+# Third-party imports (Django)
+from django.db import models
 from django.db.models import Q
 
 logger = logging.getLogger(__name__)
@@ -77,12 +88,37 @@ OPERATOR_CHOICES = {
 
 
 class HorillaFilterSet(django_filters.FilterSet):
+    """
+    Custom FilterSet for Horilla with enhanced search and filtering capabilities.
+
+    Provides field-type-specific operators and boolean value conversion
+    for generic filtering across Horilla models.
+    """
+
     search = django_filters.CharFilter(method="filter_search", label="Search")
 
     @classmethod
     def get_operators_for_field(cls, field_type):
         """Return appropriate operators for a given field type"""
         return OPERATOR_CHOICES.get(field_type, OPERATOR_CHOICES["other"])
+
+    def _convert_boolean_value(self, value, model, field_name):
+        """Convert boolean string values to proper format for filtering"""
+        if value is None:
+            return None
+
+        # Check if the field is a BooleanField
+        try:
+            field = model._meta.get_field(field_name)
+            if isinstance(field, models.BooleanField):
+                # Convert lowercase "true"/"false" to proper boolean or capitalized string
+                value_str = str(value).lower()
+                return {"true": True, "false": False}.get(value_str)
+
+        except (models.FieldDoesNotExist, AttributeError):
+            pass
+
+        return value
 
     def filter_queryset(self, queryset):
         """
@@ -116,9 +152,14 @@ class HorillaFilterSet(django_filters.FilterSet):
                 continue
 
             try:
+                # Get the model from queryset
+                model = queryset.model
+
                 if operator == "ne":
                     value = values[i] if i < len(values) else None
                     if value is not None:
+                        # Convert boolean value if needed
+                        value = self._convert_boolean_value(value, model, field)
                         queryset = queryset.exclude(**{field: value})
 
                 elif operator == "between":
@@ -143,10 +184,12 @@ class HorillaFilterSet(django_filters.FilterSet):
                 else:
                     value = values[i] if i < len(values) else None
                     if value is not None:
+                        # Convert boolean value if needed
+                        value = self._convert_boolean_value(value, model, field)
                         queryset = queryset.filter(**{f"{field}__{operator}": value})
 
             except Exception as e:
-                logger.error(f"Filter error for {field} {operator}: {e}")
+                logger.error("Filter error for %s %s: %s", field, operator, e)
 
         search_query = self.data.get("search", "") or request.GET.get("search", "")
         if search_query:

@@ -2,36 +2,47 @@
 Forms for the horilla_keys app
 """
 
-import platform
-
 from django import forms
 
-from horilla.menu.main_section_menu import get_main_section_menu
-from horilla.menu.my_settings_menu import get_my_settings_menu
-from horilla.menu.settings_menu import get_settings_menu
-from horilla.menu.sub_section_menu import get_sub_section_menu
-from horilla_core.models import Company, HorillaUser
+from horilla.menu import (
+    main_section_menu,
+    my_settings_menu,
+    settings_menu,
+    sub_section_menu,
+)
+from horilla_core.models import Company
 from horilla_generics.forms import HorillaModelForm
 from horilla_keys.models import ShortcutKey
 from horilla_utils.middlewares import _thread_local
 
 
 class ShortcutKeyForm(HorillaModelForm):
+    """
+    Form for creating and updating keyboard shortcut keys for users.
+    """
+
     class Meta:
+        """
+        Meta configuration for ShortcutKeyForm.
+        """
+
         model = ShortcutKey
         fields = ["user", "page", "command", "key", "company"]
 
     def __init__(self, *args, **kwargs):
+        """Initialize form and dynamically populate page and command choices."""
         request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
 
         choices = []
         company = getattr(request, "active_company", None)
 
-        self.fields["user"].queryset = HorillaUser.objects.filter(id=request.user.id)
+        self.fields["user"].queryset = self.fields["user"].queryset.filter(
+            id=request.user.id
+        )
         self.fields["company"].queryset = Company.objects.filter(id=company.id)
 
-        main_sections = get_main_section_menu(request)
+        main_sections = main_section_menu.get_main_section_menu(request)
         for item in main_sections:
             name = item.get("name")
             url = item.get("url")
@@ -42,8 +53,8 @@ class ShortcutKeyForm(HorillaModelForm):
             if name and url:
                 choices.append((url, name))
 
-        sub_sections = get_sub_section_menu(request)
-        for section_name, items in sub_sections.items():
+        sub_sections = sub_section_menu.get_sub_section_menu(request)
+        for _, items in sub_sections.items():
             for item in items:
                 app_label = item.get("app_label")
                 label = item.get("label")
@@ -51,14 +62,14 @@ class ShortcutKeyForm(HorillaModelForm):
                 if app_label and url:
                     choices.append((url, label))
 
-        my_settings = get_my_settings_menu(request)
+        my_settings = my_settings_menu.get_my_settings_menu(request)
         for item in my_settings:
             title = item.get("title")
             url = item.get("url")
             if title and url:
                 choices.append((url, title))
 
-        main_settings = get_settings_menu(request)
+        main_settings = settings_menu.get_settings_menu(request)
         for item in main_settings:
             title = item.get("title")
             for subitem in item.get("items", []):
@@ -100,32 +111,17 @@ class ShortcutKeyForm(HorillaModelForm):
 
     def _get_command_choices(self):
         """
-        Get OS-specific command key choices
+        Return OS-specific command key choices.
         """
         request = getattr(_thread_local, "request", None)
-        user_agent = ""
-        if request:
-            user_agent = request.META.get("HTTP_USER_AGENT", "").lower()
+        user_agent = request.META.get("HTTP_USER_AGENT", "").lower() if request else ""
 
-        if "windows" in user_agent:
-            os_name = "windows"
+        is_mac = "mac" in user_agent or "darwin" in user_agent
 
-        elif "mac" in user_agent or "darwin" in user_agent:
-            os_name = "mac"
+        if is_mac:
+            return [("alt", "Option (⌥)")]
 
-        elif "linux" in user_agent or "ubuntu" in user_agent:
-            os_name = "linux"
-        else:
-            os_name = platform.system().lower()
-
-        if os_name == "mac":
-            return [
-                ("alt", "Option (⌥)"),
-            ]
-        else:
-            return [
-                ("alt", "Alt"),
-            ]
+        return [("alt", "Alt")]
 
     def clean_command(self):
         """

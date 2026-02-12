@@ -3,9 +3,11 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla CRM Campaigns app
 """
 
+# Third-party imports (Django)
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla.menu import floating_menu, sub_section_menu
 from horilla_crm.campaigns.models import Campaign
 

@@ -1,17 +1,27 @@
-from decimal import Decimal
-from functools import cached_property
+"""Views and utilities for opportunity split functionality."""
 
+# Standard library imports
+from decimal import Decimal
+
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
-from django.urls import reverse, reverse_lazy
+from django.shortcuts import render
+from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 
-from horilla_core.decorators import htmx_required, permission_required
-from horilla_core.models import HorillaUser
+from horilla.auth.models import User
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
+from horilla_core.decorators import (
+    htmx_required,
+    permission_required,
+    permission_required_or_denied,
+)
 from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunitySettings,
@@ -45,6 +55,7 @@ class SplitTypeView(LoginRequiredMixin, TemplateView):
     permission_required("opportunities.view_opportunitysplittype"), name="dispatch"
 )
 class OpportunitySplitNavbar(LoginRequiredMixin, HorillaNavView):
+    """Navigation bar view for opportunity split settings."""
 
     nav_title = _("Opportunity Split Settings")
     search_url = reverse_lazy("opportunities:opportunity_split_list")
@@ -92,6 +103,7 @@ class ToggleOpportunitySplitView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Handle POST request to toggle opportunity split feature."""
         company = self.request.active_company
         settings = OpportunitySettings.get_settings(company)
         action = request.POST.get("action")
@@ -129,6 +141,7 @@ class ToggleAllowAllUsersSplitView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Handle POST request to toggle allow all users in splits."""
         company = self.request.active_company
         settings = OpportunitySettings.get_settings(company)
         action = request.POST.get("action")
@@ -167,13 +180,12 @@ class OpportunitySplitTypeActiveToggleView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Handle POST request to toggle split type active status."""
         try:
             split_type = OpportunitySplitType.objects.get(pk=kwargs["pk"])
             user = request.user
 
-            if user.is_superuser or user.has_perm(
-                "opportunity.change_opportunitysplittype"
-            ):
+            if user.has_perm("opportunity.change_opportunitysplittype"):
                 # Toggle is_active
                 split_type.is_active = not getattr(split_type, "is_active", False)
                 split_type.save()
@@ -190,11 +202,8 @@ class OpportunitySplitTypeActiveToggleView(LoginRequiredMixin, View):
                 # Trigger HTMX reload (for list/table refresh)
                 return HttpResponse("<script>$('#reloadButton').click();</script>")
 
-            else:
-                messages.error(
-                    request, "You don’t have permission to change split types."
-                )
-                return HttpResponse("<script>$('#reloadButton').click();</script>")
+            messages.error(request, "You don’t have permission to change split types.")
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
 
         except OpportunitySplitType.DoesNotExist:
             messages.error(request, "Split Type not found.")
@@ -204,6 +213,9 @@ class OpportunitySplitTypeActiveToggleView(LoginRequiredMixin, View):
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
 
+@method_decorator(
+    permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
+)
 @method_decorator(htmx_required, name="dispatch")
 class ManageOpportunitySplit(LoginRequiredMixin, TemplateView):
     """
@@ -213,6 +225,9 @@ class ManageOpportunitySplit(LoginRequiredMixin, TemplateView):
     template_name = "opportunity_split/manage_opportunity_spilt.html"
 
 
+@method_decorator(
+    permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
+)
 @method_decorator(htmx_required, name="dispatch")
 class OpportunitySplitTabView(LoginRequiredMixin, HorillaTabView):
     """
@@ -272,6 +287,9 @@ class OpportunitySplitTabView(LoginRequiredMixin, HorillaTabView):
         return tabs
 
 
+@method_decorator(
+    permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
+)
 @method_decorator(htmx_required, name="dispatch")
 class OpportunitySplitTabContentView(LoginRequiredMixin, TemplateView):
     """
@@ -328,7 +346,11 @@ class OpportunitySplitTabContentView(LoginRequiredMixin, TemplateView):
                 "next_row_index": existing_splits.count() + 1,
                 "team_selling_enabled": team_selling_enabled,
                 "allow_all_users": allow_all_users,
-                "currency": self.request.user.currency,
+                "currency": (
+                    self.request.active_company.currency
+                    if self.request.active_company
+                    else self.request.user.currency
+                ),
             }
         )
 
@@ -341,9 +363,6 @@ class OpportunitySplitTabContentView(LoginRequiredMixin, TemplateView):
         Returns:
             QuerySet of User objects
         """
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
 
         team_selling_enabled = OpportunitySettings.is_team_selling_enabled(
             self.request.active_company
@@ -399,6 +418,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
     """
 
     def post(self, request, opportunity_id, split_type_id):
+        """Handle POST request to save opportunity splits."""
         opportunity = get_object_or_404(Opportunity, id=opportunity_id)
         split_type = get_object_or_404(OpportunitySplitType, id=split_type_id)
         company = request.active_company
@@ -427,7 +447,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
 
                 splits_with_amounts.append(
                     {
-                        "user": HorillaUser.objects.filter(id=user_id).first(),
+                        "user": User.objects.filter(id=user_id).first(),
                         "user_id": user_id,
                         "split_percentage": percentage,
                         "split_amount": amount,
@@ -446,7 +466,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
                 "opportunity": opportunity,
                 "split_type": split_type,
                 "existing_splits": splits_with_amounts,
-                "users": HorillaUser.objects.filter(company=company, is_active=True),
+                "users": User.objects.filter(company=company, is_active=True),
                 "error": validation_result["error"],
                 "total_percentage": total_percentage,
                 "total_amount": total_amount,
@@ -520,9 +540,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
                 opportunity=opportunity, user_id=user_id
             ).exists():
                 try:
-                    user = HorillaUser.objects.get(
-                        id=user_id, company=company, is_active=True
-                    )
+                    user = User.objects.get(id=user_id, company=company, is_active=True)
 
                     # Create team member with default role and access
                     OpportunityTeamMember.objects.create(
@@ -533,7 +551,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
                         opportunity_access="read",
                     )
                     added_users.append(user.get_full_name() or user.username)
-                except HorillaUser.DoesNotExist:
+                except User.DoesNotExist:
                     continue
 
         if added_users:
@@ -571,7 +589,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
             total_percentage = sum(
                 Decimal(split["percentage"]) for split in splits_data
             )
-        except:
+        except Exception:
             return {"valid": False, "error": _("Invalid percentage value.")}
 
         if split_type.totals_100_percent:
@@ -666,10 +684,6 @@ class AddSplitRowView(LoginRequiredMixin, View):
         Returns:
             QuerySet of User objects
         """
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-
         team_selling_enabled = OpportunitySettings.is_team_selling_enabled(
             request.active_company
         )
@@ -770,7 +784,7 @@ class DeleteSplitRowView(LoginRequiredMixin, View):
             return render(request, self.template_name, context)
 
         if split_type.totals_100_percent and deleted_percentage > 0:
-            owner_split, created = OpportunitySplit.objects.get_or_create(
+            owner_split, _created = OpportunitySplit.objects.get_or_create(
                 opportunity=opportunity,
                 split_type=split_type,
                 user=opportunity.owner,
@@ -865,7 +879,7 @@ class RecalculateTotalsView(LoginRequiredMixin, View):
                         total_percentage += percentage
                         amount = (base_amount * percentage) / Decimal("100")
                         total_amount += amount
-                    except:
+                    except Exception:
                         pass
 
         context = {
@@ -884,6 +898,7 @@ class RecalculateSplitRowView(LoginRequiredMixin, View):
     """Recalculate a single split row AND totals"""
 
     def get(self, request, opportunity_id, split_type_id):
+        """Handle GET request to recalculate a single split row and totals."""
         opportunity = get_object_or_404(Opportunity, id=opportunity_id)
         split_type = get_object_or_404(OpportunitySplitType, id=split_type_id)
 
@@ -909,7 +924,7 @@ class RecalculateSplitRowView(LoginRequiredMixin, View):
             try:
                 percentage = Decimal(percentage_str)
                 amount = (base_amount * percentage) / Decimal("100")
-            except:
+            except Exception:
                 percentage = Decimal("0")
                 amount = Decimal("0")
 
@@ -925,7 +940,7 @@ class RecalculateSplitRowView(LoginRequiredMixin, View):
                             pct = Decimal(pct_str)
                             total_percentage += pct
                             total_amount += (base_amount * pct) / Decimal("100")
-                        except:
+                        except Exception:
                             pass
 
             context = {
@@ -941,59 +956,56 @@ class RecalculateSplitRowView(LoginRequiredMixin, View):
             return render(
                 request, "opportunity_split/split_row_amount_with_totals.html", context
             )
-
-        else:  # changed_field == "amount"
-            # Calculate percentage from amount
-            amount_str = request.GET.get(f"amount_{row_index}", "0").strip()
-            try:
-                amount = Decimal(amount_str)
-                if base_amount > 0:
-                    percentage = (amount * Decimal("100")) / base_amount
-                else:
-                    percentage = Decimal("0")
-            except:
-                amount = Decimal("0")
+        amount_str = request.GET.get(f"amount_{row_index}", "0").strip()
+        try:
+            amount = Decimal(amount_str)
+            if base_amount > 0:
+                percentage = (amount * Decimal("100")) / base_amount
+            else:
                 percentage = Decimal("0")
+        except Exception:
+            amount = Decimal("0")
+            percentage = Decimal("0")
 
-            # Calculate totals - we need to use the NEW percentage for this row
-            total_percentage = Decimal("0")
-            total_amount = Decimal("0")
+        # Calculate totals - we need to use the NEW percentage for this row
+        total_percentage = Decimal("0")
+        total_amount = Decimal("0")
 
-            for key in request.GET.keys():
-                if key.startswith("percentage_"):
-                    # Extract the index from the key
-                    try:
-                        key_index = key.split("_")[1]
-                    except:
-                        continue
+        for key in request.GET.keys():
+            if key.startswith("percentage_"):
+                # Extract the index from the key
+                try:
+                    key_index = key.split("_")[1]
+                except Exception:
+                    continue
 
-                    if key_index == row_index:
-                        # Use the newly calculated percentage for this row
-                        total_percentage += percentage
-                        total_amount += amount
-                    else:
-                        # Use existing percentage for other rows
-                        pct_str = request.GET.get(key, "").replace("%", "").strip()
-                        if pct_str:
-                            try:
-                                pct = Decimal(pct_str)
-                                total_percentage += pct
-                                total_amount += (base_amount * pct) / Decimal("100")
-                            except:
-                                pass
+                if key_index == row_index:
+                    # Use the newly calculated percentage for this row
+                    total_percentage += percentage
+                    total_amount += amount
+                else:
+                    # Use existing percentage for other rows
+                    pct_str = request.GET.get(key, "").replace("%", "").strip()
+                    if pct_str:
+                        try:
+                            pct = Decimal(pct_str)
+                            total_percentage += pct
+                            total_amount += (base_amount * pct) / Decimal("100")
+                        except Exception:
+                            pass
 
-            context = {
-                "amount": amount,
-                "percentage": percentage,
-                "row_index": row_index,  # Use the ACTUAL row_index from request
-                "opportunity": opportunity,
-                "split_type": split_type,
-                "total_percentage": total_percentage,
-                "total_amount": total_amount,
-                "currency": self.request.user.currency,
-            }
-            return render(
-                request,
-                "opportunity_split/split_row_percentage_with_totals.html",
-                context,
-            )
+        context = {
+            "amount": amount,
+            "percentage": percentage,
+            "row_index": row_index,  # Use the ACTUAL row_index from request
+            "opportunity": opportunity,
+            "split_type": split_type,
+            "total_percentage": total_percentage,
+            "total_amount": total_amount,
+            "currency": self.request.user.currency,
+        }
+        return render(
+            request,
+            "opportunity_split/split_row_percentage_with_totals.html",
+            context,
+        )

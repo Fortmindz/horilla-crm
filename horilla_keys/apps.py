@@ -6,7 +6,7 @@ from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
 
-class Horilla_keysConfig(AppConfig):
+class HorillaKeysConfig(AppConfig):
     """App configuration class for horilla_keys."""
 
     default_auto_field = "django.db.models.BigAutoField"
@@ -38,7 +38,7 @@ class Horilla_keysConfig(AppConfig):
             # Auto-register this app's main URLs (non-API)
             from django.urls import include, path
 
-            from horilla.registry.js_registry import register_js
+            from horilla.registry.asset_registry import register_js
             from horilla.urls import urlpatterns
 
             # Add app URLs to main urlpatterns
@@ -54,7 +54,9 @@ class Horilla_keysConfig(AppConfig):
         except Exception as e:
             import logging
 
-            logging.warning(f"Horilla_keysConfig.ready failed  :  ", e)
-            pass
+            logging.warning(
+                "HorillaKeysConfig.ready failed during app initialization: %s",
+                e,
+            )
 
         super().ready()

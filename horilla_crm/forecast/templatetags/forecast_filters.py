@@ -1,4 +1,5 @@
-# templatetags/forecast_filters.py
+"""Template filters for forecast module."""
+
 from django import template
 
 register = template.Library()

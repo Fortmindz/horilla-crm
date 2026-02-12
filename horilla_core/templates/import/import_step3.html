@@ -5,7 +5,7 @@
     <div class="flex justify-between items-center mb-2">
         <h2 class="text-md font-semibold">Import {{ module }}</h2>
         <button type="button" onclick="closeModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     {% endif %}
@@ -78,7 +78,7 @@
                 hx-get="{% url 'horilla_core:import_step2' %}"
                 hx-target="#import-container"
                 hx-swap="innerHTML"
-                class="backBtn btn-with-icon flex gap-3 text-sm px-5 py-2 rounded-md text-[#E54F38] bg-[#ffefed] hover:bg-[#e54f38] hover:text-[white] transition duration-300 cursor-pointer">
+                class="backBtn btn-with-icon flex gap-3 text-sm px-5 py-2 rounded-md text-primary-600 bg-primary-100 hover:bg-primary-600 hover:text-[white] transition duration-300 cursor-pointer">
                 {% trans "Previous" %}
             </button>
             <button type="submit"

@@ -1,3 +1,11 @@
+"""
+Choice constants for various form fields and configuration options.
+
+This module contains predefined choice tuples for languages, date/time formats,
+currency formats, number grouping, months, days, and operators used throughout
+the Horilla application.
+"""
+
 from django.utils.translation import gettext_lazy as _
 
 LANGUAGE_CHOICES = [
@@ -106,3 +114,33 @@ OPERATOR_CHOICES = [
     ("is_empty", _("Is Empty")),
     ("is_not_empty", _("Is Not Empty")),
 ]
+
+# IMPORTANT: Order matters — do not change the order of these lists
+DISPLAYABLE_FIELD_TYPES = [
+    "CharField",
+    "TextField",
+    "BooleanField",
+    "DateField",
+    "DateTimeField",
+    "TimeField",
+    "EmailField",
+    "URLField",
+]
+
+TABLE_FALLBACK_FIELD_TYPES = [
+    "CharField",
+    "TextField",
+    "EmailField",
+]
+
+FIELD_TYPE_MAP = {
+    "CharField": "text",
+    "TextField": "text",
+    "BooleanField": "boolean",
+    "IntegerField": "number",
+    "FloatField": "float",
+    "DecimalField": "decimal",
+    "ForeignKey": "foreignkey",
+    "DateField": "date",
+    "DateTimeField": "datetime",
+}

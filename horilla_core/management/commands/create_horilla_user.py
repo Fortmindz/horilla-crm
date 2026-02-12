@@ -6,7 +6,7 @@ import uuid
 
 from django.core.management.base import BaseCommand, CommandError
 
-from horilla_core.models import HorillaUser
+from horilla.auth.models import User
 
 
 class Command(BaseCommand):
@@ -40,13 +40,13 @@ class Command(BaseCommand):
             email = options["email"]
             phone = options["phone"]
 
-        if HorillaUser.objects.filter(username=username).exists():
+        if User.objects.filter(username=username).exists():
             self.stdout.write(
                 self.style.WARNING(f'User with username "{username}" already exists')
             )
             return
         try:
-            horilla_user = HorillaUser.objects.create_superuser(
+            horilla_user = User.objects.create_superuser(
                 username=username,
                 email=email,
                 password=password,
@@ -54,9 +54,14 @@ class Command(BaseCommand):
                 last_name=last_name,
                 contact_number=phone,
             )
-            bot = HorillaUser.objects.filter(username="Horilla Bot").first()
+            bot = User.objects.filter(
+                username="Horilla Bot",
+                is_active=False,
+                first_name="Bot",
+                last_name="User",
+            ).first()
             if bot is None:
-                HorillaUser.objects.create_user(
+                User.objects.create_user(
                     username="Horilla Bot",
                     password=str(uuid.uuid4()),
                 )

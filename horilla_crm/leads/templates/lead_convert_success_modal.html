@@ -2,19 +2,15 @@
 {% load horilla_tags %}
 {% load i18n %}
 <div id="sec1" class="sec1">
-    <div id="messages-container" style="display: none;">
-        {% for message in messages %}
-            <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-        {% endfor %}
-    </div>
+   {% include "messages.html" %}
     <div class="flex justify-end items-center p-5 pb-0">
       <button onclick="closeContentModal();$('#reloadButton').click();" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-        <img src="{% static 'assets/icons/close.svg' %}" alt="" />
+        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
       </button>
     </div>
 
     <div class="p-5">
-      <img src="{% static '/assets/img/tick.png' %}" alt="" width="150" class="m-auto mb-2">
+      <img src="{% static '/assets/img/tick.png' %}" alt="{% trans 'Success' %}" width="150" class="m-auto mb-2">
       <h2 class="text-2xl font-semibold text-center mb-5">{% trans 'Your lead has been converted' %}</h2>
 
       <div class="grid grid-cols-12 gap-4">
@@ -22,8 +18,8 @@
           <h5 class="text-md ps-3 font-semibold mb-1">{% trans 'Account'%}</h5>
           <div class="border border-[#dfdfdf] rounded-md p-3 min-h-[225px]">
             <div class="flex gap-2 items-center mb-3">
-              <span><img src="{% static '/assets/icons/company.svg' %}" alt="" width="30"></span>
-              <h5 class="font-medium hover:text-primary-600 cursor-pointer"  hx-get = "{% url 'accounts:account_detail_view' account.pk %}?{{request.GET.urlencode}}"
+              <span><img src="{% static '/assets/icons/company.svg' %}" alt="{% trans 'Comapny' %}" width="30"></span>
+              <h5 class="font-medium hover:text-primary-600 cursor-pointer"  hx-get = "{% url 'accounts:account_detail_view' account.pk %}?section=people"
               hx-target ="#mainContent" hx-swap="outerHTML" hx-push-url="true" hx-on:click="closeContentModal();"
               hx-select="#mainContent">{{ account.name }}</h5>
             </div>
@@ -39,8 +35,8 @@
           <h5 class="text-md ps-3 font-semibold mb-1">{% trans 'Contact' %}</h5>
           <div class="border border-[#dfdfdf] rounded-md p-3 min-h-[225px]">
             <div class="flex gap-2 items-center mb-3">
-              <span><img src="{% static '/assets/icons/userdata.svg' %}" alt="" width="30"></span>
-              <h5 class="font-medium hover:text-primary-600 cursor-pointer" hx-get = "{% url 'contacts:contact_detail_view' contact.pk %}?{{request.GET.urlencode}}"
+              <span><img src="{% static '/assets/icons/userdata.svg' %}" alt="{% trans 'User' %}" width="30"></span>
+              <h5 class="font-medium hover:text-primary-600 cursor-pointer" hx-get = "{% url 'contacts:contact_detail_view' contact.pk %}?section=people"
               hx-target ="#mainContent" hx-swap="outerHTML" hx-push-url="true" hx-on:click="closeContentModal();"
               hx-select="#mainContent">{{ contact.first_name }} {{ contact.last_name }}</h5>
             </div>
@@ -56,8 +52,8 @@
           <h5 class="text-md ps-3 font-semibold mb-1">{% trans 'Opportunity' %}</h5>
           <div class="border border-[#dfdfdf] rounded-md p-3 min-h-[225px]">
             <div class="flex gap-2 items-center mb-3">
-              <span><img src="{% static '/assets/icons/crown.svg' %}" alt="" width="30"></span>
-              <h5 class="font-medium hover:text-primary-600 cursor-pointer" hx-get = "{% url 'opportunities:opportunity_detail_view' opportunity.pk %}?{{request.GET.urlencode}}"
+              <span><img src="{% static '/assets/icons/crown.svg' %}" alt="{% trans 'crown' %}" width="30"></span>
+              <h5 class="font-medium hover:text-primary-600 cursor-pointer" hx-get = "{% url 'opportunities:opportunity_detail_view' opportunity.pk %}?section=sales"
               hx-target ="#mainContent" hx-swap="outerHTML" hx-push-url="true" hx-on:click="closeContentModal();"
               hx-select="#mainContent">{{ opportunity.name }}</h5>
             </div>

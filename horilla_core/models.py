@@ -2,14 +2,20 @@
 models for horilla core app
 """
 
+# Standard library imports
 import json
 import logging
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import uuid4
 
 from auditlog.models import AuditlogHistoryField, LogEntry
+
+# Third-party imports
+from dateutil.relativedelta import relativedelta
+
+# Django imports
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -35,8 +41,8 @@ from djmoney.settings import CURRENCY_CHOICES
 from multiselectfield import MultiSelectField
 from pytz import common_timezones
 
+# First-party / Horilla imports
 from horilla.menu.sub_section_menu import sub_section_menu
-from horilla.registry.feature import feature_enabled
 from horilla.registry.permission_registry import permission_exempt_model
 from horilla.utils.choices import (
     CURRENCY_FORMAT_CHOICES,
@@ -45,7 +51,6 @@ from horilla.utils.choices import (
     DAY_CHOICES,
     MONTH_CHOICES,
     NUMBER_GROUPING_CHOICES,
-    OPERATOR_CHOICES,
     TIME_FORMAT_CHOICES,
 )
 from horilla_utils.methods import render_template
@@ -83,7 +88,11 @@ def upload_path(instance, filename):
 
 @permission_exempt_model
 class HorillaContentType(ContentType):
+    """Proxy model for Django's ContentType with custom verbose names."""
+
     class Meta:
+        """Meta options for the HorillaContentType model."""
+
         proxy = True
         verbose_name = _("Model")
         verbose_name_plural = _("Models")
@@ -95,7 +104,6 @@ class HorillaContentType(ContentType):
         return self.model.replace("_", " ").title()
 
 
-@feature_enabled(all=True, exclude=["dashboard_component", "report_choices"])
 class Company(models.Model):
     """
     Company model representing business entities in the system.
@@ -201,12 +209,23 @@ class Company(models.Model):
         return f"{self.name}"
 
     def get_detail_view_url(self):
+        """
+        This method to get detail view url
+        """
         return reverse_lazy("horilla_core:branch_detail_view", kwargs={"pk": self.pk})
 
     def get_edit_url(self):
-        return reverse_lazy("horilla_core:edit_company", kwargs={"pk": self.pk})
+        """
+        This method to get edit url
+        """
+        return reverse_lazy(
+            "horilla_core:edit_company_multi_step", kwargs={"pk": self.pk}
+        )
 
     def get_delete_url(self):
+        """
+        This method to get delete url
+        """
         return reverse_lazy("horilla_core:branch_delete", kwargs={"pk": self.pk})
 
     def __init__(self, *args, **kwargs):
@@ -218,7 +237,8 @@ class Company(models.Model):
         Fixed save method to prevent recursion and handle currency changes.
         """
         if hasattr(self, "_saving"):
-            return super().save(*args, **kwargs)
+            super().save(*args, **kwargs)
+            return None
 
         self._saving = True
         try:
@@ -254,8 +274,10 @@ class Company(models.Model):
                     self.currency = default_currency.currency
                     super().save(*args, **kwargs)
 
+            return None
+
         except Exception as e:
-            logger.error(f"Error saving company {self.pk}: {str(e)}")
+            logger.error("Error saving company %s: %s", self.pk, e)
             raise
         finally:
             del self._saving
@@ -313,7 +335,9 @@ class Company(models.Model):
 
         except Exception as e:
             logger.error(
-                f"Error handling currency change for company {self.id}: {str(e)}"
+                "Error handling currency change for company %s: %s",
+                self.id,
+                e,
             )
             raise
 
@@ -344,19 +368,28 @@ class Company(models.Model):
 
 
 class CompanyFilteredManager(models.Manager):
+    """Manager that filters queryset by active company in request."""
+
     def get_queryset(self):
+        """Get queryset filtered by active company."""
         queryset = super().get_queryset()
         try:
             request = getattr(_thread_local, "request", None)
             if request is None:
                 return queryset
+            # Check if request has session attribute before accessing it
+            if hasattr(request, "session") and request.session.get(
+                "show_all_companies", False
+            ):
+                return queryset
+
             company = getattr(request, "active_company", None)
             if company:
                 queryset = queryset.filter(company=company)
             else:
                 queryset = queryset
         except Exception as e:
-            logger.error(f"Error in CompanyFilteredManager.get_queryset: {str(e)}")
+            logger.error("Error in CompanyFilteredManager.get_queryset: %s", e)
         return queryset
 
 
@@ -422,12 +455,10 @@ class HorillaCoreModel(models.Model):
         updated_at, and company fields.
         """
         user = None
-        company = None
 
         request = getattr(_thread_local, "request", None)
         if request:
             user = getattr(request, "user", None)
-            company = getattr(request, "active_company", None)
         now = timezone.now()
         if not self.pk:
             if user and not isinstance(user, AnonymousUser):
@@ -435,8 +466,7 @@ class HorillaCoreModel(models.Model):
                 self.updated_by = user
             self.created_at = now
             self.updated_at = now
-            if company:
-                self.company = company
+
         else:
             if user and not isinstance(user, AnonymousUser):
                 self.updated_by = user
@@ -532,14 +562,13 @@ class HorillaCoreModel(models.Model):
         )
 
 
-@feature_enabled(all=True, exclude=["dashboard_component", "report_choices"])
 class Department(HorillaCoreModel):
     """
     Department model
     """
 
     department_name = models.CharField(
-        max_length=50, unique=True, blank=False, verbose_name=_("Department Name")
+        max_length=50, blank=False, verbose_name=_("Department Name")
     )
     description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
 
@@ -550,6 +579,7 @@ class Department(HorillaCoreModel):
 
         verbose_name = _("Department")
         verbose_name_plural = _("Departments")
+        unique_together = (("department_name", "company"),)
 
     def __str__(self):
         return str(self.department_name)
@@ -572,7 +602,6 @@ class Department(HorillaCoreModel):
         )
 
 
-@feature_enabled(all=True, exclude=["dashboard_component", "report_choices"])
 class Role(HorillaCoreModel):
     """
     Role model
@@ -636,11 +665,21 @@ class MultipleCurrency(HorillaCoreModel):
     )
 
     class Meta:
+        """
+        Meta options for the MultipleCurrency model.
+        """
+
         verbose_name = _("Multiple Currency")
         verbose_name_plural = _("Multiple Currencies")
 
     def __str__(self):
         return str(self.currency)
+
+    def get_currency_code(self):
+        """
+        Return currency code
+        """
+        return self.currency
 
     def save(self, *args, **kwargs):
         """
@@ -664,6 +703,7 @@ class MultipleCurrency(HorillaCoreModel):
                     self.company.currency = self.currency
 
             super().save(*args, **kwargs)
+            return None
 
         finally:
             del self._saving
@@ -700,9 +740,19 @@ class MultipleCurrency(HorillaCoreModel):
         return self.conversion_rate
 
     def format_amount(self, amount):
-        """Format amount according to currency's decimal places and format"""
+        """
+        Format amount according to currency's decimal places and format.
+
+        Supported formats:
+        - western_format: 1,234,567.00 (comma thousand separator, dot decimal)
+        - european_format: 1.234.567,00 (dot thousand separator, comma decimal)
+        - scientific_format: 1 234 567,00 (space thousand separator, comma decimal)
+        - indian_format: 12,34,567.00 (Indian grouping style)
+        """
         if amount is None:
-            return "0.00"
+            # Return zero with correct decimal places
+            zero_str = "0." + "0" * self.decimal_places
+            return zero_str
 
         amount = Decimal(str(amount))
         quantize_string = "0." + "0" * self.decimal_places
@@ -711,24 +761,49 @@ class MultipleCurrency(HorillaCoreModel):
         )
 
         if self.format == "western_format":
+            # 1,234,567.00
             return f"{formatted_amount:,.{self.decimal_places}f}"
-        elif self.format == "indian_format":
+
+        if self.format == "european_format":
+            # 1.234.567,00 (dot as thousand separator, comma as decimal)
+            western = f"{formatted_amount:,.{self.decimal_places}f}"
+            # Swap: comma -> temp, dot -> comma, temp -> dot
+            return western.replace(",", "X").replace(".", ",").replace("X", ".")
+
+        if self.format == "scientific_format":
+            # 1 234 567,00 (space as thousand separator, comma as decimal)
+            western = f"{formatted_amount:,.{self.decimal_places}f}"
+            # Replace comma with space, dot with comma
+            return western.replace(",", " ").replace(".", ",")
+
+        if self.format == "indian_format":
+            # 12,34,567.00 (Indian grouping: last 3 digits, then groups of 2)
             amount_str = str(formatted_amount)
             parts = amount_str.split(".")
             integer_part = parts[0]
-            decimal_part = parts[1] if len(parts) > 1 else "00"
+            decimal_part = parts[1] if len(parts) > 1 else "0" * self.decimal_places
+
+            # Handle negative numbers
+            is_negative = integer_part.startswith("-")
+            if is_negative:
+                integer_part = integer_part[1:]
 
             if len(integer_part) > 3:
                 last_three = integer_part[-3:]
                 remaining = integer_part[:-3]
-                grouped = ",".join(
-                    [remaining[i : i + 2] for i in range(0, len(remaining), 2)][::-1]
-                )[::-1]
+                # Group remaining digits in pairs from right to left
+                groups = []
+                while remaining:
+                    groups.append(remaining[-2:])
+                    remaining = remaining[:-2]
+                grouped = ",".join(reversed(groups))
                 integer_part = grouped + "," + last_three
 
-            return f"{integer_part}.{decimal_part}"
-        else:
-            return str(formatted_amount)
+            result = f"{integer_part}.{decimal_part}"
+            return f"-{result}" if is_negative else result
+
+        # Fallback: format with correct decimal places
+        return f"{formatted_amount:.{self.decimal_places}f}"
 
     def display_with_symbol(self, amount):
         """Display amount with currency symbol - Example: USD 100.00"""
@@ -816,7 +891,6 @@ class MultipleCurrency(HorillaCoreModel):
         return reverse_lazy("horilla_core:delete_currency", kwargs={"pk": self.pk})
 
 
-@feature_enabled(all=True, exclude=["dashboard_component", "report_choices"])
 class HorillaUser(AbstractUser):
     """
     Represents a custom user profile for the Horilla application, extending Django's AbstractUser.
@@ -953,16 +1027,30 @@ class HorillaUser(AbstractUser):
         verbose_name = _("User")
         verbose_name_plural = _("Users")
         abstract = False
-        unique_together = ["username", "role"]
+        unique_together = ["company", "username", "role"]
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
     def get_edit_url(self):
+        """
+        This method to get edit url for user
+        """
         return reverse_lazy("horilla_core:user_edit_form", kwargs={"pk": self.pk})
 
     def get_detail_view_url(self):
+        """
+        This method to get detail view url for user
+        """
         return reverse_lazy("horilla_core:user_detail_view", kwargs={"pk": self.pk})
+
+    def get_change_company_url(self):
+        """
+        This method to get change company url for user
+        """
+        return reverse_lazy(
+            "horilla_core:user_change_company_form", kwargs={"pk": self.pk}
+        )
 
     def get_avatar(self):
         """
@@ -997,9 +1085,15 @@ class HorillaUser(AbstractUser):
         return f"{self.first_name} {self.last_name}".strip()
 
     def get_delete_url(self):
+        """
+        This method to get delete url for user
+        """
         return reverse_lazy("horilla_core:user_delete_view", kwargs={"pk": self.pk})
 
     def get_delete_user_from_role(self):
+        """
+        This method to get delete user from role url for user
+        """
         return reverse_lazy(
             "horilla_core:delete_user_from_role", kwargs={"pk": self.pk}
         )
@@ -1032,7 +1126,7 @@ class HorillaUser(AbstractUser):
 
     def super_user_status_col(self):
         """Returns the HTML for the super_user_status column in the list view."""
-        superuser_count = HorillaUser.objects.filter(is_superuser=True).count()
+        superuser_count = self.__class__.objects.filter(is_superuser=True).count()
         html = render_template(
             path="permissions/super_user_status_col.html",
             context={"instance": self, "superuser_count": superuser_count},
@@ -1041,58 +1135,110 @@ class HorillaUser(AbstractUser):
 
 
 class HorillaImport(models.Model):
+    """
+    Horilla Import model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaImport model.
+        """
+
         managed = False
         default_permissions = ()
-        permissions = (("can_view_horilla_import", "Can View Global Import"),)
+        permissions = (("can_view_horilla_import", _("Can View Global Import")),)
         verbose_name = _("Global Import")
 
 
 class HorillaSettings(models.Model):
+    """
+    Horilla Settings model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaSettings model.
+        """
+
         managed = False
         default_permissions = ()
-        permissions = (("can_view_horilla_settings", "Can View Global Settings"),)
+        permissions = (("can_view_horilla_settings", _("Can View Global Settings")),)
         verbose_name = _("Global Settings")
 
 
 class HorillaExport(models.Model):
+    """
+    Horilla Export model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaExport model.
+        """
+
         managed = False
         default_permissions = ()
-        permissions = (("can_view_horilla_export", "Can View Global Export"),)
+        permissions = (("can_view_horilla_export", _("Can View Global Export")),)
         verbose_name = _("Global Export")
 
 
 class HorillaSwitchCompany(models.Model):
+    """
+    Horilla Switch Company model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaSwitchCompany model.
+        """
+
         managed = False
         default_permissions = ()
-        permissions = (("can_switch_company", "Can Switch Company"),)
+        permissions = (("can_switch_company", _("Can Switch Company")),)
         verbose_name = _("Switch Company")
 
 
 class HorillaAboutSystem(models.Model):
+    """
+    Horilla About System model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaAboutSystem model.
+        """
+
         managed = False
         default_permissions = ()
-        permissions = (("can_view_horilla_about_system", "Can View About System"),)
+        permissions = (("can_view_horilla_about_system", _("Can View About System")),)
         verbose_name = _("About System")
 
 
 class HorillaUserProfile(models.Model):
+    """
+    Horilla User Profile model for permission management
+    """
+
     class Meta:
+        """
+        Meta options for the HorillaUserProfile model.
+        """
+
         managed = False
         default_permissions = ()
         permissions = (
-            ("can_view_profile", "Can View Profile"),
-            ("can_change_profile", "Can Change Profile"),
+            ("can_view_profile", _("Can View Profile")),
+            ("can_change_profile", _("Can Change Profile")),
         )
         verbose_name = _("User Profile")
 
 
 @permission_exempt_model
 class KanbanGroupBy(models.Model):
+    """
+    Kanban Group By model to store user preferences for grouping in Kanban views.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -1101,7 +1247,7 @@ class KanbanGroupBy(models.Model):
     )
     model_name = models.CharField(
         max_length=100,
-        help_text=_("Name of the model (e.g., 'HorillaUser') to group by."),
+        help_text=_("Name of the model (e.g., 'User') to group by."),
     )
     app_label = models.CharField(max_length=100)
     field_name = models.CharField(
@@ -1113,6 +1259,10 @@ class KanbanGroupBy(models.Model):
     all_objects = models.Manager()
 
     def get_model_groupby_fields(self, exclude_fields=None, include_fields=None):
+        """
+        Retrieve valid fields for grouping in the selected model.
+        """
+
         if exclude_fields is None:
             exclude_fields = []
 
@@ -1137,6 +1287,12 @@ class KanbanGroupBy(models.Model):
 
             return choices
         except (LookupError, ValueError) as e:
+            logger.error(
+                "Error retrieving model groupby fields for %s.%s: %s",
+                self.app_label,
+                self.model_name,
+                e,
+            )
             return []
 
     def clean(self):
@@ -1173,11 +1329,19 @@ class KanbanGroupBy(models.Model):
         return f"{self.model_name} by {self.field_name}"
 
     class Meta:
+        """
+        Meta options for the KanbanGroupBy model.
+        """
+
         unique_together = ("model_name", "field_name", "app_label", "user")
 
 
 @permission_exempt_model
 class ListColumnVisibility(models.Model):
+    """
+    List Column Visibility model to store user preferences for visible columns in list views.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -1194,14 +1358,24 @@ class ListColumnVisibility(models.Model):
     all_objects = models.Manager()
 
     class Meta:
+        """
+        Meta options for the ListColumnVisibility model.
+        """
+
         unique_together = ("user", "app_label", "model_name", "context", "url_name")
 
     @property
     def translated_visible_fields(self):
+        """
+        Returns the list of visible fields with translations.
+        """
         return [_(field) for field in self.visible_fields]
 
     @property
     def translated_removed_fields(self):
+        """
+        Returns the list of removed fields with translations.
+        """
         return [_(field) for field in self.removed_custom_fields]
 
     def __str__(self):
@@ -1209,6 +1383,10 @@ class ListColumnVisibility(models.Model):
 
 
 class RecentlyViewedManager(models.Manager):
+    """
+    Manager for RecentlyViewed model to handle recently viewed items.
+    """
+
     def add_viewed_item(self, user, obj):
         """Add or update a recently viewed item for a user."""
         content_type = ContentType.objects.get_for_model(obj)
@@ -1233,6 +1411,10 @@ class RecentlyViewedManager(models.Manager):
 
 @permission_exempt_model
 class RecentlyViewed(models.Model):
+    """
+    Model to track recently viewed items by users.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -1246,6 +1428,10 @@ class RecentlyViewed(models.Model):
     objects = RecentlyViewedManager()
 
     class Meta:
+        """
+        Meta options for the RecentlyViewed model.
+        """
+
         indexes = [
             models.Index(fields=["user", "content_type", "object_id"]),
             models.Index(fields=["user", "viewed_at"]),
@@ -1306,6 +1492,10 @@ class RecentlyViewed(models.Model):
 
 @permission_exempt_model
 class SavedFilterList(models.Model):
+    """
+    Model to store saved filter lists for users.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -1318,6 +1508,10 @@ class SavedFilterList(models.Model):
     all_objects = models.Manager()
 
     class Meta:
+        """
+        Meta options for the SavedFilterList model.
+        """
+
         unique_together = ["user", "name", "model_name"]
         indexes = [
             models.Index(fields=["user", "model_name"]),
@@ -1327,11 +1521,18 @@ class SavedFilterList(models.Model):
         return f"{self.name} ({self.user.username} - {self.model_name})"
 
     def get_filter_params(self):
+        """
+        Returns the filter parameters as a dictionary.
+        """
         return self.filter_params
 
 
 @permission_exempt_model
 class PinnedView(models.Model):
+    """
+    Model to store pinned views for users.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="pinned_views"
     )
@@ -1341,6 +1542,10 @@ class PinnedView(models.Model):
     all_objects = models.Manager()
 
     class Meta:
+        """
+        Meta options for the PinnedView model.
+        """
+
         unique_together = ["user", "model_name"]
         indexes = [models.Index(fields=["user", "model_name"])]
 
@@ -1505,7 +1710,7 @@ class FiscalYear(HorillaCoreModel):
         start_index = months.index(self.start_date_month)
         quarter_ranges = []
 
-        for i in range(4):
+        for _i in range(4):
             quarter_start = months[start_index % 12]
             quarter_end = months[(start_index + 2) % 12]
             quarter_ranges.append(
@@ -1536,7 +1741,7 @@ class FiscalYear(HorillaCoreModel):
                 "weeks_per_period": 4,
                 **base_config,
             }
-        elif (
+        if (
             self.fiscal_year_type == "custom"
             and self.format_type == "year_based"
             and self.year_based_format
@@ -1554,7 +1759,7 @@ class FiscalYear(HorillaCoreModel):
                 "weeks_per_period": 4,
                 **base_config,
             }
-        elif (
+        if (
             self.fiscal_year_type == "custom"
             and self.format_type == "quarter_based"
             and self.quarter_based_format
@@ -1605,6 +1810,10 @@ class FiscalYear(HorillaCoreModel):
         return f"{self.get_start_date_month_display()} {self.start_date_day} - {current_year}"
 
     class Meta:
+        """
+        Meta options for the FiscalYear model.
+        """
+
         verbose_name = _("Fiscal Year")
         verbose_name_plural = _("Fiscal Years")
         constraints = [
@@ -1631,9 +1840,13 @@ class FiscalYearInstance(HorillaCoreModel):
     is_current = models.BooleanField(default=False, verbose_name=_("Is Current"))
 
     def __str__(self):
-        return self.name
+        return str(self.name)
 
     class Meta:
+        """
+        Meta options for the FiscalYearInstance model.
+        """
+
         verbose_name = _("Fiscal Year Instance")
         verbose_name_plural = _("Fiscal Year Instances")
 
@@ -1659,6 +1872,10 @@ class Quarter(HorillaCoreModel):
         return f"{self.fiscal_year.name} - {self.name}"
 
     class Meta:
+        """
+        Meta options for the Quarter model.
+        """
+
         verbose_name = _("Quarter")
         verbose_name_plural = _("Quarters")
 
@@ -1701,14 +1918,20 @@ class Period(HorillaCoreModel):
 
         if fiscal_config.period_display_option == "number_by_quarter":
             return self.get_period_number_in_quarter()
-        else:  # 'number_by_year' or default
-            return self.period_number
+
+        return self.period_number
 
     def save(self, *args, **kwargs):
         """
-        Override save to set period number and dates based on fiscal year type
+        Override save to set period number and dates based on fiscal year type.
+        Period numbers start from 1 for each fiscal year.
         """
-        if not self.pk:  # Only for new instances
+        # Skip auto-calculation if period_number is already set (e.g., from service)
+        skip_auto_calculation = kwargs.pop("skip_auto_calculation", False)
+
+        if (
+            not self.pk and not skip_auto_calculation
+        ):  # Only for new instances without explicit number
             fiscal_config = self.quarter.fiscal_year.fiscal_year_config
 
             if fiscal_config.fiscal_year_type == "standard":
@@ -1726,16 +1949,14 @@ class Period(HorillaCoreModel):
 
     def _create_standard_period(self):
         """
-        Create period for standard fiscal year type based on calendar months
+        Create period for standard fiscal year type based on calendar months.
+        Period numbers start from 1 for each fiscal year.
         """
-        from datetime import datetime, timedelta
-
-        from dateutil.relativedelta import relativedelta
 
         fiscal_config = self.quarter.fiscal_year.fiscal_year_config
         fiscal_year = self.quarter.fiscal_year
 
-        # Calculate which month this period represents
+        # Calculate period number within THIS fiscal year only
         existing_periods_in_year = Period.objects.filter(
             quarter__fiscal_year=fiscal_year
         ).count()
@@ -1757,7 +1978,7 @@ class Period(HorillaCoreModel):
             "november",
             "december",
         ]
-        start_month_index = months.index(fiscal_config.start_date_month)
+        start_month_index = months.index(fiscal_config.start_date_month.lower())
 
         # Calculate the month for this period
         period_month_index = (start_month_index + self.period_number - 1) % 12
@@ -1785,9 +2006,12 @@ class Period(HorillaCoreModel):
 
     def _create_custom_period(self):
         """
-        Create period for custom fiscal year type
+        Create period for custom fiscal year type.
+        Period numbers start from 1 for each fiscal year.
         """
-        fiscal_config = self.quarter.fiscal_year.fiscal_year_config
+        _fiscal_config = self.quarter.fiscal_year.fiscal_year_config
+
+        # Only count periods in previous quarters within THIS fiscal year
         previous_quarters = Quarter.objects.filter(
             fiscal_year=self.quarter.fiscal_year,
             quarter_number__lt=self.quarter.quarter_number,
@@ -1802,6 +2026,7 @@ class Period(HorillaCoreModel):
             quarter=self.quarter
         ).count()
 
+        # Period number within the fiscal year (starts from 1)
         self.period_number = (
             periods_before_this_quarter + existing_periods_in_current_quarter + 1
         )
@@ -1833,10 +2058,14 @@ class Period(HorillaCoreModel):
 
         if fiscal_config.period_display_option == "number_by_quarter":
             return f"{self.quarter.fiscal_year.name} - {self.quarter.name} - Period {display_number}"
-        else:
-            return f"{self.quarter.fiscal_year.name} - Period {display_number}"
+
+        return f"{self.quarter.fiscal_year.name} - Period {display_number}"
 
     class Meta:
+        """
+        Meta options for the Period model.
+        """
+
         verbose_name = _("Period")
         verbose_name_plural = _("Periods")
 
@@ -1947,18 +2176,21 @@ class Holiday(HorillaCoreModel):
     OWNER_FIELDS = ["specific_users"]
 
     class Meta:
+        """
+        Meta options for the Holiday model.
+        """
+
         verbose_name = _("Holiday")
         verbose_name_plural = _("Holidays")
         ordering = ["-start_date"]
 
     def __str__(self):
-        return self.name
+        return str(self.name)
 
     def clean(self):
         """
         Validate holiday data
         """
-        from django.core.exceptions import ValidationError
 
         if self.start_date and self.end_date:
             if self.start_date > self.end_date:
@@ -2025,12 +2257,21 @@ class Holiday(HorillaCoreModel):
         return url
 
     def get_edit_url(self):
+        """
+        Get the URL for editing the holiday
+        """
         return reverse_lazy("horilla_core:holiday_update_form", kwargs={"pk": self.pk})
 
     def get_detail_url(self):
+        """
+        Get the URL for holiday detail view
+        """
         return reverse_lazy("horilla_core:holiday_detail_view", kwargs={"pk": self.pk})
 
     def get_user_detail_url(self):
+        """
+        Get the URL for holiday detail view for users
+        """
         return reverse_lazy("horilla_core:user_holiday_detail", kwargs={"pk": self.pk})
 
     def detail_view_actions(self):
@@ -2044,6 +2285,9 @@ class Holiday(HorillaCoreModel):
         )
 
     def get_delete_url(self):
+        """
+        Get the URL for deleting the holiday
+        """
         return reverse_lazy("horilla_core:holiday_delete_view", kwargs={"pk": self.pk})
 
     def specific_users_enable(self):
@@ -2109,7 +2353,7 @@ class Holiday(HorillaCoreModel):
                     f"Recur on {self.get_ordinal_number(self.monthly_day_of_month)} day "
                     f"of every {self.monthly_interval or 1} month"
                 )
-            elif self.monthly_repeat_type == "weekday_of_month":
+            if self.monthly_repeat_type == "weekday_of_month":
                 return (
                     f"Recur on the {self.get_ordinal_number(self.monthly_week_of_month)} "
                     f"{self.monthly_day_of_week.capitalize()} of every {self.monthly_interval or 1} month"
@@ -2122,7 +2366,7 @@ class Holiday(HorillaCoreModel):
                     f"Recur on every {self.yearly_month.capitalize()} "
                     f"{self.get_ordinal_number(self.yearly_day_of_month)}"
                 )
-            elif self.yearly_repeat_type == "weekday_of_month":
+            if self.yearly_repeat_type == "weekday_of_month":
                 return (
                     f"Recur on the {self.get_ordinal_number(self.yearly_week_of_month)} "
                     f"{self.yearly_day_of_week.capitalize()} of {self.yearly_month.capitalize()}"
@@ -2134,10 +2378,11 @@ class Holiday(HorillaCoreModel):
         """
         Get all users eligible for this holiday
         """
+        from horilla.auth.models import User
+
         if self.all_users:
-            return HorillaUser.objects.filter(is_active=True)
-        else:
-            return self.specific_users.all()
+            return User.objects.filter(is_active=True)
+        return self.specific_users.all()
 
     def is_user_eligible(self, user):
         """
@@ -2145,8 +2390,7 @@ class Holiday(HorillaCoreModel):
         """
         if self.all_users:
             return user.is_active
-        else:
-            return self.specific_users.filter(pk=user.pk).exists()
+        return self.specific_users.filter(pk=user.pk).exists()
 
     def get_recurrence_description(self):
         """
@@ -2159,35 +2403,34 @@ class Holiday(HorillaCoreModel):
             days = ", ".join([dict(DAY_CHOICES)[day] for day in self.weekly_days])
             if self.recurs_every_weeks == 1:
                 return _("Weekly on {}").format(days)
-            else:
-                return _("Every {} weeks on {}").format(self.recurs_every_weeks, days)
 
-        elif self.frequency == "monthly":
+            return _("Every {} weeks on {}").format(self.recurs_every_weeks, days)
+
+        if self.frequency == "monthly":
             if self.monthly_day_of_month:
                 if self.monthly_interval == 1:
                     return _("Monthly on day {}").format(self.monthly_day_of_month)
-                else:
-                    return _("Every {} months on day {}").format(
-                        self.monthly_interval, self.monthly_day_of_month
-                    )
-            else:
-                day_name = dict(DAY_CHOICES)[self.monthly_day_of_week]
-                ordinal = self.get_ordinal_number(self.monthly_week_of_month)
-                if self.monthly_interval == 1:
-                    return _("Monthly on {} {} of month").format(ordinal, day_name)
-                else:
-                    return _("Every {} months on {} {} of month").format(
-                        self.monthly_interval, ordinal, day_name
-                    )
+                return _("Every {} months on day {}").format(
+                    self.monthly_interval, self.monthly_day_of_month
+                )
 
-        elif self.frequency == "yearly":
+            day_name = dict(DAY_CHOICES)[self.monthly_day_of_week]
+            ordinal = self.get_ordinal_number(self.monthly_week_of_month)
+            if self.monthly_interval == 1:
+                return _("Monthly on {} {} of month").format(ordinal, day_name)
+
+            return _("Every {} months on {} {} of month").format(
+                self.monthly_interval, ordinal, day_name
+            )
+
+        if self.frequency == "yearly":
             month_name = dict(self.MONTH_CHOICES)[self.yearly_month]
             if self.yearly_day_of_month:
                 return _("Yearly on {} {}").format(month_name, self.yearly_day_of_month)
-            else:
-                day_name = dict(DAY_CHOICES)[self.yearly_day_of_week]
-                ordinal = self.get_ordinal_number(self.yearly_week_of_month)
-                return _("Yearly on {} {} of {}").format(ordinal, day_name, month_name)
+
+            day_name = dict(DAY_CHOICES)[self.yearly_day_of_week]
+            ordinal = self.get_ordinal_number(self.yearly_week_of_month)
+            return _("Yearly on {} {} of {}").format(ordinal, day_name, month_name)
 
         return _("Custom recurrence")
 
@@ -2224,6 +2467,10 @@ class DatedConversionRate(HorillaCoreModel):
     )
 
     class Meta:
+        """
+        Meta options for the DatedConversionRate model.
+        """
+
         verbose_name = _("Dated Conversion Rate")
         verbose_name_plural = _("Dated Conversion Rates")
         unique_together = (
@@ -2271,6 +2518,10 @@ class DatedConversionRate(HorillaCoreModel):
 
 
 class BusinessHourDayMixin(models.Model):
+    """
+    Model to add start and end time fields for each day of the week.
+    """
+
     monday_start = models.TimeField(
         null=True, blank=True, verbose_name=_("Monday Start Time")
     )
@@ -2321,6 +2572,10 @@ class BusinessHourDayMixin(models.Model):
     )
 
     class Meta:
+        """
+        Abstract model for business hour day model.
+        """
+
         abstract = True
 
 
@@ -2419,6 +2674,10 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
     )
 
     class Meta:
+        """
+        Meta options for the BusinessHour model.
+        """
+
         verbose_name = _("Business Hour")
         verbose_name_plural = _("Business Hours")
         ordering = ["-is_default", "name"]
@@ -2434,6 +2693,9 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
         super().save(*args, **kwargs)
 
     def get_active_days(self):
+        """
+        Returns a list of days with defined business hours.
+        """
         days = []
         for day in [
             "monday",
@@ -2456,24 +2718,40 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
         return url
 
     def get_edit_url(self):
+        """
+        Get the URL for editing the business hour
+        """
         return reverse_lazy(
             "horilla_core:business_hour_update_form", kwargs={"pk": self.pk}
         )
 
     def is_default_hour(self):
+        """
+        Return Yes/No for default business hour
+        """
         return "Yes" if self.is_default else "No"
 
     def get_delete_url(self):
+        """
+        Get the URL for deleting the business hour
+        """
         return reverse_lazy(
             "horilla_core:business_hour_delete_view", kwargs={"pk": self.pk}
         )
 
     def get_detail_url(self):
+        """
+        Get the URL for business hour detail view
+        """
         return reverse_lazy(
             "horilla_core:business_hour_detail_view", kwargs={"pk": self.pk}
         )
 
     def get_formatted_week_days(self):
+        """
+        Returns a formatted HTML representation of the business hours.
+        """
+
         def format_time(value):
             if not value:
                 return "--:--"
@@ -2520,21 +2798,21 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
                         return format_html(
                             "Monday - Friday<br><strong>({} – {})</strong>", start, end
                         )
-                    elif labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER]:
+                    if labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER]:
                         return format_html(
                             "Monday - Sunday<br><strong>({} – {})</strong>", start, end
                         )
-                    else:
-                        return format_html(
-                            "{days}<br><strong>({start} – {end})</strong>",
-                            days=", ".join(labels),
-                            start=start,
-                            end=end,
-                        )
-                else:
-                    return f"{start} – {end}"
 
-            elif self.timing_type == "different":
+                    return format_html(
+                        "{days}<br><strong>({start} – {end})</strong>",
+                        days=", ".join(labels),
+                        start=start,
+                        end=end,
+                    )
+
+                return f"{start} – {end}"
+
+            if self.timing_type == "different":
                 rows = []
                 for day_code in self.WEEK_ORDER:
                     day_label = self.DAY_LABELS[day_code]
@@ -2590,8 +2868,12 @@ class RecycleBin(models.Model):
     objects = CompanyFilteredManager()
 
     class Meta:
-        verbose_name = "Recycle Bin"
-        verbose_name_plural = "Recycle Bin"
+        """
+        Meta options for the RecycleBin model.
+        """
+
+        verbose_name = _("Recycle Bin")
+        verbose_name_plural = _("Recycle Bin")
 
     def __str__(self):
         return f"{self.model_name} ({self.record_id}) - Deleted at {self.deleted_at}"
@@ -2614,12 +2896,7 @@ class RecycleBin(models.Model):
 
         if "__str__" in data and data["__str__"]:
             return data["__str__"]
-
-    def get_edit_url(self):
-        """
-        This method to get edit url
-        """
-        return reverse_lazy("campaigns:edit_campaign_member", kwargs={"pk": self.pk})
+        return None
 
     def get_delete_url(self):
         """
@@ -2641,7 +2918,7 @@ class RecycleBin(models.Model):
         data = {}
         try:
             data["__str__"] = str(obj)
-        except:
+        except Exception:
             data["__str__"] = None
 
         for field in obj._meta.fields:
@@ -2700,8 +2977,12 @@ class RecycleBinPolicy(models.Model):
     objects = CompanyFilteredManager()
 
     class Meta:
-        verbose_name = "Recycle Bin Policy"
-        verbose_name_plural = "Recycle Bin Policies"
+        """
+        Meta options for the RecycleBinPolicy model.
+        """
+
+        verbose_name = _("Recycle Bin Policy")
+        verbose_name_plural = _("Recycle Bin Policies")
 
     def save(self, *args, **kwargs):
         request = getattr(_thread_local, "request", None)
@@ -2715,7 +2996,6 @@ class RecycleBinPolicy(models.Model):
         """
         Check if a deleted_at timestamp exceeds the retention period.
         """
-        from django.utils import timezone
 
         retention_period = timezone.now() - timezone.timedelta(days=self.retention_days)
         return deleted_at < retention_period
@@ -2838,229 +3118,11 @@ class PartnerRole(HorillaCoreModel):
         )
 
 
-class ScoringRule(HorillaCoreModel):
-    name = models.CharField(max_length=100, verbose_name=_("Rule Name"))
-    module = models.CharField(
-        max_length=50,
-        choices=[
-            ("lead", _("Lead")),
-            ("opportunity", _("Opportunity")),
-            ("account", _("Account")),
-            ("contact", _("Contact")),
-        ],
-        verbose_name=_("Module"),
-    )
-    description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
-
-    def __str__(self):
-        return self.name
-
-    def is_active_col(self):
-
-        html = render_template(
-            path="scoring_rule/is_active_col.html", context={"instance": self}
-        )
-
-        return mark_safe(html)
-
-    def get_edit_url(self):
-        """
-        This method to get edit url
-        """
-        return reverse_lazy(
-            "horilla_core:scoring_rule_update_form", kwargs={"pk": self.pk}
-        )
-
-    def get_delete_url(self):
-        """
-        This method to get delete url
-        """
-
-        return reverse_lazy(
-            "horilla_core:scoring_rule_delete_view", kwargs={"pk": self.pk}
-        )
-
-    def get_detail_view_url(self):
-        """
-        This method to get detail view url
-        """
-        return reverse_lazy(
-            "horilla_core:scoring_rule_detail_view", kwargs={"pk": self.pk}
-        )
-
-    class Meta:
-        """
-        Meta options for the Scoring Rule model.
-        """
-
-        verbose_name = _("Scoring Rule")
-        verbose_name_plural = _("Scoring Rules")
-
-
-class ScoringCriterion(HorillaCoreModel):
-    """Main scoring criterion that contains multiple conditions"""
-
-    rule = models.ForeignKey(
-        ScoringRule, on_delete=models.CASCADE, related_name="criteria"
-    )
-    name = models.CharField(
-        max_length=200, blank=True, verbose_name=_("Criterion Name")
-    )  # Optional name for the criterion
-    points = models.IntegerField(verbose_name=_("Points to Award"))
-    operation_type = models.CharField(
-        max_length=3,
-        choices=[("add", _("Add")), ("sub", _("Sub"))],
-        default="and",
-        verbose_name=_("Operation Type"),
-    )
-    order = models.PositiveIntegerField(
-        default=0, verbose_name=_("Order")
-    )  # For sorting criteria
-
-    def __str__(self):
-        return f"{self.rule.name} - {self.name or f'Criterion {self.pk}'}"
-
-    def evaluate_conditions(self, instance):
-        """
-        Evaluate all conditions for this criterion against the given instance
-        Returns True if all conditions are met according to their logical operators
-        """
-        conditions = self.conditions.all().order_by("order")
-        if not conditions.exists():
-            return False
-
-        result = None
-        for condition in conditions:
-            condition_result = condition.evaluate(instance)
-
-            if result is None:
-                result = condition_result
-            else:
-                if condition.logical_operator == "and":
-                    result = result and condition_result
-                else:  # 'or'
-                    result = result or condition_result
-
-        return result
-
-    class Meta:
-        verbose_name = _("Scoring Criterion")
-        verbose_name_plural = _("Scoring Criteria")
-        ordering = ["order", "id"]
-
-
-@permission_exempt_model
-class ScoringCondition(HorillaCoreModel):
-    """Individual conditions within a scoring criterion"""
-
-    criterion = models.ForeignKey(
-        ScoringCriterion, on_delete=models.CASCADE, related_name="conditions"
-    )
-    field = models.CharField(max_length=100, verbose_name=_("Field Name"))
-    operator = models.CharField(
-        max_length=50,
-        choices=OPERATOR_CHOICES,
-        verbose_name=_("Operator"),
-    )
-    value = models.CharField(max_length=255, blank=True, verbose_name=_("Value"))
-    logical_operator = models.CharField(
-        max_length=3,
-        choices=[("and", _("AND")), ("or", _("OR"))],
-        default="and",
-        verbose_name=_("Logical Operator"),
-    )
-    order = models.PositiveIntegerField(
-        default=0, verbose_name=_("Order")
-    )  # For ordering conditions
-
-    def __str__(self):
-        return f"{self.field} {self.operator} {self.value}"
-
-    def evaluate(self, instance):
-        """
-        Evaluate this condition against the given instance
-        Returns True if the condition is met, False otherwise
-        """
-        try:
-            # Get the field value from the instance
-            field_value = getattr(instance, self.field, None)
-
-            # Convert field_value to string for comparison
-            if field_value is None:
-                field_value = ""
-            else:
-                field_value = str(field_value)
-
-            # Perform comparison based on operator
-            if self.operator == "equals":
-                return field_value == self.value
-            elif self.operator == "not_equals":
-                return field_value != self.value
-            elif self.operator == "contains":
-                return self.value.lower() in field_value.lower()
-            elif self.operator == "not_contains":
-                return self.value.lower() not in field_value.lower()
-            elif self.operator == "starts_with":
-                return field_value.lower().startswith(self.value.lower())
-            elif self.operator == "ends_with":
-                return field_value.lower().endswith(self.value.lower())
-            elif self.operator == "greater_than":
-                try:
-                    return float(field_value) > float(self.value)
-                except (ValueError, TypeError):
-                    return False
-            elif self.operator == "greater_than_equal":
-                try:
-                    return float(field_value) >= float(self.value)
-                except (ValueError, TypeError):
-                    return False
-            elif self.operator == "less_than":
-                try:
-                    return float(field_value) < float(self.value)
-                except (ValueError, TypeError):
-                    return False
-            elif self.operator == "less_than_equal":
-                try:
-                    return float(field_value) <= float(self.value)
-                except (ValueError, TypeError):
-                    return False
-            elif self.operator == "is_empty":
-                return not field_value or field_value.strip() == ""
-            elif self.operator == "is_not_empty":
-                return bool(field_value and field_value.strip())
-
-            return False
-
-        except Exception as e:
-            logger.error(f"Error evaluating condition {self}: {str(e)}")
-            return False
-
-    class Meta:
-        verbose_name = _("Scoring Condition")
-        verbose_name_plural = _("Scoring Conditions")
-        ordering = ["order", "id"]
-
-
-@permission_exempt_model
-class EmailActivityScoring(HorillaCoreModel):
-    rule = models.ForeignKey(
-        ScoringRule, on_delete=models.CASCADE, related_name="email_activities"
-    )
-    activity_type = models.CharField(
-        max_length=50,
-        choices=[
-            ("opened", _("Opened")),
-            ("clicked", _("Clicked")),
-            ("bounced", _("Bounced")),
-        ],
-    )
-    points = models.IntegerField(default=10)
-
-    def __str__(self):
-        return f"{self.activity_type} - {self.points} points"
-
-
 class ImportHistory(HorillaCoreModel):
+    """
+    Model to track the history of data imports.
+    """
+
     STATUS_CHOICES = [
         ("processing", _("Processing")),
         ("success", _("Success")),
@@ -3106,6 +3168,10 @@ class ImportHistory(HorillaCoreModel):
     )
 
     class Meta:
+        """
+        Meta options for the ImportHistory model.
+        """
+
         ordering = ["-created_at"]
         verbose_name = _("Import History")
         verbose_name_plural = _("Import Histories")
@@ -3115,6 +3181,7 @@ class ImportHistory(HorillaCoreModel):
 
     @property
     def successful_rows(self):
+        """Returns the count of successful rows."""
         return self.created_count + self.updated_count
 
     def error_list(self):
@@ -3135,14 +3202,17 @@ class ImportHistory(HorillaCoreModel):
 
     @property
     def has_errors(self):
+        """Returns True if there are any errors."""
         return self.error_count > 0
 
     @property
     def is_complete(self):
+        """Returns True if the import process is complete."""
         return self.status in ["success", "partial", "failed"]
 
     @property
     def status_color_class(self):
+        """Returns the CSS class for the status badge."""
         colors = {
             "processing": "bg-blue-100 text-blue-800",
             "success": "bg-green-100 text-green-800",
@@ -3153,16 +3223,30 @@ class ImportHistory(HorillaCoreModel):
 
     @property
     def formatted_duration(self):
+        """Returns the duration in a human-readable format."""
         if self.duration_seconds is None:
             return "N/A"
 
         seconds = float(self.duration_seconds)
         if seconds < 60:
             return f"{seconds:.1f}s"
-        elif seconds < 3600:
+        if seconds < 3600:
             return f"{seconds/60:.1f}m"
-        else:
-            return f"{seconds/3600:.1f}h"
+
+        return f"{seconds/3600:.1f}h"
+
+    @property
+    def module_verbose_name(self):
+        """Returns the verbose name of the model based on module_name and app_label."""
+        if not self.module_name or not self.app_label:
+            return self.module_name or ""
+
+        try:
+            model = apps.get_model(self.app_label, self.module_name)
+            return model._meta.verbose_name
+        except (LookupError, AttributeError):
+            # If model not found, return the module_name as fallback
+            return self.module_name
 
 
 class HorillaAttachment(HorillaCoreModel):
@@ -3196,9 +3280,8 @@ class HorillaAttachment(HorillaCoreModel):
         blank=True,
         help_text=_("Optional file attached to this record."),
     )
-    description = models.CharField(
+    description = models.TextField(
         _("Notes"),
-        max_length=255,
         blank=True,
         null=True,
         help_text=_("Optional description or notes about the attachment."),
@@ -3216,7 +3299,7 @@ class HorillaAttachment(HorillaCoreModel):
         """
         Returns a human-readable string representation of the attachment.
         """
-        return self.title
+        return str(self.title)
 
     def get_detail_view_url(self):
         """
@@ -3253,6 +3336,10 @@ class HorillaAttachment(HorillaCoreModel):
 
 
 class ExportSchedule(HorillaCoreModel):
+    """
+    Model to store export schedules for users.
+    """
+
     FREQUENCY_CHOICES = (
         ("daily", _("Daily")),
         ("weekly", _("Weekly")),
@@ -3302,6 +3389,10 @@ class ExportSchedule(HorillaCoreModel):
     )
 
     class Meta:
+        """
+        Meta options for the ExportSchedule model.
+        """
+
         verbose_name = _("Export Schedule")
         verbose_name_plural = _("Export Schedules")
 
@@ -3375,7 +3466,7 @@ class FieldPermission(models.Model):
 
     # Link to either user or role (one must be set)
     user = models.ForeignKey(
-        HorillaUser,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
@@ -3402,19 +3493,22 @@ class FieldPermission(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """
+        Meta options for the FieldPermission model.
+        """
+
         unique_together = [
             ["user", "content_type", "field_name"],
             ["role", "content_type", "field_name"],
         ]
-        verbose_name = "Field Permission"
-        verbose_name_plural = "Field Permissions"
+        verbose_name = _("Field Permission")
+        verbose_name_plural = _("Field Permissions")
 
     def __str__(self):
         target = self.user.get_full_name() if self.user else self.role.role_name
         return f"{target} - {self.content_type.model}.{self.field_name}: {self.permission_type}"
 
     def clean(self):
-        from django.core.exceptions import ValidationError
 
         # Ensure either user or role is set, but not both
         if not self.user and not self.role:

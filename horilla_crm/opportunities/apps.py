@@ -1,7 +1,6 @@
 """App configuration for the opportunities module."""
 
 from django.apps import AppConfig
-from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
 
@@ -46,10 +45,12 @@ class OpportunitiesConfig(AppConfig):
         from horilla.urls import urlpatterns
 
         try:
+
             urlpatterns.append(
                 path("opportunities/", include("horilla_crm.opportunities.urls")),
             )
 
+            __import__("horilla_crm.opportunities.registration")
             __import__("horilla_crm.opportunities.menu")
             __import__("horilla_crm.opportunities.signals")
             __import__("horilla_crm.opportunities.dashboard")

@@ -1,7 +1,7 @@
 {% load static %}
 {% load i18n %}
 {% load horilla_tags %}
-<div class="{% if border_enabled %} border-b border-b-primary-400 {% endif %} bg-white {% if nav_width %} px-5 fixed z-10 w-fill-available {% else %} flex justify-between items-center mb-2 w-full {% endif %}">
+<div class="{% if border_enabled %} border-b border-b-primary-100 {% endif %} bg-white {% if nav_width %} px-5 fixed z-10 w-fill-available {% else %} flex justify-between items-center mb-2 w-full {% endif %}">
   <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-between w-full {% if not nav_width %} pb-3 {% endif %}">
     <div class="flex items-center gap-4">
       {% if navbar_indication %}
@@ -27,12 +27,12 @@
             hx-swap="outerHTML"
             hx-push-url="true"
             hx-trigger="change">
-            <option value="all" {% if view_type == 'all' %}selected{% endif %}>All Items</option>
+            <option value="all" {% if view_type == 'all' %}selected{% endif %}>{% trans "All Items" %}</option>
             {% if recently_viewed_option %}
-              <option value="recently_viewed" {% if view_type == 'recently_viewed' %}selected{% endif %}>Recently Viewed</option>
+              <option value="recently_viewed" {% if view_type == 'recently_viewed' %}selected{% endif %}>{% trans "Recently Viewed" %}</option>
             {% endif %}
-            <option value="recently_created" {% if view_type == 'recently_created' %}selected{% endif %}>Recently Created</option>
-            <option value="recently_modified" {% if view_type == 'recently_modified' %}selected{% endif %}>Recently Modified</option>
+            <option value="recently_created" {% if view_type == 'recently_created' %}selected{% endif %}>{% trans "Recently Created" %}</option>
+            <option value="recently_modified" {% if view_type == 'recently_modified' %}selected{% endif %}>{% trans "Recently Modified" %}</option>
             {% if custom_view_type %}
               {% for key, value in custom_view_type.items %}
                 {% if value.name %}
@@ -60,7 +60,7 @@
             hx-target="#rotateBtn"
             hx-select="#rotateBtn"
             hx-swap="outerHTML">
-            <img id="pinIcon" src="{% static 'assets/icons/pin.svg' %}" alt="Pin" width="18" class="transition-transform duration-300" />
+            <img id="pinIcon" src="{% static 'assets/icons/pin.svg' %}" alt="{% trans 'Pin' %}" width="18" class="transition-transform duration-300" />
           </button>
         {% else %}
           <button
@@ -71,7 +71,7 @@
             hx-target="#rotateBtn"
             hx-select="#rotateBtn"
             hx-swap="outerHTML">
-            <img id="pinIcon" src="{% static 'assets/icons/pin.svg' %}" alt="Pin" width="18" class="transition-transform duration-300" />
+            <img id="pinIcon" src="{% static 'assets/icons/pin.svg' %}" alt="{% trans 'Pin' %}" width="18" class="transition-transform duration-300" />
           </button>
         {% endif %}
       {% endif %}
@@ -92,20 +92,20 @@
             hx-select="#mainSession"
             hx-swap="outerHTML"
             hx-preserve="true"
-            hx-push-url="true"
+            hx-push-url={{ search_push_url }}
             hx-include="#filtercontainer input, #filtercontainer select"/>
           <button
             class="absolute right-3 top-0 bottom-0 m-auto cursor-pointer">
-            <img src="{% static './assets/icons/search.svg' %}" alt="" width="20" />
+            <img src="{% static './assets/icons/search.svg' %}" alt="{% trans 'Search' %}" width="20" />
           </button>
         </div>
       {% endif %}
       <div class="flex items-center gap-1">
         {% if reload_option %}
           <div class="flex items-center">
-            <button onclick ="$('#reloadButton').click();"
+            <button onclick="htmx.trigger('#reloadButton', 'click')"
               class="hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
-              <img src="{% static 'assets/icons/l5.svg' %}" alt="" width="17" />
+              <img src="{% static 'assets/icons/l5.svg' %}" alt="{% trans 'Reload' %}" width="17" />
             </button>
           </div>
         {% endif %}
@@ -141,7 +141,7 @@
               }
             ">
             <button class="filtermenu">
-              <img src="{% static 'assets/icons/l4.svg' %}" alt="" width="14" />
+              <img src="{% static 'assets/icons/l4.svg' %}" alt="{% trans 'Filter' %}" width="14" />
             </button>
           </div>
         {% endif %}
@@ -160,7 +160,7 @@
                 hx-push-url="true">
                 <img
                   src="{% static 'assets/icons/l3.svg' %}"
-                  alt="Table View"
+                  alt="{% trans 'List' %}"
                   width="17"
                 />
               </button>
@@ -177,7 +177,7 @@
                   hx-push-url="true">
                   <img
                     src="{% static 'assets/icons/l2.svg' %}"
-                    alt="Kanban View"
+                    alt="{% trans 'Kanban' %}"
                     width="17"
                   />
                 </button>
@@ -191,7 +191,7 @@
                 id="dropdownDefaultButton"
                 data-dropdown-toggle="dropdown"
                 type="button">
-                <img src="{% static 'assets/icons/l1.svg' %}" alt="" width="18" />
+                <img src="{% static 'assets/icons/l1.svg' %}" alt="{% trans 'Actions' %}" width="18" />
               </button>
               <div id="dropdown" class="z-10 hidden bg-white rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_5%)] min-w-[160px]">
                 <ul class="text-sm" aria-labelledby="dropdownDefaultButton">
@@ -199,7 +199,7 @@
                     <li>
                       <a class="block px-4 py-2 hover:text-primary-600 transition duration-300 text-sm"
                         {% if action.attrs %}{{ action.attrs|safe }}{% endif %}>
-                        {{action.action}}
+                        {% trans action.action %}
                       </a>
                     </li>
                   {% endfor %}
@@ -222,7 +222,7 @@
               {{ attr_name }}="{{ attr_value|safe }}"
             {% endfor %}
           {% endif %}>
-          {{ new_button.title|default:"New" }}
+          {{ new_button.title|default:_("New") }}
         </button>
       {% endif %}
 

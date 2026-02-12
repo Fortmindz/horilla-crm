@@ -1,16 +1,16 @@
-from datetime import timedelta, timezone
-from functools import cached_property
-from urllib.parse import urlencode
+"""Views and utilities for email-to-lead functionality."""
 
-import requests
+# Standard library imports
+from functools import cached_property
+
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import redirect
+from django.http import HttpResponse
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
-from django.views import View
 
+# First-party / Horilla imports
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -63,6 +63,7 @@ class MailToLeadNavbar(LoginRequiredMixin, HorillaNavView):
                 "url": f"""{ reverse_lazy('leads:mail_to_lead_create_view')}?new=true""",
                 "attrs": {"id": "mail-to-lead-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -94,6 +95,7 @@ class MailToLeadListView(LoginRequiredMixin, HorillaListView):
                 "url": f"""{ reverse_lazy('leads:mail_to_lead_create_view')}?new=true""",
                 "attrs": 'id="mail-to-lead-create"',
             }
+        return None
 
     @cached_property
     def columns(self):
@@ -110,41 +112,34 @@ class MailToLeadListView(LoginRequiredMixin, HorillaListView):
             (instance._meta.get_field("lead_owner").verbose_name, "lead_owner"),
         ]
 
-    @cached_property
-    def actions(self):
-        """Define actions for each row in the list view"""
-        actions = []
-        if self.request.user.has_perm("leads.change_emailtoleadconfig"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                },
-            )
-        if self.request.user.has_perm("leads.delete_emailtoleadconfig"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                    hx-post="{get_delete_url}"
-                    hx-target="#deleteModeBox"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "leads.change_emailtoleadconfig",
+            "attrs": """
+                    hx-get="{get_edit_url}?new=true"
+                    hx-target="#modalBox"
                     hx-swap="innerHTML"
-                    hx-trigger="click"
-                    hx-vals='{{"check_dependencies": "true"}}'
-                    onclick="openDeleteModeModal()"
-                """,
-                }
-            )
-        return actions
+                    onclick="openModal()"
+                    """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "leads.delete_emailtoleadconfig",
+            "attrs": """
+                hx-post="{get_delete_url}"
+                hx-target="#deleteModeBox"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+                hx-vals='{{"check_dependencies": "true"}}'
+                onclick="openDeleteModeModal()"
+            """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -173,6 +168,8 @@ class MailToLeadFormView(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class EmailToLeadConfigDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """View for deleting email-to-lead configuration."""
+
     model = EmailToLeadConfig
 
     def get_post_delete_response(self):

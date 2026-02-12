@@ -2,14 +2,18 @@
 This view handles the methods for team role view
 """
 
+# Standard library imports
+from functools import cached_property
+
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -59,14 +63,21 @@ class PartnerRoleNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
+        """
+        Returns the new button configuration if the user has permission to add a partner role.
+        """
         if self.request.user.has_perm("horilla_core.add_partnerrole"):
             return {
                 "url": f"""{ reverse_lazy('horilla_core:partner_role_create_form')}?new=true""",
                 "attrs": {"id": "partner-role-create"},
             }
+        return None
 
     @cached_property
     def actions(self):
+        """
+        Returns the list of actions available in the navbar.
+        """
         if self.request.user.has_perm("horilla_core.view_partnerrole"):
             return [
                 {
@@ -79,6 +90,7 @@ class PartnerRoleNavbar(LoginRequiredMixin, HorillaNavView):
                             """,
                 }
             ]
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -97,47 +109,41 @@ class PartnerRoleListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("horilla_core:partner_role_view")
     table_width = False
     bulk_select_option = False
+    save_to_list_option = False
     header_attrs = [
         {"description": {"style": "width: 300px;"}},
     ]
 
     columns = ["partner_role_name", "description"]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_partnerrole"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_partnerrole"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                    hx-post="{get_delete_url}"
-                    hx-target="#deleteModeBox"
-                    hx-swap="innerHTML"
-                    hx-trigger="click"
-                    hx-vals='{{"check_dependencies": "true"}}'
-                    onclick="openDeleteModeModal()"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.change_partnerrole",
+            "attrs": """
+                hx-get="{get_edit_url}?new=true"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
                 """,
-                }
-            )
-        return actions
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_partnerrole",
+            "attrs": """
+                hx-post="{get_delete_url}"
+                hx-target="#deleteModeBox"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+                hx-vals='{{"check_dependencies": "true"}}'
+                onclick="openDeleteModeModal()"
+            """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -157,6 +163,10 @@ class PartnerRoleFormView(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """
+        Returns the URL for the form, either for creating or updating a partner role.
+        """
+
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
@@ -182,6 +192,10 @@ class PartnerRoleFormView(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class PartnerRoleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    Delete view for partner role
+    """
+
     model = PartnerRole
 
     def get_post_delete_response(self):

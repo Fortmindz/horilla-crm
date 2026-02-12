@@ -1,10 +1,15 @@
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.urls import include, path, re_path
-from django.views.generic.base import RedirectView
+"""
+URL configuration for Horilla Core app.
+"""
 
+# Third-party imports (Django)
+from django.urls import include, path, re_path
+
+# First-party / Horilla core imports
 from horilla_core.change_password import ChangePasswordFormView, ChangePasswordView
 from horilla_core.forgot_password import ForgotPasswordView, PasswordResetConfirmView
 
+# Local app imports
 from . import branches as branches_views
 from . import customer_role as customer_role_views
 from . import departments as department_views
@@ -17,7 +22,6 @@ from . import partner_role as partner_role_views
 from . import recycle_bin as recycle_bin_views
 from . import regional_formating as regional_formating_views
 from . import roles as roles_views
-from . import scoring_rule as scoring_rule_views
 from . import team_role as team_role_views
 from . import user_holidays as user_holidays_views
 from . import user_login_history as user_login_history_views
@@ -34,9 +38,10 @@ urlpatterns = [
     path("login/", views.LoginUserView.as_view(), name="login"),
     path("logout/", views.LogoutView.as_view(), name="logout"),
     path("active-tab/", views.SaveActiveTabView.as_view(), name="active_tab"),
-    path(
-        "favicon.ico", RedirectView.as_view(url=staticfiles_storage.url("favicon.ico"))
-    ),
+    # path(
+    #     "favicon.ico", RedirectView.as_view(url=staticfiles_storage.url("favicon.ico"))
+    # ),
+    path("favicon.ico", views.FaviconRedirectView.as_view()),
     path("settings-view/", views.SettingView.as_view(), name="settings_view"),
     path("my-settings-view/", views.MySettingView.as_view(), name="my_settings_view"),
     path(
@@ -62,11 +67,26 @@ urlpatterns = [
     path(
         "edit-company/<int:pk>/", views.CompanyFormView.as_view(), name="edit_company"
     ),
+    path(
+        "edit-company-multi-step/<int:pk>/",
+        views.CompanyMultiFormView.as_view(),
+        name="edit_company_multi_step",
+    ),
     path("create-company/", views.CompanyFormView.as_view(), name="create_company"),
+    path(
+        "create-company-multi-step/",
+        views.CompanyMultiFormView.as_view(),
+        name="create_company_multi_step",
+    ),
     path(
         "switch-company/<int:company_id>/",
         views.SwitchCompanyView.as_view(),
         name="switch_company",
+    ),
+    path(
+        "toggle-all-companies/",
+        views.ToggleAllCompaniesView.as_view(),
+        name="toggle_all_companies",
     ),
     # Holiday Urls
     path(
@@ -146,6 +166,11 @@ urlpatterns = [
         name="add_currency",
     ),
     path(
+        "fetch-exchange-rate/",
+        multiple_currency_views.FetchExchangeRateView.as_view(),
+        name="fetch_exchange_rate",
+    ),
+    path(
         "edit-currency/<int:pk>/",
         multiple_currency_views.AddCurrencyView.as_view(),
         name="edit_currency",
@@ -222,6 +247,26 @@ urlpatterns = [
         "user-edit-form/<int:pk>/",
         user_views.UserFormView.as_view(),
         name="user_edit_form",
+    ),
+    path(
+        "user-create-single-form/",
+        user_views.UserFormViewSingle.as_view(),
+        name="user_create_single_form",
+    ),
+    path(
+        "user-edit-single-form/<int:pk>/",
+        user_views.UserFormViewSingle.as_view(),
+        name="user_edit_single_form",
+    ),
+    path(
+        "user-change-company-form/<int:pk>/",
+        user_views.ChangeUserCompanyView.as_view(),
+        name="user_change_company_form",
+    ),
+    path(
+        "get-company-related-fields/",
+        user_views.GetCompanyRelatedFieldsView.as_view(),
+        name="get_company_related_fields",
     ),
     path(
         "user-delete-view/<int:pk>/",
@@ -440,67 +485,6 @@ urlpatterns = [
         "partner-role-delete-view/<int:pk>/",
         partner_role_views.PartnerRoleDeleteView.as_view(),
         name="partner_role_delete_view",
-    ),
-    # scoring rule urls
-    path(
-        "scoring-rule-view/",
-        scoring_rule_views.ScoringRuleView.as_view(),
-        name="scoring_rule_view",
-    ),
-    path(
-        "scoring-rule-nav-view/",
-        scoring_rule_views.ScoringRuleNavbar.as_view(),
-        name="scoring_rule_nav_view",
-    ),
-    path(
-        "scoring-rule-list-view/",
-        scoring_rule_views.ScoringRuleListView.as_view(),
-        name="scoring_rule_list_view",
-    ),
-    path(
-        "scoring-rule-create-form/",
-        scoring_rule_views.ScoringRuleFormView.as_view(),
-        name="scoring_rule_create_form",
-    ),
-    path(
-        "scoring-rule-update-form/<int:pk>/",
-        scoring_rule_views.ScoringRuleFormView.as_view(),
-        name="scoring_rule_update_form",
-    ),
-    path(
-        "scoring-rule-delete-view/<int:pk>/",
-        scoring_rule_views.ScoringRuleDeleteView.as_view(),
-        name="scoring_rule_delete_view",
-    ),
-    path(
-        "scoring-rule-detail-view/<int:pk>/",
-        scoring_rule_views.ScoringRuleDetailView.as_view(),
-        name="scoring_rule_detail_view",
-    ),
-    path(
-        "scoring-rule-detail-nav-view/",
-        scoring_rule_views.ScoringRuleDetailNavbar.as_view(),
-        name="scoring_rule_detail_nav_view",
-    ),
-    path(
-        "scoring-rule-criteria-create-form/",
-        scoring_rule_views.ScoringCriterionCreateUpdateView.as_view(),
-        name="scoring_rule_criteria_create_form",
-    ),
-    path(
-        "scoring-rule-criteria-edit-form/<int:pk>/",
-        scoring_rule_views.ScoringCriterionCreateUpdateView.as_view(),
-        name="scoring_rule_criteria_edit_form",
-    ),
-    path(
-        "scoring-rule-criteria-delete/<int:pk>/",
-        scoring_rule_views.ScoringCriteriaDeleteView.as_view(),
-        name="scoring_rule_criteria_delete",
-    ),
-    path(
-        "scoring-rule-activate/<int:pk>/",
-        scoring_rule_views.ScroringActiveToggleView.as_view(),
-        name="scoring_rule_activate",
     ),
     # Recyclebin urls
     path(

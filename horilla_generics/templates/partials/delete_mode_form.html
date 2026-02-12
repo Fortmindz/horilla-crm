@@ -13,7 +13,7 @@
         <div class="flex justify-between items-center mb-2">
             <h2 class="text-md font-semibold">{% trans 'Select Delete Mode'%}</h2>
                 <button onclick="closeDeleteModeModal()"class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-                    <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+                    <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
                 </button>
         </div>
         <div>
@@ -47,7 +47,7 @@
                 >
                 <span class="flex items-center gap-2">
                     <span id="hard-delete-spinner" class="htmx-indicator">
-                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                     </span>
                     {% trans 'Hard Delete'%}
                 </button>
@@ -64,7 +64,7 @@
                 >
                     <span class="flex items-center gap-2">
                         <span id="soft-delete-spinner" class="htmx-indicator">
-                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                         </span>
                         {% trans 'Soft Delete'%}
                     </span>

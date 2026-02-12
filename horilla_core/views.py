@@ -2,28 +2,48 @@
 A generic class-based view for rendering the home page.
 """
 
+# Standard library imports
+import json
 import logging
 import os
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlparse
 
+# Third-party imports (other)
 import pycountry
-from django.apps import apps
+
+# Third-party imports (Django)
 from django.contrib import messages
-from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.staticfiles.storage import staticfiles_storage
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property  # type: ignore
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
+from django.views.generic.base import RedirectView
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import UntypedToken
 
+# First-party / Horilla imports
 from horilla import settings
+from horilla.auth.models import User
 from horilla.exceptions import HorillaHttp404
-from horilla_core.forms import BusinessHourForm, HolidayForm
+from horilla.utils.branding import load_branding
+from horilla_core.decorators import htmx_required, permission_required_or_denied
+from horilla_core.forms import (
+    BusinessHourForm,
+    CompanyFormClassSingle,
+    CompanyMultistepFormClass,
+    HolidayForm,
+)
 from horilla_core.initialiaze_database import InitializeDatabaseConditionView
 from horilla_core.models import (
     ActiveTab,
@@ -31,34 +51,26 @@ from horilla_core.models import (
     Company,
     DatedConversionRate,
     Holiday,
-    HorillaUser,
     MultipleCurrency,
     Role,
 )
 from horilla_generics.views import (
     HorillaListView,
     HorillaModalDetailView,
+    HorillaMultiStepFormView,
     HorillaSingleDeleteView,
     HorillaSingleFormView,
     HorillaTabView,
 )
 from horilla_mail.models import HorillaMailConfiguration
 
-logger = logging.getLogger(__name__)
-User = get_user_model()
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.utils.decorators import method_decorator
-from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.generic import TemplateView
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.tokens import UntypedToken
+from .signals import company_created, pre_login_render_signal, pre_logout_signal
 
-from horilla_core.decorators import htmx_required, permission_required_or_denied
+logger = logging.getLogger(__name__)
 
 
 def is_jwt_token_valid(auth_header):
+    """Check if the provided JWT token is valid and return the associated user."""
     if not auth_header or not auth_header.startswith("Bearer "):
         return None  # No token
 
@@ -73,6 +85,7 @@ def is_jwt_token_valid(auth_header):
 
 
 def protected_media(request, path):
+    """Serve protected media files with access control."""
     public_pages = [
         "/login",
         "/sign-up-user",
@@ -84,7 +97,8 @@ def protected_media(request, path):
         "/initialize-database-role",
         "/initialize-database-company",
         "/initialize-company-form",
-        "/load-data" "/load-demo-data",
+        "/load-data",
+        "/load-demo-data",
     ]
     exempted_folders = ["assets/icons/"]
 
@@ -116,7 +130,15 @@ def protected_media(request, path):
 
 
 class HomePageView(LoginRequiredMixin, View):
+    """
+    Redirect to default home page
+    """
+
     def get(self, request, *args, **kwargs):
+        """
+        Redirect to default home page
+        """
+
         return redirect(settings.DEFAULT_HOME_REDIRECT)
 
 
@@ -129,12 +151,23 @@ class ReloadMessages(LoginRequiredMixin, TemplateView):
     template_name = "messages.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Get context data for reloading messages.
+        """
+
         context = super().get_context_data(**kwargs)
         return context
 
 
 class SaveActiveTabView(LoginRequiredMixin, View):
+    """
+    View to save the active tab for a user.
+    """
+
     def post(self, request, *args, **kwargs):
+        """
+        Save the active tab for the user.
+        """
         tab_target = request.POST.get("tab_target")
         path = request.POST.get("path")
         user = request.user if request.user.is_authenticated else None
@@ -152,12 +185,20 @@ class SaveActiveTabView(LoginRequiredMixin, View):
         return JsonResponse({"status": "error", "message": "Invalid data"}, status=400)
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET requests with an error response.
+        """
+
         return JsonResponse(
             {"status": "error", "message": "Invalid method"}, status=405
         )
 
 
 class LoginUserView(View):
+    """
+    Class-based view to handle user login.
+    """
+
     def get(self, request):
         """
         Render login page with an optional 'next' param preserved.
@@ -178,6 +219,10 @@ class LoginUserView(View):
             "initialize_database": initialize_database,
             "show_forgot_password": show_forgot_password,
         }
+
+        _responses = pre_login_render_signal.send(
+            sender=self.__class__, request=request, context=context
+        )
 
         return render(request, "login.html", context=context)
 
@@ -207,7 +252,6 @@ class LoginUserView(View):
                 request, _("Invalid credentials. Please check and try again.")
             )
             return redirect(reverse_lazy("horilla_core:login") + f"?next={next_url}")
-            # return render(request, "login.html", {"next": next_url})
 
         if not user.is_active:
             messages.warning(
@@ -231,28 +275,55 @@ class LoginUserView(View):
 class LogoutView(View):
     """
     Class-based view to logout the user and clear local storage.
+    All preservation logic is handled by signal receivers.
     """
 
     def get(self, request, *args, **kwargs):
+        """
+        Logout the user and clear local storage.
+        """
+
+        # Collect data from all registered signal receivers
+        storage_data = {}
+
+        if request.user.is_authenticated:
+            responses = pre_logout_signal.send(sender=self.__class__, request=request)
+
+            for _receiver, response in responses:
+                if response and isinstance(response, tuple) and len(response) == 2:
+                    storage_key, data = response
+                    if storage_key and data:
+                        storage_data[storage_key] = data
+
         if request.user.is_authenticated:
             logout(request)
-        response = HttpResponse()
-        response.content = """
-            <script>
-                // Save theme before clearing localStorage
-                const theme = localStorage.getItem('theme');
 
-                // Clear everything
-                localStorage.clear();
+        storage_data_json = json.dumps(storage_data) if storage_data else "{}"
 
-                // Restore theme if it existed
-                if (theme !== null) {
-                    localStorage.setItem('theme', theme);
-                }
-            </script>
+        script_content = f"""
+        <script>
+            // Save theme mode before clearing (always preserved)
+            const theme = localStorage.getItem('theme');
 
-            <meta http-equiv="refresh" content="0;url=/login">
+            // Clear everything
+            localStorage.clear();
+
+            // Always restore theme mode if it existed
+            if (theme !== null) {{
+                localStorage.setItem('theme', theme);
+            }}
+
+            const storageData = {storage_data_json};
+            for (const [key, value] of Object.entries(storageData)) {{
+                localStorage.setItem(key, JSON.stringify(value));
+            }}
+        </script>
+
+        <meta http-equiv="refresh" content="0;url=/login">
         """
+
+        response = HttpResponse()
+        response.content = script_content
         return response
 
 
@@ -266,6 +337,9 @@ class ConmpanyInformationTabView(LoginRequiredMixin, HorillaTabView):
 
     @cached_property
     def tabs(self):
+        """
+        Get the list of tabs for the company information view.
+        """
         tabs = []
 
         # Company Details Tab
@@ -361,6 +435,9 @@ class ConmpanyInformationView(LoginRequiredMixin, TemplateView):
     template_name = "settings/company_information.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Get context data for company information view.
+        """
         context = super().get_context_data(**kwargs)
         company = getattr(self.request, "active_company", None)
         context["has_company"] = bool(company)
@@ -368,42 +445,152 @@ class ConmpanyInformationView(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class CompanyFormView(LoginRequiredMixin, HorillaSingleFormView):
+class CompanyMultiFormView(LoginRequiredMixin, HorillaMultiStepFormView):
+    """compnay Create/Update View"""
 
+    form_class = CompanyMultistepFormClass
     model = Company
     view_id = "company-form-view"
+    save_and_new = False
+    single_step_url_name = {
+        "create": "horilla_core:create_company",
+        "edit": "horilla_core:edit_company",
+    }
+
+    def get_signal_kwargs(self):
+        """
+        Extension point: Override this method to pass additional data to signal.
+        Clients can add custom data without modifying source code.
+        """
+        return {}
 
     @cached_property
     def form_url(self):
+        """Form URL for company"""
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        if pk:
+            return reverse_lazy(
+                "horilla_core:edit_company_multi_step", kwargs={"pk": pk}
+            )
+        return reverse_lazy("horilla_core:create_company_multi_step")
+
+    def form_valid(self, form):
+        """
+        Handle valid form submission.
+        """
+
+        step = self.get_initial_step()
+
+        if step < self.total_steps:
+            return super().form_valid(form)
+
+        response = super().form_valid(form)
+        custom_kwargs = self.get_signal_kwargs()
+        signal_kwargs = {
+            "instance": self.object,
+            "request": self.request,
+            "view": self,
+            "is_new": not self.kwargs.get("pk"),
+            **custom_kwargs,
+        }
+        responses = company_created.send(sender=self.__class__, **signal_kwargs)
+
+        for _receiver, response in responses:
+            if isinstance(response, HttpResponse):
+                wrapped_response = HttpResponse(
+                    f'<div id="{self.view_id}-container">{response.content.decode()}</div>'
+                )
+                return wrapped_response
+
+        if self.request.GET.get("details") == "true":
+            return HttpResponse(
+                "<script>$('#reloadButton').click();closeModal();</script>"
+            )
+
+        branches_view_url = reverse_lazy("horilla_core:branches_view")
+        response_html = (
+            f"<span "
+            f'hx-trigger="load" '
+            f'hx-get="{branches_view_url}" '
+            f'hx-select="#branches-view" '
+            f'hx-target="#branches-view" '
+            f'hx-swap="outerHTML" '
+            f'hx-on::after-request="closeModal();"'
+            f'hx-select-oob="#dropdown-companies">'
+            f"</span>"
+        )
+        return HttpResponse(mark_safe(response_html))
+
+    step_titles = {
+        "1": _("Basic Information"),
+        "2": _("Business Details"),
+        "3": _("Location & Locale"),
+        "4": _("Preferences"),
+    }
+
+    def get_form_kwargs(self):
+        """
+        Get form kwargs for company multi-step form.
+        """
+        kwargs = super().get_form_kwargs()
+        kwargs["request"] = self.request
+        return kwargs
+
+
+@method_decorator(htmx_required, name="dispatch")
+class CompanyFormView(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    compnay Create/Update View
+    """
+
+    model = Company
+    view_id = "company-form-view"
+    form_class = CompanyFormClassSingle
+    save_and_new = False
+
+    def get_signal_kwargs(self):
+        """
+        Extension point: Override this method to pass additional data to signal.
+        Clients can add custom data without modifying source code.
+        """
+        return {}
+
+    multi_step_url_name = {
+        "create": "horilla_core:create_company_multi_step",
+        "edit": "horilla_core:edit_company_multi_step",
+    }
+
+    @cached_property
+    def form_url(self):
+        """Form URL for company"""
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:edit_company", kwargs={"pk": pk})
         return reverse_lazy("horilla_core:create_company")
 
     def form_valid(self, form):
+        """
+        Handle valid form submission.
+        """
         super().form_valid(form)
-        if not self.kwargs.get("pk") and apps.is_installed("horilla_crm.leads"):
-            return HttpResponse(
-                """
-                <script>
-                    closeModal();
-                    $('#reloadButton').click();
-                     openContentModal();
-                        var div = document.createElement('div');
-                        div.setAttribute('hx-get', '%s');
-                        div.setAttribute('hx-target', '#contentModalBox');
-                        div.setAttribute('hx-trigger', 'load');
-                        div.setAttribute('hx-swap', 'innerHTML');
-                        document.body.appendChild(div);
-                        htmx.process(div);
-                </script>
-                """
-                % reverse_lazy(
-                    "leads:load_lead_stages", kwargs={"company_id": self.object.id}
-                ),
-                headers={"X-Debug": "Modal transition in progress"},
-            )
-        elif self.request.GET.get("details") == "true":
+        custom_kwargs = self.get_signal_kwargs()
+        signal_kwargs = {
+            "instance": self.object,
+            "request": self.request,
+            "view": self,
+            "is_new": not self.kwargs.get("pk"),
+            **custom_kwargs,  # Add any custom kwargs from override
+        }
+        responses = company_created.send(sender=self.__class__, **signal_kwargs)
+
+        for _receiver, response in responses:
+            if isinstance(response, HttpResponse):
+                wrapped_response = HttpResponse(
+                    f'<div id="{self.view_id}-container">{response.content.decode()}</div>'
+                )
+                return wrapped_response
+
+        if self.request.GET.get("details") == "true":
             return HttpResponse(
                 "<script>$('#reloadButton').click();closeModal();</script>"
             )
@@ -427,12 +614,41 @@ class CompanyFormView(LoginRequiredMixin, HorillaSingleFormView):
     permission_required_or_denied("horilla_core.can_switch_company"), name="dispatch"
 )
 class SwitchCompanyView(LoginRequiredMixin, View):
+    """
+    View to switch active company for the user.
+    """
+
     def post(self, request, company_id):
+        """
+        Switch the active company for the user.
+        """
         if request.user.is_authenticated and (
-            request.user.is_superuser or request.user.company_id == company_id
+            request.user.has_perm("horilla_core.can_switch_company")
+            or request.user.company_id == company_id
         ):
             request.session["active_company_id"] = company_id
         return redirect(request.META.get("HTTP_REFERER", "/"))
+
+
+@method_decorator(htmx_required, name="dispatch")
+class ToggleAllCompaniesView(LoginRequiredMixin, View):
+    """
+    View to toggle "show all companies" mode globally via session.
+    """
+
+    def post(self, request):
+        """
+        Toggle the all_companies setting in session.
+        """
+        current_value = request.session.get("show_all_companies", False)
+        request.session["show_all_companies"] = not current_value
+        request.session.save()
+
+        # Return HX-Redirect to refresh the page
+        referer = request.META.get("HTTP_REFERER", "/")
+        response = HttpResponse(status=200)
+        response["HX-Redirect"] = referer
+        return response
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -440,10 +656,16 @@ class SwitchCompanyView(LoginRequiredMixin, View):
     permission_required_or_denied("horilla_core.view_company"), name="dispatch"
 )
 class CompanyDetailsTab(LoginRequiredMixin, TemplateView):
+    """
+    TemplateView for company details tab.
+    """
 
     template_name = "settings/company_details_tab.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Get context data for company details tab.
+        """
         context = super().get_context_data(**kwargs)
         company = getattr(self.request, "active_company", None)
         if company:
@@ -459,10 +681,16 @@ class CompanyDetailsTab(LoginRequiredMixin, TemplateView):
     permission_required_or_denied("horilla_core.view_company"), name="dispatch"
 )
 class CompanyFiscalYearTab(LoginRequiredMixin, TemplateView):
+    """
+    TemplateView for fiscal year tab.
+    """
 
     template_name = "settings/fiscal_year.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Get context data for fiscal year tab.
+        """
         context = super().get_context_data(**kwargs)
         company = getattr(self.request, "active_company", None)
         if company:
@@ -517,6 +745,9 @@ class HolidayListView(LoginRequiredMixin, HorillaListView):
 
     @cached_property
     def col_attrs(self):
+        """
+        Get the column attributes for the list view.
+        """
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
@@ -540,40 +771,34 @@ class HolidayListView(LoginRequiredMixin, HorillaListView):
             }
         ]
 
-    @cached_property
-    def actions(self):
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_holiday"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4 flex gap-4",
-                    "attrs": """
-                    hx-get="{get_edit_url}"
-                    hx-target="#modalBox"
-                    hx-swap="innerHTML"
-                    onclick="openModal()"
-                """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_holiday"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                    hx-post="{get_delete_url}"
-                    hx-target="#modalBox"
-                    hx-swap="innerHTML"
-                    hx-trigger="click"
-                    hx-vals='{{"check_dependencies": "false"}}'
-                    onclick="openModal()"
-                """,
-                },
-            )
-        return actions
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4 flex gap-4",
+            "permission": "horilla_core.change_holiday",
+            "attrs": """
+                hx-get="{get_edit_url}"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
+            """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_holiday",
+            "attrs": """
+                hx-post="{get_delete_url}"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+                hx-vals='{{"check_dependencies": "false"}}'
+                onclick="openModal()"
+            """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -582,31 +807,52 @@ class HolidayListView(LoginRequiredMixin, HorillaListView):
     name="dispatch",
 )
 class HolidayDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    Delete View for Holiday
+    """
+
     model = Holiday
 
     def get_post_delete_response(self):
+        """
+        Get the response after deleting a holiday.
+        """
+
         return HttpResponse(
-            "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
+            "<script>$('#reloadButton').click();closeDeleteModeModal();closeDetailModal();</script>"
+            # "<script>$('#reloadButton').click();closeDeleteModeModal();$('#tab-holidays-view').click();</script>"
         )
 
 
 @method_decorator(htmx_required, name="dispatch")
 class HolidayFormView(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    Holiday Create/Update View
+    """
+
     model = Holiday
     form_class = HolidayForm
     view_id = "holiday-form-view"
     form_title = "Holiday Form"
-    # hidden_fields = ["company"]
     full_width_fields = ["name"]
+    return_response = HttpResponse(
+        "<script>closeModal();$('#detailViewReloadButton').click();$('#tab-holidays-view').click();</script>"
+    )
 
     @cached_property
     def form_url(self):
+        """Form URL for holiday"""
+
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:holiday_update_form", kwargs={"pk": pk})
         return reverse_lazy("horilla_core:holiday_create_form")
 
     def get_initial(self):
+        """
+        Get initial data for holiday form.
+        """
+
         initial = super().get_initial()
 
         toggle = self.request.GET.get("toggle_all_users")
@@ -647,10 +893,6 @@ class HolidayFormView(LoginRequiredMixin, HorillaSingleFormView):
 
         return initial
 
-    def form_invalid(self, form):
-        response = super().form_invalid(form)
-        return response
-
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
@@ -676,47 +918,37 @@ class HolidayDetailView(LoginRequiredMixin, HorillaModalDetailView):
         (_("Recurring"), "is_recurring_holiday"),
     ]
 
-    @cached_property
-    def actions(self):
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_holiday"):
-            actions.append(
-                [
-                    {
-                        "action": "Edit",
-                        "src": "assets/icons/edit_white.svg",
-                        "img_class": "w-3 h-3 flex gap-4 filter brightness-0 invert",
-                        "attrs": """
-                        class="w-24 justify-center px-4 py-2 bg-primary-600 text-white rounded-md text-xs flex items-center gap-2 hover:bg-primary-800 transition duration-300 disabled:cursor-not-allowed"
-                        hx-get="{get_edit_url}"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal();"
-                    """,
-                    },
-                ]
-            )
-        if self.request.user.has_perm("horilla_core.delete_holiday"):
-            actions.append(
-                [
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-3 h-3 flex gap-4 brightness-0 saturate-100",
-                        "image_style": "filter: invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%)",
-                        "attrs": """
-                                class="w-24 justify-center px-4 py-2 bg-[white] rounded-md text-xs flex items-center gap-2 border border-primary-500 hover:border-primary-600 transition duration-300 disabled:cursor-not-allowed text-primary-600"
-                                hx-post="{get_delete_url}"
-                                hx-target="#deleteModeBox"
-                                hx-swap="innerHTML"
-                                hx-trigger="confirmed"
-                                hx-on:click="hxConfirm(this,'Are you sure you want to delete this holiday?')"
-                                hx-on::after-request="closeDetailModal();"
-                            """,
-                    },
-                ]
-            )
-        return actions
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit_white.svg",
+            "img_class": "w-3 h-3 flex gap-4 filter brightness-0 invert",
+            "permission": "horilla_core.change_holiday",
+            "attrs": """
+                class="w-24 justify-center px-4 py-2 bg-primary-600 text-white rounded-md text-xs flex items-center gap-2 hover:bg-primary-800 transition duration-300 disabled:cursor-not-allowed"
+                hx-get="{get_edit_url}"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal();"
+            """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-3 h-3 flex gap-4 brightness-0 saturate-100",
+            "image_style": "filter: invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%)",
+            "permission": "horilla_core.delete_holiday",
+            "attrs": """
+                    class="w-24 justify-center px-4 py-2 bg-[white] rounded-md text-xs flex items-center gap-2 border border-primary-500 hover:border-primary-600 transition duration-300 disabled:cursor-not-allowed text-primary-600"
+                    hx-post="{get_delete_url}"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "false"}}'
+                    onclick="openModal()"
+                """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -724,10 +956,16 @@ class HolidayDetailView(LoginRequiredMixin, HorillaModalDetailView):
     permission_required_or_denied("horilla_core.view_multiplecurrency"), name="dispatch"
 )
 class CompanyMultipleCurrency(LoginRequiredMixin, TemplateView):
+    """
+    TemplateView for multiple currency view.
+    """
 
     template_name = "settings/multiple_currency.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Get context data for multiple currency view.
+        """
         context = super().get_context_data(**kwargs)
         company = getattr(self.request, "active_company", None)
         if company:
@@ -835,6 +1073,9 @@ class BusinessHourListView(LoginRequiredMixin, HorillaListView):
 
     @cached_property
     def col_attrs(self):
+        """
+        Get the column attributes for the list view.
+        """
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
@@ -857,52 +1098,54 @@ class BusinessHourListView(LoginRequiredMixin, HorillaListView):
             }
         ]
 
-    @cached_property
-    def actions(self):
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_businesshour"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4 flex gap-4",
-                    "attrs": """
-                    hx-get="{get_edit_url}"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4 flex gap-4",
+            "permission": "horilla_core.change_businesshour",
+            "attrs": """
+                hx-get="{get_edit_url}"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
+            """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_businesshour",
+            "attrs": """
+                    hx-post="{get_delete_url}"
                     hx-target="#modalBox"
                     hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "false"}}'
                     onclick="openModal()"
                 """,
-                },
-            )
-        if self.request.user.has_perm("horilla_core.delete_businesshour"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "false"}}'
-                        onclick="openModal()"
-                    """,
-                },
-            )
-        return actions
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
 class BusinessHourFormView(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    Business Hour Create/Update View
+    """
+
     model = BusinessHour
     form_class = BusinessHourForm
     view_id = "business-hour-form-view"
     form_title = "Business Hour Form"
     hidden_fields = ["company"]
+    return_response = HttpResponse(
+        "<script>closeModal();$('#reloadButton').click();$('#detailViewReloadButton').click();</script>"
+    )
 
     @cached_property
     def form_url(self):
+        """Form URL for business hour"""
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
@@ -911,6 +1154,9 @@ class BusinessHourFormView(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("horilla_core:business_hour_create_form")
 
     def get_initial(self):
+        """
+        Get initial data for business hour form.
+        """
         initial = super().get_initial()
         toggle = self.request.GET.get("toggle_data")
         company = getattr(self.request, "active_company", None)
@@ -941,11 +1187,18 @@ class BusinessHourFormView(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class BusinessHourDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    Delete View for Business Hour
+    """
+
     model = BusinessHour
 
     def get_post_delete_response(self):
+        """
+        Get the response after deleting a business hour.
+        """
         return HttpResponse(
-            "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
+            "<script>$('#reloadButton').click();closeDeleteModeModal();closeDetailModal();</script>"
         )
 
 
@@ -974,52 +1227,57 @@ class BusinessHourDetailView(LoginRequiredMixin, HorillaModalDetailView):
         (_("Business Days"), "get_formatted_week_days"),
     ]
 
-    @cached_property
-    def actions(self):
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_businesshour"):
-            actions.append(
-                [
-                    {
-                        "action": "Edit",
-                        "src": "assets/icons/edit_white.svg",
-                        "img_class": "w-3 h-3 flex gap-4 filter brightness-0 invert",
-                        "attrs": """
-                    class="w-24 justify-center px-4 py-2 bg-primary-600 text-white rounded-md text-xs flex items-center gap-2 hover:bg-primary-800 transition duration-300 disabled:cursor-not-allowed"
-                    hx-get="{get_edit_url}"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit_white.svg",
+            "img_class": "w-3 h-3 flex gap-4 filter brightness-0 invert",
+            "permission": "horilla_core.change_businesshour",
+            "attrs": """
+                class="w-24 justify-center px-4 py-2 bg-primary-600 text-white rounded-md text-xs flex items-center gap-2 hover:bg-primary-800 transition duration-300 disabled:cursor-not-allowed"
+                hx-get="{get_edit_url}"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal();"
+            """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-3 h-3 flex gap-4 brightness-0 saturate-100",
+            "image_style": "filter: invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%)",
+            "permission": "horilla_core.delete_businesshour",
+            "attrs": """
+                    class="w-24 justify-center px-4 py-2 bg-[white] rounded-md text-xs flex items-center gap-2 border border-primary-500 hover:border-primary-600 transition duration-300 disabled:cursor-not-allowed text-primary-600"
+                    hx-post="{get_delete_url}"
                     hx-target="#modalBox"
                     hx-swap="innerHTML"
-                    onclick="openModal();"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "false"}}'
+                    onclick="openModal()"
                 """,
-                    },
-                ]
-            )
-        if self.request.user.has_perm("horilla_core.delete_businesshour"):
-            actions.append(
-                [
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-3 h-3 flex gap-4 brightness-0 saturate-100",
-                        "image_style": "filter: invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%)",
-                        "attrs": """
-                                class="w-24 justify-center px-4 py-2 bg-[white] rounded-md text-xs flex items-center gap-2 border border-primary-500 hover:border-primary-600 transition duration-300 disabled:cursor-not-allowed text-primary-600"
-                                hx-post="{get_delete_url}"
-                                hx-target="#deleteModeBox"
-                                hx-swap="innerHTML"
-                                hx-trigger="confirmed"
-                                hx-on:click="hxConfirm(this,'Are you sure you want to delete this holiday?')"
-                                hx-on::after-request="closeDetailModal();"
-                            """,
-                    },
-                ]
-            )
-        return actions
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
 class GetCountrySubdivisionsView(LoginRequiredMixin, View):
+    """
+    View to get country subdivisions (states/provinces) based on country code.
+    """
+
     def get(self, request, *args, **kwargs):
+        """
+        Get HTML options for country subdivisions based on country code.
+
+        Args:
+            request: The HTTP request object.
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            HttpResponse: HTML string containing option elements for subdivisions.
+        """
         country_code = request.GET.get("country")
         options = '<option value="">Select State</option>'
 
@@ -1042,11 +1300,45 @@ class RolesView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        roles = Role.objects.all()
+        show_all_companies = self.request.session.get("show_all_companies", False)
 
-        def build_role_tree(parent_role=None):
-            """Recursively build role hierarchy"""
-            children = roles.filter(parent_role=parent_role)
+        def build_role_tree(roles_queryset, parent_role=None, company=None):
+            """Recursively build role hierarchy for a specific company"""
+            # Filter children by parent_role and ensure they belong to the same company
+            if parent_role is None:
+                # Root level: get roles with no parent_role, filtered by company
+                if company is not None:
+                    children = roles_queryset.filter(
+                        parent_role__isnull=True, company=company
+                    )
+                else:
+                    children = roles_queryset.filter(
+                        parent_role__isnull=True, company__isnull=True
+                    )
+            else:
+                # Child level: get roles with this parent_role
+                # Ensure parent_role belongs to the same company to prevent cross-company connections
+                if company is not None:
+                    # Only include if parent_role belongs to the same company
+                    if parent_role.company == company:
+                        children = roles_queryset.filter(
+                            parent_role=parent_role, company=company
+                        )
+                    else:
+                        children = (
+                            roles_queryset.none()
+                        )  # Don't connect across companies
+                else:
+                    # For roles without company, ensure parent_role also has no company
+                    if parent_role.company is None:
+                        children = roles_queryset.filter(
+                            parent_role=parent_role, company__isnull=True
+                        )
+                    else:
+                        children = (
+                            roles_queryset.none()
+                        )  # Don't connect across company boundaries
+
             role_tree = []
 
             for role in children:
@@ -1056,14 +1348,82 @@ class RolesView(LoginRequiredMixin, TemplateView):
                     "name": role.role_name,
                     "description": getattr(role, "description", ""),
                     "user_count": user_count,
-                    "children": build_role_tree(role),
+                    "children": build_role_tree(roles_queryset, role, company),
                 }
                 role_tree.append(role_dict)
 
             return role_tree
 
-        roles_data = build_role_tree()
+        if show_all_companies:
+            # Group roles by company when "all company" is activated
+            all_roles = Role.all_objects.all()
+            companies_with_roles = {}
 
-        context["roles_data"] = roles_data
-        context["roles_count"] = roles.count()
+            # Group roles by company
+            for role in all_roles:
+                company = role.company
+                if company:
+                    if company not in companies_with_roles:
+                        companies_with_roles[company] = []
+                    companies_with_roles[company].append(role)
+
+            # Build company-grouped structure
+            companies_data = []
+            for company, company_roles in companies_with_roles.items():
+                # Build role tree for this company's roles only
+                company_roles_queryset = Role.all_objects.filter(company=company)
+                roles_tree = build_role_tree(company_roles_queryset, company=company)
+
+                companies_data.append(
+                    {
+                        "company": company,
+                        "company_id": company.id,
+                        "company_name": company.name,
+                        "roles": roles_tree,
+                        "roles_count": len(company_roles),
+                    }
+                )
+
+            # Also include roles without company
+            roles_without_company = all_roles.filter(company__isnull=True)
+            if roles_without_company.exists():
+                roles_without_company_queryset = Role.all_objects.filter(
+                    company__isnull=True
+                )
+                roles_tree = build_role_tree(
+                    roles_without_company_queryset, company=None
+                )
+                companies_data.append(
+                    {
+                        "company": None,
+                        "company_id": None,
+                        "company_name": "No Company",
+                        "roles": roles_tree,
+                        "roles_count": roles_without_company.count(),
+                    }
+                )
+
+            context["companies_data"] = companies_data
+            context["show_all_companies"] = True
+            context["roles_count"] = all_roles.count()
+        else:
+            # Original behavior: filter by active company
+            roles = Role.objects.all()
+            # Get the company from the filtered queryset (should be active company)
+            company = getattr(self.request, "active_company", None)
+            if not company and hasattr(self.request.user, "company"):
+                company = self.request.user.company
+            roles_data = build_role_tree(roles, company=company)
+            context["roles_data"] = roles_data
+            context["show_all_companies"] = False
+            context["roles_count"] = roles.count()
+
         return context
+
+
+class FaviconRedirectView(RedirectView):
+    """Redirect to the configured favicon."""
+
+    branding = load_branding()
+    favicon_path = branding.get("FAVICON_PATH", "favicon.ico")
+    url = staticfiles_storage.url(favicon_path)

@@ -1,11 +1,15 @@
+"""Signal handlers for contacts module."""
+
+# Standard library imports
 import threading
 
+# Third-party imports (Django)
 from django.apps import apps
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from horilla_core.models import HorillaUser
-from horilla_crm.accounts.models import Account
+# First-party / Horilla imports
+from horilla.auth.models import User
 from horilla_crm.contacts.models import Contact, ContactAccountRelationship
 from horilla_keys.models import ShortcutKey
 
@@ -14,21 +18,23 @@ _thread_locals = threading.local()
 # Define your contacts signals here
 
 
-@receiver(post_save, sender=HorillaUser)
+@receiver(post_save, sender=User)
 def create_contact_shortcuts(sender, instance, created, **kwargs):
+    """Create default keyboard shortcuts for contacts when a user is created."""
     predefined = [
         {"page": "/contacts/contacts-view/", "key": "N", "command": "alt"},
     ]
 
     for item in predefined:
-        if not ShortcutKey.objects.filter(user=instance, page=item["page"]).exists():
-            ShortcutKey.objects.create(
-                user=instance,
-                page=item["page"],
-                key=item["key"],
-                command=item["command"],
-                company=instance.company,
-            )
+        ShortcutKey.all_objects.get_or_create(
+            user=instance,
+            key=item["key"],
+            command=item["command"],
+            defaults={
+                "page": item["page"],
+                "company": instance.company,
+            },
+        )
 
 
 def set_contact_account_id(account_id, company):
@@ -63,7 +69,7 @@ def create_contact_account_role(sender, instance, created, **kwargs):
             try:
                 account = Account.objects.get(pk=account_id)
 
-                role, created_role = ContactAccountRelationship.objects.get_or_create(
+                _role, _created_role = ContactAccountRelationship.objects.get_or_create(
                     contact=instance,
                     account=account,
                     company=company or getattr(instance, "company", None),

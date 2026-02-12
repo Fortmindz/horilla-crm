@@ -2,14 +2,15 @@
 This view handles the methods for department view
 """
 
-from django.contrib import messages
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
+# First-party imports (Horilla)
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -24,7 +25,6 @@ from horilla_generics.views import (
     HorillaSingleFormView,
     HorillaView,
 )
-from horilla_notifications.models import Notification
 
 
 class DepartmentView(LoginRequiredMixin, HorillaView):
@@ -60,14 +60,22 @@ class DepartmentNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
+        """
+        Return the configuration for the 'Create Department' button
+        if the user has add permission.
+        """
         if self.request.user.has_perm("horilla_core.add_department"):
             return {
                 "url": f"""{ reverse_lazy('horilla_core:department_create_form')}?new=true""",
                 "attrs": {"id": "department-create"},
             }
+        return None
 
     @cached_property
     def actions(self):
+        """
+        Return navbar actions available for the department list.
+        """
         if self.request.user.has_perm("horilla_core.view_department"):
             return [
                 {
@@ -80,6 +88,7 @@ class DepartmentNavbar(LoginRequiredMixin, HorillaNavView):
                             """,
                 }
             ]
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -104,41 +113,34 @@ class DepartmentListView(LoginRequiredMixin, HorillaListView):
 
     columns = ["department_name", "description"]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_department"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                }
-            )
-        if self.request.user.has_perm("horilla_core.delete_department"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "true"}}'
-                        onclick="openDeleteModeModal()"
-                    """,
-                }
-            )
-        return actions
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.change_department",
+            "attrs": """
+                hx-get="{get_edit_url}?new=true"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
+                """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_department",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -158,41 +160,15 @@ class DepartmentFormView(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """
+        Resolve the form submission URL for create or update operation.
+        """
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
                 "horilla_core:department_update_form", kwargs={"pk": pk}
             )
         return reverse_lazy("horilla_core:department_create_form")
-
-    def form_valid(self, form):
-        self.object = form.save()
-
-        if not self.kwargs.get("pk"):
-            Notification.objects.create(
-                user=self.request.user,
-                message=f"New Department '{self.object}' created successfully.",
-                sender=self.request.user,
-                url=reverse("horilla_core:department_view"),
-            )
-
-        response = super().form_valid(form)
-
-        return HttpResponse("<script>$('#reloadButton').click();closeModal();</script>")
-
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-    def get(self, request, *args, **kwargs):
-        pk = kwargs.get("pk")
-        if pk:
-            try:
-                self.model.objects.get(pk=pk)
-            except self.model.DoesNotExist:
-                messages.error(request, "The requested data does not exist.")
-                return HttpResponse("<script>$('reloadButton').click();</script>")
-
-        return super().get(request, *args, **kwargs)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -201,6 +177,11 @@ class DepartmentFormView(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class DepartmentDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    Delete view for Department. Handles deletion and returns an HTMX
+    response to reload the department list.
+    """
+
     model = Department
 
     def get_post_delete_response(self):

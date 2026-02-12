@@ -6,17 +6,13 @@
 
 {% if can_view_company %}
   <div id="company-information">
-    <div id="messages-container" style="display: none;">
-      {% for message in messages %}
-          <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-      {% endfor %}
-  </div>
+    {% include "messages.html" %}
     {% if not has_company %}
       <div class="flex justify-between items-center h-20">
       </div>
       <img
           src="{% static 'assets/img/activate-company.svg' %}"
-          alt="" class="w-60  m-auto mb-4 mt-5"/>
+          alt="{% trans 'Activate company' %}" class="w-60  m-auto mb-4 mt-5"/>
       <p class="text-sm text-center mb-3">
           {% trans "Please create or activate your company." %}
       </p>

@@ -2,21 +2,17 @@
 {% load static i18n horilla_tags %}
 {% if has_company %}
   <div class="ps-3">
-    <div id="messages-container" style="display: none;">
-      {% for message in messages %}
-          <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-      {% endfor %}
-    </div>
+    {% include "messages.html" %}
     <div class="flex gap-2 flex-wrap justify-between items-center h-auto sm:h-14 mb-5 sm:mb-2">
       <h3 class="text-md font-semibold">{% trans 'Fiscal Year' %}</h3>
       <div class="flex flex-wrap gap-2">
-        <button class="text-sm border-[1px] border-[solid]  rounded-[5px] px-4 py-2 text-[#e54f38] flex gap-3 btn-with-icon border-[#e54f38] transition-[.3s]"
+        <button class="text-sm border-[1px] border-[solid] rounded-[5px] px-4 py-2 text-primary-600 hover:bg-primary-600 hover:text-[white] flex gap-3 btn-with-icon transition-[.3s]"
             hx-get="{% url 'horilla_core:fiscal_year_calendar' obj.id %}"
             hx-target="#calendarPreviewModal"
             hx-swap="innerHTML"
             hx-on:click="openCalendarPreviewModal()"
             id="preview-calendar-btn">
-            {% trans ' Preview Calendar' %}
+            {% trans 'Preview Calendar' %}
         </button>
         {% has_perm "horilla_core.add_fiscalyear" as can_add_fiscalyear %}
         {% has_perm "horilla_core.change_fiscalyear" as can_change_fiscalyear %}
@@ -28,7 +24,7 @@
               hx-target="#modalBox"
               hx-trigger="click"
               hx-on:click="openModal()">
-              {% trans ' Manage Fiscal Year' %}
+              {% trans 'Manage Fiscal Year' %}
             </button>
           {% endif %}
 

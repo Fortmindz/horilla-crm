@@ -17,6 +17,10 @@ from horilla_utils.middlewares import _thread_local
 
 
 class ShortcutKey(HorillaCoreModel):
+    """
+    Model to store user-specific keyboard shortcut mappings.
+    """
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -33,12 +37,16 @@ class ShortcutKey(HorillaCoreModel):
     OWNER_FIELDS = ["user"]
 
     class Meta:
-        unique_together = ("user", "page")
+        """
+        Meta options for the ShortcutKey model.
+        """
+
+        unique_together = ("user", "key", "command")
         verbose_name = _("Shortcut Key")
         verbose_name_plural = _("Shortcut Keys")
 
     def __str__(self):
-        return self.page
+        return str(self.page)
 
     def get_edit_url(self):
         """
@@ -91,7 +99,7 @@ class ShortcutKey(HorillaCoreModel):
                 return item.get("name") or item.get("label") or item.get("title")
 
         sub_sections = get_sub_section_menu(None)
-        for section_name, items in sub_sections.items():
+        for _, items in sub_sections.items():
             for item in items:
                 if item.get("url") == self.page:
                     return item.get("label") or item.get("name") or item.get("title")

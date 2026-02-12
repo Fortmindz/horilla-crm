@@ -1,9 +1,11 @@
 """Views for managing horilla_dashboard and their components."""
 
+# Standard library imports
 import json
 import logging
 from urllib.parse import urlencode, urlparse
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -11,18 +13,18 @@ from django.contrib.auth.views import redirect_to_login
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, ForeignKey, Q
-from django.db.models.fields.related import ForeignKey
 from django.http import HttpResponse, JsonResponse, QueryDict
-from django.shortcuts import get_object_or_404, render  # type: ignore
-from django.template.loader import render_to_string
+from django.shortcuts import render
 from django.urls import reverse_lazy
-from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.utils.functional import cached_property  # type: ignore
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 
+# First-party / Horilla imports
 from horilla.exceptions import HorillaHttp404
+from horilla.utils.choices import DISPLAYABLE_FIELD_TYPES
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -30,7 +32,7 @@ from horilla_core.decorators import (
 )
 from horilla_core.models import HorillaContentType
 from horilla_dashboard.filters import DashboardFilter
-from horilla_dashboard.forms import DashboardCreateForm
+from horilla_dashboard.forms import DashboardCreateForm, DashboardForm
 from horilla_dashboard.models import (
     ComponentCriteria,
     Dashboard,
@@ -48,6 +50,7 @@ from horilla_reports.models import Report
 from horilla_utils.methods import get_section_info_for_model
 from horilla_utils.middlewares import _thread_local
 
+# Local imports
 from .utils import DefaultDashboardGenerator
 
 logger = logging.getLogger(__name__)
@@ -148,7 +151,7 @@ def get_queryset_for_module(user, model):
     if user.has_perm(f"{app_label}.view_{model_name}"):
         return model.objects.all()
 
-    elif user.has_perm(f"{app_label}.view_own_{model_name}"):
+    if user.has_perm(f"{app_label}.view_own_{model_name}"):
         owner_fields = getattr(model, "OWNER_FIELDS", [])
         if not owner_fields:
             return model.objects.none()
@@ -185,28 +188,34 @@ class DashboardNavbar(LoginRequiredMixin, HorillaNavView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         title = self.request.GET.get("title", "Dashboards")
-        context["nav_title"] = title
+        context["nav_title"] = _(title)
         return context
 
     @cached_property
     def new_button(self):
         """Button for creating new dashboard"""
-        if self.request.user.has_perm("horilla_dashboard.add_dashboard"):
+        if self.request.user.has_perm(
+            "horilla_dashboard.add_dashboard"
+        ) or self.request.user.has_perm("horilla_dashboard.add_own_dashboard"):
             return {
-                "title": "New Dashboard",
+                "title": _("New Dashboard"),
                 "url": f"""{ reverse_lazy('horilla_dashboard:dashboard_create')}""",
                 "attrs": {"id": "dashboard-create"},
             }
+        return None
 
     @cached_property
     def second_button(self):
         """Button for creating dashboard folder"""
-        if self.request.user.has_perm("horilla_dashboard.add_dashboardfolder"):
+        if self.request.user.has_perm(
+            "horilla_dashboard.add_dashboardfolder"
+        ) or self.request.user.has_perm("horilla_dashboard.add_own_dashboardfolder"):
             return {
-                "title": "New Folder",
+                "title": _("New Folder"),
                 "url": f"{reverse_lazy('horilla_dashboard:dashboard_folder_create')}?pk={self.request.GET.get('pk', '')}",
                 "attrs": {"id": "dashboard-folder-create"},
             }
+        return None
 
 
 @method_decorator(
@@ -231,7 +240,7 @@ class DashboardListView(LoginRequiredMixin, HorillaListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["title"] = "Dashboards"
+        context["title"] = _("Dashboards")
         return context
 
     columns = ["name", "description", "folder", (_("Is Default"), "is_default_col")]
@@ -282,12 +291,12 @@ class DashboardDefaultToggleView(LoginRequiredMixin, View):
     """Toggle default dashboard for the current user via HTMX"""
 
     def post(self, request, *args, **kwargs):
+        """Handle HTMX POST to toggle the `is_default` flag for a dashboard."""
         try:
             dashboard = Dashboard.objects.get(pk=kwargs["pk"])
             user = request.user
             if (
-                user.is_superuser
-                or user.has_perm("horilla_dashboard.change_dashboard")
+                user.has_perm("horilla_dashboard.change_dashboard")
                 or dashboard.dashboard_owner == user
             ):
                 if not dashboard.is_default:
@@ -303,15 +312,11 @@ class DashboardDefaultToggleView(LoginRequiredMixin, View):
                     messages.success(request, f"{dashboard.name} removed from default.")
                 dashboard.save()
                 return HttpResponse("<script>$('#reloadButton').click();</script>")
+            return None
 
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Dashboard not found');</script>", status=404
-            )
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, e)
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -319,33 +324,23 @@ class DashboardFavoriteToggleView(LoginRequiredMixin, View):
     """Toggle favorite status of a dashboard for the logged-in user."""
 
     def post(self, request, *args, **kwargs):
-        """Handle POST request to toggle favorite status of a dashboard."""
+        """Handle POST requests to toggle favorite status of a dashboard folder."""
         try:
             dashboard = Dashboard.objects.get(pk=kwargs["pk"])
-            user = request.user
-            if (
-                user.is_superuser
-                or user.has_perm("horilla_dashboard.change_dashboard")
-                or dashboard.dashboard_owner == user
-            ):
-                if user in dashboard.favourited_by.all():
-                    dashboard.favourited_by.remove(user)
-                    messages.success(
-                        request, f"Removed {dashboard.name} from favorites."
-                    )
-                else:
-                    dashboard.favourited_by.add(user)
-                    messages.success(request, f"Added {dashboard.name} to favorites.")
-                return HttpResponse(headers={"HX-Refresh": "true"})
-            return HttpResponse("<script>$('#reloadButton').click();</script>")
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Dashboard not found');</script>", status=404
-            )
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, str(e))
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
+
+        user = request.user
+        if (
+            user.has_perm("horilla_dashboard.change_dashboardfolder")
+            or dashboard.dashboard_owner == user
+        ):
+            if user in dashboard.favourited_by.all():
+                dashboard.favourited_by.remove(user)
+            else:
+                dashboard.favourited_by.add(user)
+        return HttpResponse("<script>$('#reloadButton').click();</script>")
 
     def get(self, request, *args, **kwargs):
         """Handle GET request to return 403 error for non-POST requests."""
@@ -447,7 +442,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                 "section": section_info["section"],
                 "label": f"{metric_label} of {module_name.title()}",
             }
-        except:
+        except Exception:
             return None
 
     def get_report_chart_data(self, component, request):
@@ -485,7 +480,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
             try:
                 field_obj = model._meta.get_field(group_by_field)
                 is_fk = field_obj.is_relation
-            except:
+            except Exception:
                 is_fk = False
 
             # Include both the field and its ID for foreign keys
@@ -511,17 +506,29 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
 
             section_info = get_section_info_for_model(model)
 
+            # In get_chart_data method, replace the label handling section:
+
             for item in chart_data:
                 label_value = item[group_by_field]
 
+                # Handle display value for choice fields and foreign keys
                 try:
                     field = model._meta.get_field(group_by_field)
                     if hasattr(field, "choices") and field.choices:
+                        # Handle choice fields - convert key to display value
                         for choice_value, choice_label in field.choices:
                             if choice_value == label_value:
                                 label_value = choice_label
                                 break
-                except:
+                    elif field.is_relation and label_value is not None:
+                        # Handle foreign key fields - get the string representation
+                        related_model = field.related_model
+                        try:
+                            related_obj = related_model.objects.get(pk=label_value)
+                            label_value = str(related_obj)
+                        except related_model.DoesNotExist:
+                            pass
+                except Exception:
                     pass
 
                 labels.append(
@@ -529,13 +536,13 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                 )
                 data.append(float(item["value"]) if item["value"] is not None else 0)
 
+                # For the filter URL, use the original value (key for choices, ID for FK)
                 filter_value = item[group_by_field]
                 try:
                     field = model._meta.get_field(group_by_field)
                     if field.is_relation:
-                        # For foreign keys, use the ID instead of the display value
                         filter_value = item.get(f"{group_by_field}_id", filter_value)
-                except:
+                except Exception:
                     pass
 
                 query = urlencode(
@@ -564,7 +571,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
 
         except Exception as e:
             logger.warning(
-                f"Failed to generate report chart for component {component.id}: {e}"
+                "Failed to generate report chart for component %s: %s", component.id, e
             )
             return None
 
@@ -610,7 +617,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
             try:
                 field_obj = model._meta.get_field(group_by_field)
                 is_fk = field_obj.is_relation
-            except:
+            except Exception:
                 is_fk = False
 
             # Include both the field and its ID for foreign keys
@@ -648,7 +655,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                             if choice_value == label_value:
                                 label_value = choice_label
                                 break
-                except:
+                except Exception:
                     pass
 
                 labels.append(
@@ -661,7 +668,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                     field = model._meta.get_field(group_by_field)
                     if field.is_relation:
                         filter_value = item.get(f"{group_by_field}_id", filter_value)
-                except:
+                except Exception:
                     pass
 
                 # Generate filter URL
@@ -690,7 +697,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
 
         except Exception as e:
             logger.warning(
-                f"Failed to generate chart for component {component.id}: {e}"
+                "Failed to generate chart for component %s: %s", component.id, e
             )
             return None
 
@@ -733,7 +740,9 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                                 converted_value = int(value)
                         except (ValueError, TypeError):
                             logger.warning(
-                                f"Could not convert value '{value}' to numeric for field '{field}'"
+                                "Could not convert value '%s' to numeric for field '%s'",
+                                value,
+                                field,
                             )
                             continue
 
@@ -745,7 +754,9 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                             converted_value = False
                         else:
                             logger.warning(
-                                f"Invalid boolean value '{value}' for field '{field}'"
+                                "Invalid boolean value '%s' for field '%s'",
+                                value,
+                                field,
                             )
                             continue
 
@@ -755,7 +766,9 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                             converted_value = int(value)
                         except (ValueError, TypeError):
                             logger.warning(
-                                f"Could not convert FK value '{value}' to int for field '{field}'"
+                                "Could not convert FK value '%s' to int for field '%s'",
+                                value,
+                                field,
                             )
                             continue
 
@@ -806,7 +819,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
 
             except Exception as e:
                 logger.error(
-                    f"Error applying condition {field} {operator} {value}: {e}"
+                    "Error applying condition %s %s %s: %s", field, operator, value, e
                 )
                 continue
 
@@ -842,7 +855,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
             prefix = "-" if sort_direction == "desc" else ""
             try:
                 queryset = queryset.order_by(f"{prefix}{sort_field}")
-            except:
+            except Exception:
                 queryset = queryset.order_by("id")
         else:
             queryset = queryset.order_by("id")
@@ -867,7 +880,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                         ]
                 else:
                     selected_columns = component.columns
-            except:
+            except Exception:
                 selected_columns = []
         else:
             selected_columns = []
@@ -883,7 +896,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                     columns.append((verbose_name, f"get_{column}_display"))
                 else:
                     columns.append((verbose_name, column))
-            except:
+            except Exception:
                 continue
 
         if not columns:
@@ -1065,11 +1078,17 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
         current_referer = self.request.META.get("HTTP_REFERER")
         hx_current_url = self.request.headers.get("HX-Current-URL")
         stored_referer = self.request.session.get(session_referer_key)
+
         if hx_current_url:
-            previous_url = hx_current_url
             hx_path = urlparse(hx_current_url).path
             if hx_path != self.request.path:
                 self.request.session[session_referer_key] = hx_current_url
+                previous_url = hx_current_url
+            else:
+                previous_url = stored_referer or reverse_lazy(
+                    "horilla_dashboard:dashboard_list_view"
+                )
+
         elif stored_referer:
             previous_url = stored_referer
         elif current_referer and self.request.get_host() in current_referer:
@@ -1081,6 +1100,7 @@ class DashboardDetailView(RecentlyViewedMixin, LoginRequiredMixin, TemplateView)
                 previous_url = reverse_lazy("horilla_dashboard:dashboard_list_view")
         else:
             previous_url = reverse_lazy("horilla_dashboard:dashboard_list_view")
+
         context["previous_url"] = previous_url
 
         context.update(
@@ -1155,7 +1175,7 @@ class DashboardComponentTableDataView(LoginRequiredMixin, View):
             prefix = "-" if sort_direction == "desc" else ""
             try:
                 queryset = queryset.order_by(f"{prefix}{sort_field}")
-            except:
+            except Exception:
                 queryset = queryset.order_by("id")
         else:
             queryset = queryset.order_by("id")
@@ -1173,7 +1193,7 @@ class DashboardComponentTableDataView(LoginRequiredMixin, View):
 
         try:
             page_obj = paginator.get_page(page)
-        except:
+        except Exception:
             if request.headers.get("HX-Request"):
                 return HttpResponse("")
             return HttpResponse("Invalid page")
@@ -1196,7 +1216,7 @@ class DashboardComponentTableDataView(LoginRequiredMixin, View):
                         ]
                 else:
                     selected_columns = component.columns
-            except:
+            except Exception:
                 selected_columns = []
         else:
             selected_columns = []
@@ -1212,7 +1232,7 @@ class DashboardComponentTableDataView(LoginRequiredMixin, View):
                     columns.append((verbose_name, f"get_{column}_display"))
                 else:
                     columns.append((verbose_name, column))
-            except:
+            except Exception:
                 continue
 
         if not columns:
@@ -1326,6 +1346,15 @@ class DashboardComponentFormView(LoginRequiredMixin, HorillaSingleFormView):
     model = DashboardComponent
     form_class = DashboardCreateForm
     condition_fields = ["field", "operator", "value"]
+    condition_model = ComponentCriteria
+    condition_related_name = "conditions"
+    condition_order_by = ["sequence"]
+    content_type_field = (
+        "module"  # Enable automatic model_name extraction from module field
+    )
+    condition_hx_include = (
+        "#id_module"  # Include module field when adding condition rows
+    )
     hidden_fields = [
         "company",
         "config",
@@ -1336,6 +1365,7 @@ class DashboardComponentFormView(LoginRequiredMixin, HorillaSingleFormView):
         "reports",
     ]
     full_width_fields = ["name"]
+    save_and_new = False
 
     def get_initial(self):
         initial = super().get_initial()
@@ -1357,110 +1387,39 @@ class DashboardComponentFormView(LoginRequiredMixin, HorillaSingleFormView):
         initial.update(self.request.GET.dict())
         return initial
 
-    def add_condition_row(self, request):
-        row_id = request.GET.get("row_id", "0")
-
-        new_row_id = "0"
-        if row_id == "next":
-            current_count = request.session.get("condition_row_count", 0)
-            current_count += 1
-            request.session["condition_row_count"] = current_count
-            new_row_id = str(current_count)
-        else:
-            try:
-                new_row_id = str(int(row_id) + 1)
-            except ValueError:
-                new_row_id = "1"
-
-        module = request.GET.get("module") or request.POST.get("module")
-        if (
-            not module
-            and hasattr(self, "object")
-            and self.object
-            and self.object.module
-        ):
-            module = self.object.module
-        elif (
-            not module
-            and "initial" in self.get_form_kwargs()
-            and "module" in self.get_form_kwargs()["initial"]
-        ):
-            module = self.get_form_kwargs()["initial"]["module"]
-        model_name = module
-
-        form_kwargs = self.get_form_kwargs()
-        form_kwargs["row_id"] = new_row_id
-        if module:
-            form_kwargs["request"] = request
-            form_kwargs["initial"] = form_kwargs.get("initial", {}) | {
-                "module": module,
-                "model_name": model_name,
-            }
-        else:
-            form_kwargs["request"] = request
-            form_kwargs["initial"] = form_kwargs.get("initial", {}) | {
-                "module": "",
-                "model_name": "",
-            }
-
-        if "pk" in self.kwargs:
-            try:
-                instance = self.model.objects.get(pk=self.kwargs["pk"])
-                form_kwargs["instance"] = instance
-            except self.model.DoesNotExist:
-                pass
-
-        form = self.get_form_class()(**form_kwargs)
-
-        context = {
-            "form": form,
-            "condition_fields": self.condition_fields or [],
-            "row_id": new_row_id,
-            "submitted_condition_data": self.get_submitted_condition_data(),
-        }
-        html = render_to_string("partials/condition_row.html", context, request=request)
-        return HttpResponse(html)
-
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         model_name = (
             self.request.GET.get("model_name")
             or self.request.POST.get("model_name")
             or self.request.GET.get("module")
+            or self.request.POST.get("module")
         )
+
+        # If module is a HorillaContentType ID, convert it to model_name
+        if model_name and model_name.isdigit():
+            try:
+                content_type = HorillaContentType.objects.get(pk=model_name)
+                model_name = content_type.model
+            except Exception:
+                pass
 
         if model_name:
             if "initial" not in kwargs:
                 kwargs["initial"] = {}
             kwargs["initial"]["model_name"] = model_name
-            kwargs["initial"]["module"] = model_name  # Sync module with model_name
 
         kwargs["condition_model"] = ComponentCriteria
         kwargs["request"] = self.request
-
-        pk = self.kwargs.get("pk") or self.request.GET.get("id")
-        if pk:
-            try:
-                kwargs["instance"] = DashboardComponent.objects.get(pk=pk)
-            except DashboardComponent.DoesNotExist:
-                pass
 
         return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        if self.object and self.object.pk:
-            existing_conditions = self.object.conditions.all().order_by("sequence")
-            context["existing_conditions"] = existing_conditions
-            form = context.get("form")
-            if form and hasattr(form, "condition_field_choices"):
-                context["condition_field_choices"] = form.condition_field_choices
 
         form = context.get("form")
         if form and hasattr(form, "instance") and form.instance.module:
             context["module"] = form.instance.module
-        elif "initial" in kwargs and "module" in kwargs["initial"]:
-            context["module"] = kwargs["initial"]["module"]
         elif self.request.method == "GET" and self.request.GET.get("module"):
             context["module"] = self.request.GET.get("module")
         else:
@@ -1501,114 +1460,14 @@ class DashboardComponentFormView(LoginRequiredMixin, HorillaSingleFormView):
         return render(request, "error/403.html")
 
     def form_valid(self, form):
-        """Override to handle multiple condition rows"""
-        if not self.request.user.is_authenticated:
-            messages.error(
-                self.request, "You must be logged in to perform this action."
-            )
-            return self.form_invalid(form)
+        """Handle form submission and ensure proper file path"""
+        instance = form.save(commit=False)
 
-        condition_rows = form.cleaned_data.get("condition_rows", [])
+        if "icon" in self.request.FILES:
+            icon_file = self.request.FILES["icon"]
+            instance.icon = icon_file
 
-        try:
-            with transaction.atomic():
-                pk = self.kwargs.get("pk")
-                if pk:
-                    # Get the existing instance
-                    existing_instance = DashboardComponent.objects.get(pk=pk)
-
-                    # Update the instance with form data
-                    for field, value in form.cleaned_data.items():
-                        if hasattr(existing_instance, field) and field != "id":
-                            if field == "columns":
-                                # Handle columns separately
-                                if isinstance(value, list):
-                                    existing_instance.columns = ",".join(value)
-                                else:
-                                    existing_instance.columns = value
-                            else:
-                                setattr(existing_instance, field, value)
-
-                    # Handle file upload
-                    if "icon" in self.request.FILES:
-                        existing_instance.icon = self.request.FILES["icon"]
-
-                    # Update timestamps
-                    existing_instance.updated_at = timezone.now()
-                    existing_instance.updated_by = self.request.user
-
-                    existing_instance.save()
-                    self.object = existing_instance
-                else:
-                    # Create new instance
-                    self.object = form.save(commit=False)
-
-                    # Handle columns
-                    columns_data = form.cleaned_data.get("columns", "")
-                    if isinstance(columns_data, list):
-                        self.object.columns = ",".join(columns_data)
-                    else:
-                        self.object.columns = columns_data
-
-                    # Set creation info
-                    self.object.created_at = timezone.now()
-                    self.object.created_by = self.request.user
-                    self.object.updated_at = timezone.now()
-                    self.object.updated_by = self.request.user
-                    self.object.company = (
-                        getattr(_thread_local, "request", None).active_company
-                        if hasattr(_thread_local, "request")
-                        else self.request.user.company
-                    )
-
-                    if "icon" in self.request.FILES:
-                        self.object.icon = self.request.FILES["icon"]
-
-                    self.object.save()
-
-                if pk:
-                    self.object.conditions.all().delete()
-
-                created_conditions = []
-                for row_data in condition_rows:
-                    condition = ComponentCriteria(
-                        component=self.object,
-                        field=row_data["field"],
-                        operator=row_data["operator"],
-                        value=row_data.get("value", ""),
-                        sequence=row_data.get("sequence", 0),
-                        created_at=timezone.now(),
-                        created_by=self.request.user,
-                        updated_at=timezone.now(),
-                        updated_by=self.request.user,
-                        company=(
-                            getattr(_thread_local, "request", None).active_company
-                            if hasattr(_thread_local, "request")
-                            else self.request.user.company
-                        ),
-                    )
-                    condition.save()
-                    created_conditions.append(condition)
-                    print(
-                        f"Saved condition: {condition.field} {condition.operator} {condition.value}"
-                    )
-
-                self.request.session["condition_row_count"] = 0
-                self.request.session.modified = True
-
-            if pk:
-                messages.success(self.request, _("Component updated successfully!"))
-            else:
-                messages.success(self.request, _("Component added successfully!"))
-
-        except Exception as e:
-            messages.error(self.request, f"Error saving: {str(e)}")
-            return self.form_invalid(form)
-
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
-    def form_invalid(self, form):
-        return self.render_to_response(self.get_context_data(form=form))
+        return super().form_valid(form)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -1745,16 +1604,7 @@ class ColumnFieldChoicesView(View):
 
                 if hasattr(field, "get_internal_type"):
                     field_type = field.get_internal_type()
-                    if field_type in [
-                        "CharField",
-                        "TextField",
-                        "BooleanField",
-                        "DateField",
-                        "DateTimeField",
-                        "TimeField",
-                        "EmailField",
-                        "URLField",
-                    ]:
+                    if field_type in DISPLAYABLE_FIELD_TYPES:
                         column_fields.append((field_name, field_label))
                     elif hasattr(field, "choices") and field.choices:
                         column_fields.append((field_name, f"{field_label}"))
@@ -1832,16 +1682,7 @@ class GroupingFieldChoicesView(View):
 
                 if hasattr(field, "get_internal_type"):
                     field_type = field.get_internal_type()
-                    if field_type in [
-                        "CharField",
-                        "TextField",
-                        "BooleanField",
-                        "DateField",
-                        "DateTimeField",
-                        "TimeField",
-                        "EmailField",
-                        "URLField",
-                    ]:
+                    if field_type in DISPLAYABLE_FIELD_TYPES:
                         grouping_fields.append((field_name, field_label))
                     elif hasattr(field, "choices") and field.choices:
                         grouping_fields.append((field_name, f"{field_label}"))
@@ -1919,16 +1760,7 @@ class SecondaryGroupingFieldChoicesView(View):
 
                 if hasattr(field, "get_internal_type"):
                     field_type = field.get_internal_type()
-                    if field_type in [
-                        "CharField",
-                        "TextField",
-                        "BooleanField",
-                        "DateField",
-                        "DateTimeField",
-                        "TimeField",
-                        "EmailField",
-                        "URLField",
-                    ]:
+                    if field_type in DISPLAYABLE_FIELD_TYPES:
                         grouping_fields.append((field_name, field_label))
                     elif hasattr(field, "choices") and field.choices:
                         grouping_fields.append((field_name, f"{field_label}"))
@@ -1973,7 +1805,7 @@ class ChartPreviewView(View):
             html = """
             <div class="bg-white rounded-lg border border-primary-300 p-4 shadow-sm" style="width: 30vh;">
                 <div class="flex flex-col space-y-2">
-                    <h3 class="text-sm font-medium text-gray-500">Total Opportunities</h3>
+                    <h3 class="text-sm font-medium text-gray-500">Total</h3>
                     <div class="flex items-baseline space-x-2">
                         <span class="text-2xl font-bold text-gray-900">$574.34</span>
                         <span class="text-sm font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
@@ -1991,36 +1823,31 @@ class ChartPreviewView(View):
                 <table class="min-w-full bg-white border border-dark-50">
                     <thead>
                         <tr class="border border-dark-50">
-                            <th class="py-2 px-4 border border-dark-50">Lead Title</th>
-                            <th class="py-2 px-4 border border-dark-50">Lead Status</th>
-                            <th class="py-2 px-4 border border-dark-50">Lead Owner</th>
+                            <th class="py-2 px-4 border border-dark-50">Company Name</th>
+                            <th class="py-2 px-4 border border-dark-50">Email</th>
+                            <th class="py-2 px-4 border border-dark-50">Contact Number</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td class="py-2 px-4 border border-dark-50">Lead 1</td>
-                            <td class="py-2 px-4 border border-dark-50">Contacted</td>
-                            <td class="py-2 px-4 border border-dark-50">Adam Luis</td>
+                            <td class="py-2 px-4 border border-dark-50">Company A</td>
+                            <td class="py-2 px-4 border border-dark-50">companya@example.com</td>
+                            <td class="py-2 px-4 border border-dark-50">9876543210</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4 border border-dark-50">Lead 2</td>
-                            <td class="py-2 px-4 border border-dark-50">Open</td>
-                            <td class="py-2 px-4 border border-dark-50">Ella Jackson</td>
+                            <td class="py-2 px-4 border border-dark-50">Company B</td>
+                            <td class="py-2 px-4 border border-dark-50">companyb@example.com</td>
+                            <td class="py-2 px-4 border border-dark-50">9876543211</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4 border border-dark-50">Lead 3</td>
-                            <td class="py-2 px-4 border border-dark-50">Contacted</td>
-                            <td class="py-2 px-4 border border-dark-50">Amelia</td>
+                            <td class="py-2 px-4 border border-dark-50">Company C</td>
+                            <td class="py-2 px-4 border border-dark-50">companyc@example.com</td>
+                            <td class="py-2 px-4 border border-dark-50">9876543212</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4 border border-dark-50">Lead 4</td>
-                            <td class="py-2 px-4 border border-dark-50">Open</td>
-                            <td class="py-2 px-4 border border-dark-50">Jacon</td>
-                        </tr>
-                        <tr>
-                            <td class="py-2 px-4 border border-dark-50">Lead 5</td>
-                            <td class="py-2 px-4 border border-dark-50">Not Contacted</td>
-                            <td class="py-2 px-4 border border-dark-50">Ella Jackson</td>
+                            <td class="py-2 px-4 border border-dark-50">Company D</td>
+                            <td class="py-2 px-4 border border-dark-50">companyd@example.com</td>
+                            <td class="py-2 px-4 border border-dark-50">9876543213</td>
                         </tr>
                     </tbody>
                 </table>
@@ -2079,11 +1906,11 @@ class ChartPreviewView(View):
                 },
                 "funnel": {
                     "labels": [
-                        "Leads",
-                        "Qualified",
-                        "Proposal",
-                        "Negotiation",
-                        "Closed",
+                        "Stage 1",
+                        "Satge 2",
+                        "Stage 3",
+                        "Stage 4",
+                        "Stage 5",
                     ],
                     "data": [100, 75, 50, 30, 20],
                     "labelField": "Sample Data",
@@ -2112,22 +1939,22 @@ class ChartPreviewView(View):
                 """
                 return HttpResponse(html)
 
-        if not component_type and not chart_type:
-            return HttpResponse(
-                '<div class="text-gray-500 text-sm flex items-center justify-center h-full">Select component type to see preview</div>'
+        message = (
+            "Select component type to see preview"
+            if not component_type and not chart_type
+            else (
+                f"Preview for {component_type} component"
+                if component_type and component_type != "chart" and not chart_type
+                else (
+                    "Select chart type to see preview"
+                    if component_type == "chart" and not chart_type
+                    else "Chart type not supported"
+                )
             )
-        elif component_type and component_type != "chart" and not chart_type:
-            return HttpResponse(
-                f'<div class="text-gray-500 text-sm flex items-center justify-center h-full">Preview for {component_type} component</div>'
-            )
-        elif component_type == "chart" and not chart_type:
-            return HttpResponse(
-                '<div class="text-gray-500 text-sm flex items-center justify-center h-full">Select chart type to see preview</div>'
-            )
-        else:
-            return HttpResponse(
-                '<div class="text-gray-500 text-sm flex items-center justify-center h-full">Chart type not supported</div>'
-            )
+        )
+        return HttpResponse(
+            f'<div class="text-gray-500 text-sm flex items-center justify-center h-full">{message}</div>'
+        )
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -2240,7 +2067,7 @@ class DashboardComponentChartView(View):
 
             except Exception as e:
                 logger.error(
-                    f"Error applying condition {field} {operator} {value}: {e}"
+                    "Error applying condition %s %s %s: %s", field, operator, value, e
                 )
                 continue
 
@@ -2278,13 +2105,37 @@ class DashboardComponentChartView(View):
                 f"{component.metric_type.title() if component.metric_type else 'Count'}"
             )
 
+            base_url = section_info["url"]
+            if conditions.exists():
+                query_params = [
+                    ("section", section_info["section"]),
+                    ("apply_filter", "true"),
+                ]
+
+                for condition in conditions:
+
+                    operator = (
+                        "exact"
+                        if condition.operator == "equals"
+                        else condition.operator
+                    )
+
+                    query_params.append(("field", condition.field))
+                    query_params.append(("operator", operator))
+                    query_params.append(("value", condition.value))
+
+                query = urlencode(query_params, doseq=True)
+                filtered_url = f"{base_url}?{query}"
+            else:
+                filtered_url = f"{base_url}?section={section_info['section']}"
+
             return {
                 "value": float(value),
-                "url": section_info["url"],
+                "url": filtered_url,
                 "section": section_info["section"],
                 "label": f"{metric_label} of {module_name.title()}",
             }
-        except:
+        except Exception:
             return None
 
     def get_chart_data(self, component):
@@ -2353,20 +2204,44 @@ class DashboardComponentChartView(View):
                 section_info = get_section_info_for_model(model)
 
                 for item in queryset:
+                    # Get the raw label value
                     label = item.get(
                         f"{component.grouping_field}__name"
                         if field.is_relation
                         and hasattr(field.remote_field.model, "name")
                         else component.grouping_field
                     )
+
+                    # Convert choice field keys to display values
+                    try:
+                        if hasattr(field, "choices") and field.choices:
+                            original_label = label
+                            for choice_value, choice_label in field.choices:
+                                if choice_value == original_label:
+                                    label = choice_label
+                                    break
+                        elif field.is_relation and label is not None:
+                            # For FK fields without 'name' attribute, get string representation
+                            if not hasattr(field.remote_field.model, "name"):
+                                try:
+                                    related_obj = field.remote_field.model.objects.get(
+                                        pk=label
+                                    )
+                                    label = str(related_obj)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
                     if isinstance(label, (list, dict)):
                         label = str(label)
                     elif label is None:
                         label = "None"
 
-                    labels.append(label)
+                    labels.append(str(label))
                     data.append(float(item["value"]))
 
+                    # For filter URL, use the actual filter value (ID for FK, key for choices)
                     filter_value = label
                     if field.is_relation:
                         filter_value = item.get(f"{component.grouping_field}_id")
@@ -2392,9 +2267,9 @@ class DashboardComponentChartView(View):
                     "x_axis_label": x_axis_label,
                     "is_condition_based": conditions.exists(),
                 }
-            else:
-                return None
-        except:
+
+            return None
+        except Exception:
             return None
 
     def get_stacked_chart_data(
@@ -2439,7 +2314,7 @@ class DashboardComponentChartView(View):
                         for cat in categories
                         if cat is not None
                     ]
-            except:
+            except Exception:
                 categories = [
                     str(cat) if cat is not None else "None"
                     for cat in categories
@@ -2572,7 +2447,7 @@ class DashboardComponentChartView(View):
             }
 
         except Exception as e:
-            logger.error(f"Failed to generate stacked chart: {e}", exc_info=True)
+            logger.error("Failed to generate stacked chart: %s", e, exc_info=True)
             return None
 
     def get_report_chart_data(self, component):
@@ -2583,7 +2458,7 @@ class DashboardComponentChartView(View):
         try:
             report = component.reports
             if not report:
-                logger.warning(f"No report found for component {component.id}")
+                logger.warning("No report found for component %s", component.id)
                 return None
 
             model = None
@@ -2601,12 +2476,14 @@ class DashboardComponentChartView(View):
 
             if not model:
                 logger.warning(
-                    f"Model not found for component {component.id}, module: {component.module}"
+                    "Model not found for component %s, module: %s",
+                    component.id,
+                    component.module,
                 )
                 return None
 
             if not component.grouping_field:
-                logger.warning(f"No grouping field for component {component.id}")
+                logger.warning("No grouping field for component %s", component.id)
                 return None
 
             queryset = get_queryset_for_module(self.request.user, model)
@@ -2615,7 +2492,7 @@ class DashboardComponentChartView(View):
             queryset = self.apply_conditions(queryset, conditions)
 
             if queryset.count() == 0:
-                logger.warning(f"Empty queryset for component {component.id}")
+                logger.warning("Empty queryset for component %s", component.id)
                 return None
 
             field = model._meta.get_field(component.grouping_field)
@@ -2634,7 +2511,7 @@ class DashboardComponentChartView(View):
 
             # Handle stacked charts
             if is_stacked_chart and component.secondary_grouping:
-                logger.info(f"Processing stacked chart for component {component.id}")
+                logger.info("Processing stacked chart for component %s", component.id)
                 return self.get_stacked_chart_data(
                     queryset, component, conditions, field, x_axis_label, model
                 )
@@ -2676,7 +2553,7 @@ class DashboardComponentChartView(View):
                             if choice_value == label:
                                 label = choice_label
                                 break
-                except:
+                except Exception:
                     pass
 
                 if isinstance(label, (list, dict)):
@@ -2712,7 +2589,9 @@ class DashboardComponentChartView(View):
             }
         except Exception as e:
             logger.error(
-                f"Failed to generate report chart for component {component.id}: {e}",
+                "Failed to generate report chart for component %s: %s",
+                component.id,
+                e,
                 exc_info=True,
             )
             return None
@@ -2817,6 +2696,7 @@ class DashboardComponentChartView(View):
                 </script>
                 """
                 return HttpResponse(html)
+            return None
 
         except DashboardComponent.DoesNotExist:
             return HttpResponse(
@@ -2839,7 +2719,7 @@ class ComponentDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = DashboardComponent
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -2853,6 +2733,7 @@ class AddToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
     form_title = _("Move to Dashboard")
     fields = ["dashboard"]
     full_width_fields = ["dashboard"]
+    save_and_new = False
 
     def get_form_kwargs(self):
         """
@@ -2896,6 +2777,7 @@ class AddToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
                 "horilla_dashboard:move_to_another_dashboard",
                 kwargs={"component_id": pk},
             )
+        return None
 
     def get(self, request, *args, **kwargs):
         component_id = self.kwargs.get("component_id")
@@ -2941,7 +2823,7 @@ class AddToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
         messages.success(
             self.request, _("Chart successfully added to another dashboard!")
         )
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>closeModal();$('#reloadButton').click();</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -2949,10 +2831,12 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
     """View to handle creation and updating of horilla_dashboard."""
 
     model = Dashboard
+    form_class = DashboardForm
     modal_height = False
     fields = ["name", "description", "folder", "is_default", "dashboard_owner"]
     full_width_fields = ["name", "description", "folder", "dashboard_owner"]
     hidden_fields = ["dashboard_owner"]
+    save_and_new = False
 
     @cached_property
     def form_url(self):
@@ -2961,30 +2845,6 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
         if pk:
             return reverse_lazy("horilla_dashboard:dashboard_update", kwargs={"pk": pk})
         return reverse_lazy("horilla_dashboard:dashboard_create")
-
-    def get_form(self, form_class=None):
-        form = super().get_form(form_class)
-        user = getattr(self.request, "user", None)
-        if user:
-            form.fields["folder"].widget.attrs.update(
-                {
-                    "class": "js-example-basic-single",
-                }
-            )
-            if not user.is_superuser:
-                form.fields["folder"].queryset = DashboardFolder.objects.filter(
-                    folder_owner=user
-                )
-
-            pk = self.request.GET.get("pk")
-            if pk:
-                try:
-                    folder = DashboardFolder.objects.get(pk=pk, folder_owner=user)
-                    form.initial["folder"] = folder
-                except DashboardFolder.DoesNotExist:
-                    pass
-
-        return form
 
     def get_initial(self):
         initial = super().get_initial()
@@ -3000,24 +2860,6 @@ class DashboardCreateFormView(LoginRequiredMixin, HorillaSingleFormView):
         initial.update(self.request.GET.dict())
         return initial
 
-    def get(self, request, *args, **kwargs):
-        dashboard_id = self.kwargs.get("pk")
-        if request.user.has_perm(
-            "horilla_dashboard.change_dashboard"
-        ) or request.user.has_perm("horilla_dashboard.add_dashboard"):
-            return super().get(request, *args, **kwargs)
-
-        if dashboard_id:
-            dashboard = get_object_or_404(Dashboard, pk=dashboard_id)
-            if dashboard.dashboard_owner == request.user:
-                return super().get(request, *args, **kwargs)
-
-        return render(request, "error/403.html")
-
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
@@ -3030,7 +2872,7 @@ class DashboardDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = Dashboard
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 # folder areas
@@ -3043,6 +2885,7 @@ class DashboardFolderCreate(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     full_width_fields = ["name", "folder_owner", "description", "parent_folder"]
     hidden_fields = ["parent_folder", "folder_owner"]
+    save_and_new = False
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
@@ -3067,24 +2910,6 @@ class DashboardFolderCreate(LoginRequiredMixin, HorillaSingleFormView):
             )
         return reverse_lazy("horilla_dashboard:dashboard_folder_create")
 
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
-    def get(self, request, *args, **kwargs):
-        folder_id = self.kwargs.get("pk")
-        if request.user.has_perm(
-            "horilla_dashboard.change_dashboard"
-        ) or request.user.has_perm("horilla_dashboard.add_dashboard"):
-            return super().get(request, *args, **kwargs)
-
-        if folder_id:
-            folder = get_object_or_404(DashboardFolder, pk=folder_id)
-            if folder.folder_owner == request.user:
-                return super().get(request, *args, **kwargs)
-
-        return render(request, "error/403.html")
-
 
 @method_decorator(htmx_required, name="dispatch")
 class DashboardFolderFavoriteView(LoginRequiredMixin, View):
@@ -3094,30 +2919,20 @@ class DashboardFolderFavoriteView(LoginRequiredMixin, View):
         """Handle POST requests to toggle favorite status of a dashboard folder."""
         try:
             folder = DashboardFolder.objects.get(pk=kwargs["pk"])
-            user = request.user
-
-            if (
-                user.is_superuser
-                or user.has_perm("horilla_dashboard.change_dashboardfolder")
-                or folder.folder_owner == user
-            ):
-                if user in folder.favourited_by.all():
-                    folder.favourited_by.remove(user)
-                    messages.success(request, f"Removed {folder.name} from favorites.")
-                else:
-                    folder.favourited_by.add(user)
-                    messages.success(request, f"Added {folder.name} to favorites.")
-                return HttpResponse(headers={"HX-Refresh": "true"})
-            return render(request, "error/403.html")
-
-        except Dashboard.DoesNotExist:
-            return HttpResponse(
-                "<script>alert('Folder not found');</script>", status=404
-            )
         except Exception as e:
-            return HttpResponse(
-                f"<script>alert('Error: {str(e)}');</script>", status=500
-            )
+            messages.error(request, str(e))
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
+
+        user = request.user
+        if (
+            user.has_perm("horilla_dashboard.change_dashboardfolder")
+            or folder.folder_owner == user
+        ):
+            if user in folder.favourited_by.all():
+                folder.favourited_by.remove(user)
+            else:
+                folder.favourited_by.add(user)
+        return HttpResponse("<script>$('#reloadButton').click();</script>")
 
     def get(self, request, *args, **kwargs):
         """Handle GET requests by returning a 403 error page."""
@@ -3366,7 +3181,7 @@ class FolderDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = DashboardFolder
 
     def get_post_delete_response(self):
-        return HttpResponse(headers={"HX-Refresh": "true"})
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -3386,6 +3201,7 @@ class MoveDashboardView(LoginRequiredMixin, HorillaSingleFormView):
             return reverse_lazy(
                 "horilla_dashboard:move_dashboard_to_folder", kwargs={"pk": pk}
             )
+        return None
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -3439,6 +3255,7 @@ class MoveFolderView(LoginRequiredMixin, HorillaSingleFormView):
             return reverse_lazy(
                 "horilla_dashboard:move_folder_to_folder", kwargs={"pk": pk}
             )
+        return None
 
     def get(self, request, *args, **kwargs):
         folder_id = self.kwargs.get("pk")
@@ -3505,7 +3322,7 @@ class FavouriteDashboardListView(LoginRequiredMixin, HorillaListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["title"] = "Favourite Dashboards"
+        context["title"] = _("Favourite Dashboards")
         return context
 
     def get_queryset(self):
@@ -3700,6 +3517,7 @@ class ReportToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
     form_title = _("Add to Dashboard")
     fields = ["dashboard", "reports"]
     full_width_fields = ["dashboard", "reports"]
+    save_and_new = False
 
     def get_form_kwargs(self):
         """

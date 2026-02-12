@@ -6,7 +6,7 @@
     <div class="flex justify-between items-center mb-2">
         <h3 class="text-md font-semibold mb-2">{% trans 'Confirm Deletion' %}</h3>
         <button onclick="CloseDeleteConfirmModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     <p class="text-sm text-gray-600 mb-4 ">
@@ -19,9 +19,9 @@
         <form
               hx-post="{{ search_url }}"
               hx-target="#deleteConfirmModalBox"
-              hx-swap="innerHTML"
+              hx-swap="none"
               hx-push-url="false"
-              hx-on::after-request="CloseDeleteConfirmModal();CloseDeleteModeModal();closeModal();$('.unselect-all-btn').click();">
+              hx-on::after-request="CloseDeleteConfirmModal();closeDeleteModeModal();closeModal();$('.unselect-all-btn').click();htmx.trigger('#reloadButton','click');">
             {% csrf_token %}
             <input type="hidden" name="action" value="bulk_delete">
             <input type="hidden" name="record_id" value="{{ record_id }}">
@@ -32,7 +32,7 @@
                     hx-indicator="#confirm-delete-spinner">
                 <span class="flex items-center gap-2">
                     <span id="confirm-delete-spinner" class="htmx-indicator">
-                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                     </span>
                     {% trans 'Confirm' %}
                 </span>

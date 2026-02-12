@@ -6,7 +6,13 @@ These models represent the structure of lead-related data and include any
 relationships, constraints, and behaviors.
 """
 
+# Standard library imports
+import logging
+
+# Third-party imports
 from colorfield.fields import ColorField
+
+# Third-party imports (Django)
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator
@@ -19,14 +25,16 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
-from horilla.registry.feature import feature_enabled
-from horilla_core.models import Company, HorillaCoreModel, MultipleCurrency
-from horilla_core.utils import compute_score
+# First-party / Horilla imports
+from horilla.registry.permission_registry import permission_exempt_model
+from horilla.utils.choices import OPERATOR_CHOICES
+from horilla_core.models import Company, HorillaCoreModel
 from horilla_mail.models import HorillaMailConfiguration
 from horilla_utils.methods import render_template
 
+logger = logging.getLogger(__name__)
 
-@feature_enabled(import_data=True, export_data=True, global_search=True)
+
 class LeadStatus(HorillaCoreModel):
     """
     Lead Status model
@@ -126,7 +134,7 @@ class LeadStatus(HorillaCoreModel):
             non_final_statuses = [s for s in non_final_statuses if s != self]
             non_final_statuses.sort(key=lambda x: x.order)
 
-            max_order = max([s.order for s in non_final_statuses], default=0)
+            max_order = max((s.order for s in non_final_statuses), default=0)
 
             if desired_order > max_order:
                 non_final_statuses.append(self)
@@ -199,7 +207,6 @@ class LeadStatus(HorillaCoreModel):
         return reverse_lazy("leads:delete_lead_stage", kwargs={"pk": self.pk})
 
 
-@feature_enabled(all=True)
 class Lead(HorillaCoreModel):
     """
     Lead Model
@@ -212,7 +219,7 @@ class Lead(HorillaCoreModel):
         ("campaign", _("Campaign")),
         ("phone", _("Phone")),
         ("email", _("Email")),
-        ("social media", _("Social Media")),
+        ("social_media", _("Social Media")),
         ("partner", _("Partner")),
         ("other", _("Other")),
     ]
@@ -252,7 +259,7 @@ class Lead(HorillaCoreModel):
         LeadStatus,
         on_delete=models.PROTECT,
         related_name="lead",
-        verbose_name=_("Lead Status"),
+        verbose_name=_("Lead Stage"),
     )
     lead_company = models.CharField(max_length=100, verbose_name=_("Company"))
     no_of_employees = models.IntegerField(
@@ -279,8 +286,8 @@ class Lead(HorillaCoreModel):
     lead_score = models.IntegerField(
         default=0, verbose_name=_("Lead Score"), null=True, blank=True
     )
-    email_message_id = models.CharField(
-        max_length=255, unique=True, null=True, blank=True
+    message_id = models.CharField(
+        max_length=255, unique=True, null=True, blank=True, editable=False
     )
 
     OWNER_FIELDS = ["lead_owner"]
@@ -294,16 +301,6 @@ class Lead(HorillaCoreModel):
 
     def __str__(self):
         return f"{str(self.title)}-{self.id}"
-
-    def actions(self):
-        """
-        This method for get custom column for action.
-        """
-
-        return render_template(
-            path="actions.html",
-            context={"instance": self},
-        )
 
     @property
     def get_annual_revenue_calc(self):
@@ -335,6 +332,12 @@ class Lead(HorillaCoreModel):
         """
         return reverse_lazy("leads:leads_edit", kwargs={"pk": self.pk})
 
+    def get_duplicate_url(self):
+        """
+        This method to get edit url
+        """
+        return reverse_lazy("leads:leads_edit_single", kwargs={"pk": self.pk})
+
     def get_change_owner_url(self):
         """
         This method to get change owner url
@@ -351,10 +354,13 @@ class Lead(HorillaCoreModel):
 @receiver(pre_save, sender=Lead)
 def update_lead_score(sender, instance, **kwargs):
     """Signal to update lead score before saving a Lead instance."""
+    from horilla_crm.leads.utils import compute_score
+
     instance.lead_score = compute_score(instance)
 
 
 class EmailToLeadConfig(HorillaCoreModel):
+    """Configuration for converting emails to leads."""
 
     mail = models.ForeignKey(
         HorillaMailConfiguration,
@@ -393,7 +399,14 @@ class EmailToLeadConfig(HorillaCoreModel):
         null=True, blank=True, verbose_name=_("Last Fetched On")
     )
 
+    class Meta:
+        """Meta options for EmailToLeadConfig."""
+
+        verbose_name = _("Mail to Lead Config")
+        verbose_name_plural = _("Mail to Lead Config")
+
     def update_last_fetched(self):
+        """Update the last fetched timestamp."""
         self.last_fetched = timezone.now()
         self.save(update_fields=["last_fetched"])
 
@@ -491,9 +504,235 @@ class LeadCaptureForm(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for LeadCaptureForm."""
+
         verbose_name = _("Lead Capture Form")
         verbose_name_plural = _("Lead Capture Forms")
         ordering = ["-created_at"]
 
     def __str__(self):
-        return self.form_name
+        return str(self.form_name)
+
+
+class ScoringRule(HorillaCoreModel):
+    """Scoring rule for calculating lead/opportunity scores."""
+
+    name = models.CharField(max_length=100, verbose_name=_("Rule Name"))
+    module = models.CharField(
+        max_length=50,
+        choices=[
+            ("lead", _("Lead")),
+            ("opportunity", _("Opportunity")),
+            ("account", _("Account")),
+            ("contact", _("Contact")),
+        ],
+        verbose_name=_("Module"),
+    )
+    description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
+
+    def __str__(self):
+        return str(self.name)
+
+    def is_active_col(self):
+        """Return HTML for active status column."""
+        html = render_template(
+            path="scoring_rule/is_active_col.html", context={"instance": self}
+        )
+
+        return mark_safe(html)
+
+    def get_edit_url(self):
+        """
+        This method to get edit url
+        """
+        return reverse_lazy("leads:scoring_rule_update_form", kwargs={"pk": self.pk})
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+
+        return reverse_lazy("leads:scoring_rule_delete_view", kwargs={"pk": self.pk})
+
+    def get_detail_view_url(self):
+        """
+        This method to get detail view url
+        """
+        return reverse_lazy("leads:scoring_rule_detail_view", kwargs={"pk": self.pk})
+
+    class Meta:
+        """
+        Meta options for the Scoring Rule model.
+        """
+
+        verbose_name = _("Scoring Rule")
+        verbose_name_plural = _("Scoring Rules")
+
+
+class ScoringCriterion(HorillaCoreModel):
+    """Main scoring criterion that contains multiple conditions"""
+
+    rule = models.ForeignKey(
+        ScoringRule, on_delete=models.CASCADE, related_name="criteria"
+    )
+    name = models.CharField(
+        max_length=200, blank=True, verbose_name=_("Criterion Name")
+    )  # Optional name for the criterion
+    points = models.IntegerField(verbose_name=_("Points to Award"))
+    operation_type = models.CharField(
+        max_length=3,
+        choices=[("add", _("Add")), ("sub", _("Sub"))],
+        default="and",
+        verbose_name=_("Operation Type"),
+    )
+    order = models.PositiveIntegerField(
+        default=0, verbose_name=_("Order")
+    )  # For sorting criteria
+
+    def __str__(self):
+        return f"{self.rule.name} - {self.name or f'Criterion {self.pk}'}"
+
+    def evaluate_conditions(self, instance):
+        """
+        Evaluate all conditions for this criterion against the given instance
+        Returns True if all conditions are met according to their logical operators
+        """
+        conditions = self.conditions.all().order_by("order")
+        if not conditions.exists():
+            return False
+
+        result = None
+        for condition in conditions:
+            condition_result = condition.evaluate(instance)
+
+            if result is None:
+                result = condition_result
+            else:
+                if condition.logical_operator == "and":
+                    result = result and condition_result
+                else:  # 'or'
+                    result = result or condition_result
+
+        return result
+
+    class Meta:
+        """Meta options for ScoringCriterion."""
+
+        verbose_name = _("Scoring Criterion")
+        verbose_name_plural = _("Scoring Criteria")
+        ordering = ["order", "id"]
+
+
+@permission_exempt_model
+class ScoringCondition(HorillaCoreModel):
+    """Individual conditions within a scoring criterion"""
+
+    criterion = models.ForeignKey(
+        ScoringCriterion, on_delete=models.CASCADE, related_name="conditions"
+    )
+    field = models.CharField(max_length=100, verbose_name=_("Field Name"))
+    operator = models.CharField(
+        max_length=50,
+        choices=OPERATOR_CHOICES,
+        verbose_name=_("Operator"),
+    )
+    value = models.CharField(max_length=255, blank=True, verbose_name=_("Value"))
+    logical_operator = models.CharField(
+        max_length=3,
+        choices=[("and", _("AND")), ("or", _("OR"))],
+        default="and",
+        verbose_name=_("Logical Operator"),
+    )
+    order = models.PositiveIntegerField(
+        default=0, verbose_name=_("Order")
+    )  # For ordering conditions
+
+    def __str__(self):
+        return f"{self.field} {self.operator} {self.value}"
+
+    def evaluate(self, instance):
+        """
+        Evaluate this condition against the given instance
+        Returns True if the condition is met, False otherwise
+        """
+        try:
+            # Get the field value from the instance
+            field_value = getattr(instance, self.field, None)
+
+            # Convert field_value to string for comparison
+            if field_value is None:
+                field_value = ""
+            else:
+                field_value = str(field_value)
+
+            # Perform comparison based on operator
+            if self.operator == "equals":
+                return field_value == self.value
+            if self.operator == "not_equals":
+                return field_value != self.value
+            if self.operator == "contains":
+                return self.value.lower() in field_value.lower()
+            if self.operator == "not_contains":
+                return self.value.lower() not in field_value.lower()
+            if self.operator == "starts_with":
+                return field_value.lower().startswith(self.value.lower())
+            if self.operator == "ends_with":
+                return field_value.lower().endswith(self.value.lower())
+            if self.operator == "greater_than":
+                try:
+                    return float(field_value) > float(self.value)
+                except (ValueError, TypeError):
+                    return False
+            if self.operator == "greater_than_equal":
+                try:
+                    return float(field_value) >= float(self.value)
+                except (ValueError, TypeError):
+                    return False
+            if self.operator == "less_than":
+                try:
+                    return float(field_value) < float(self.value)
+                except (ValueError, TypeError):
+                    return False
+            if self.operator == "less_than_equal":
+                try:
+                    return float(field_value) <= float(self.value)
+                except (ValueError, TypeError):
+                    return False
+            if self.operator == "is_empty":
+                return not field_value or field_value.strip() == ""
+            if self.operator == "is_not_empty":
+                return bool(field_value and field_value.strip())
+
+            return False
+
+        except Exception as e:
+            logger.error("Error evaluating condition %s: %s", self, e)
+            return False
+
+    class Meta:
+        """Meta options for ScoringCondition."""
+
+        verbose_name = _("Scoring Condition")
+        verbose_name_plural = _("Scoring Conditions")
+        ordering = ["order", "id"]
+
+
+@permission_exempt_model
+class EmailActivityScoring(HorillaCoreModel):
+    """Email activity scoring configuration."""
+
+    rule = models.ForeignKey(
+        ScoringRule, on_delete=models.CASCADE, related_name="email_activities"
+    )
+    activity_type = models.CharField(
+        max_length=50,
+        choices=[
+            ("opened", _("Opened")),
+            ("clicked", _("Clicked")),
+            ("bounced", _("Bounced")),
+        ],
+    )
+    points = models.IntegerField(default=10)
+
+    def __str__(self):
+        return f"{self.activity_type} - {self.points} points"

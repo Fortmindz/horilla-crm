@@ -2,7 +2,7 @@
 <div class="flex justify-between p-5 pb-0">
     <h2 class="text-lg font-semibold">{% trans "Select Mail Template" %}</h2>
     <button id="close" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer" onclick="closeModal();">
-        <img src="{% static 'assets/icons/close.svg' %}" alt="">
+        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}">
     </button>
 </div>
 <div class="pt-0 p-5">
@@ -56,15 +56,27 @@
                     const $summernote = targetWindow.$('#summernote');
 
                     if ($summernote.next('.note-editor').length) {
+                        // Set the body content
                         $summernote.summernote('code', data.body);
                         targetWindow.$('#message_content').val(data.body);
+
+                        // Set the subject if available
+                        if (data.subject) {
+                            const $subjectField = targetWindow.$('#id_subject, input[name="subject"]');
+                            if ($subjectField.length) {
+                                $subjectField.val(data.subject);
+                            }
+                        }
+
                         closeModal();
                     } else {
                         console.error('Summernote not initialized');
                     }
                 } else {
+                    // Store both body and subject in localStorage
                     localStorage.setItem('selectedTemplate', JSON.stringify({
                         body: data.body,
+                        subject: data.subject || '',
                         timestamp: Date.now()
                     }));
                     closeModal();

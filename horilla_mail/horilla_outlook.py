@@ -1,12 +1,15 @@
+"""
+horilla_mail Outlook mail server views.
+"""
+
 from datetime import datetime
 from functools import cached_property
 
-from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import cache
-from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import redirect, render
+from django.http import HttpResponse, HttpResponseRedirect
+from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -15,13 +18,7 @@ from django.views import View
 from requests_oauthlib import OAuth2Session
 
 from horilla_core.decorators import htmx_required, permission_required_or_denied
-from horilla_generics.views import (
-    HorillaListView,
-    HorillaNavView,
-    HorillaSingleFormView,
-    HorillaView,
-)
-from horilla_mail.filters import HorillaMailServerFilter
+from horilla_generics.views import HorillaSingleFormView
 from horilla_mail.forms import OutlookMailConfigurationForm
 from horilla_mail.models import HorillaMailConfiguration
 
@@ -40,6 +37,7 @@ class OutlookMailServerFormView(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     form_class = OutlookMailConfigurationForm
     hidden_fields = ["company", "type", "mail_channel"]
+    save_and_new = False
 
     def get_initial(self):
         initial = super().get_initial()
@@ -62,6 +60,7 @@ class OutlookMailServerFormView(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """Get the URL for the form view."""
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
@@ -85,7 +84,8 @@ class OutlookLoginView(View):
     Handles Outlook login OAuth flow
     """
 
-    def get(self, request, pk=None, *args, **kwargs):
+    def get(self, request, *args, pk=None, **kwargs):
+        """Get the Outlook login URL."""
         selected_company = request.active_company
 
         if pk:
@@ -98,6 +98,19 @@ class OutlookLoginView(View):
         if not api:
             messages.info(request, "Not configured outlook")
             return redirect("/")  # redirect somewhere safe if no config
+
+        # Validate required fields before proceeding
+        if not api.outlook_client_id:
+            messages.error(request, "Outlook Client ID is not configured")
+            return redirect("/")
+
+        if not api.outlook_redirect_uri:
+            messages.error(request, "Outlook Redirect URI is not configured")
+            return redirect("/")
+
+        if not api.outlook_authorization_url:
+            messages.error(request, "Outlook Authorization URL is not configured")
+            return redirect("/")
 
         oauth = OAuth2Session(
             api.outlook_client_id,
@@ -130,6 +143,7 @@ class OutlookCallbackView(View):
     """
 
     def get(self, request, *args, **kwargs):
+        """Handle the OAuth callback and fetch the token."""
         selected_company = request.active_company
         pk = self.request.session.get("outlook_pk")
 
@@ -140,8 +154,26 @@ class OutlookCallbackView(View):
                 company=selected_company
             ).first()
 
-        if not api:
+        if not api or api.type != "outlook":
             messages.error(request, "Invalid Outlook configuration")
+            return redirect("/")
+
+        # Validate required fields before proceeding
+        if not api.outlook_client_id:
+            messages.error(request, "Outlook Client ID is not configured")
+            return redirect("/")
+
+        if not api.outlook_redirect_uri:
+            messages.error(request, "Outlook Redirect URI is not configured")
+            return redirect("/")
+
+        if not api.outlook_token_url:
+            messages.error(request, "Outlook Token URL is not configured")
+            return redirect("/")
+
+        client_secret = api.get_decrypted_client_secret()
+        if not client_secret:
+            messages.error(request, "Outlook Client Secret is not configured")
             return redirect("/")
 
         state = api.oauth_state
@@ -153,6 +185,10 @@ class OutlookCallbackView(View):
         )
 
         authorization_response_uri = request.build_absolute_uri()
+        if not authorization_response_uri:
+            messages.error(request, "Unable to build authorization response URI")
+            return redirect("/")
+
         authorization_response_uri = authorization_response_uri.replace(
             "http://", "https://"
         )
@@ -160,7 +196,7 @@ class OutlookCallbackView(View):
         api.last_refreshed = datetime.now()
         token = oauth.fetch_token(
             api.outlook_token_url,
-            client_secret=api.get_decrypted_client_secret(),
+            client_secret=client_secret,
             authorization_response=authorization_response_uri,
         )
         api.token = token
@@ -173,6 +209,14 @@ def refresh_outlook_token(api: HorillaMailConfiguration):
     """
     Refresh Outlook token
     """
+    # Check if token exists and has refresh_token
+    if not api.token or not isinstance(api.token, dict):
+        raise ValueError("Token is missing or invalid")
+
+    refresh_token = api.token.get("refresh_token")
+    if not refresh_token:
+        raise ValueError("Refresh token is missing. Please re-authenticate.")
+
     oauth = OAuth2Session(
         api.outlook_client_id,
         token=api.token,
@@ -184,7 +228,7 @@ def refresh_outlook_token(api: HorillaMailConfiguration):
     )
     new_token = oauth.refresh_token(
         api.outlook_token_url,
-        refresh_token=api.token["refresh_token"],
+        refresh_token=refresh_token,
         client_id=api.outlook_client_id,
         client_secret=api.get_decrypted_client_secret(),
     )
@@ -194,7 +238,6 @@ def refresh_outlook_token(api: HorillaMailConfiguration):
     return api
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(["horilla_mail.view_horillamailconfiguration"]),
     name="dispatch",
@@ -205,24 +248,38 @@ class OutlookRefreshTokenView(View):
     """
 
     def get(self, request, pk, *args, **kwargs):
+        """Refresh the Outlook token for the given configuration."""
         try:
             api = HorillaMailConfiguration.objects.get(pk=pk)
-        except:
+        except Exception as e:
             messages.error(
                 request,
-                f"{HorillaMailConfiguration._meta.verbose_name.title()} not found or no longer exists.",
+                str(e),
             )
             return HttpResponse(
                 "<script>$('#reloadButton').click();closeModal();</script>"
             )
 
-        old_token = api.token.get("access_token")
+        try:
+            old_token = api.token.get("access_token") if api.token else None
 
-        api = refresh_outlook_token(api)
+            api = refresh_outlook_token(api)
 
-        if api.token.get("access_token") == old_token:
-            messages.info(request, _("Token not refreshed, Login required"))
-        else:
-            messages.success(request, _("Token refreshed successfully"))
+            if api.token.get("access_token") == old_token:
+                messages.info(request, _("Token not refreshed, Login required"))
+            else:
+                messages.success(request, _("Token refreshed successfully"))
+        except ValueError as e:
+            messages.error(
+                request,
+                _("Token refresh failed: {error}. Please re-authenticate.").format(
+                    error=str(e)
+                ),
+            )
+        except Exception as e:
+            messages.error(
+                request,
+                _("Token refresh failed: {error}").format(error=str(e)),
+            )
 
         return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))

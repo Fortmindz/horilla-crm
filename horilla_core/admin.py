@@ -1,8 +1,47 @@
+"""
+Admin configuration for horilla_core models.
+
+This module registers core Horilla models with the Django admin
+and customizes the admin interface for the Horilla User model.
+"""
+
+# Django imports
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.contenttypes.models import ContentType
 
-from .models import *
+# Horilla first-party imports
+from horilla.auth.models import User
+
+# Local app imports
+from .models import (
+    ActiveTab,
+    BusinessHour,
+    Company,
+    CustomerRole,
+    DatedConversionRate,
+    Department,
+    ExportSchedule,
+    FieldPermission,
+    FiscalYear,
+    FiscalYearInstance,
+    Holiday,
+    HorillaAttachment,
+    ImportHistory,
+    KanbanGroupBy,
+    ListColumnVisibility,
+    MultipleCurrency,
+    PartnerRole,
+    Period,
+    PinnedView,
+    Quarter,
+    RecentlyViewed,
+    RecycleBin,
+    RecycleBinPolicy,
+    Role,
+    SavedFilterList,
+    TeamRole,
+)
 
 admin.site.register(KanbanGroupBy)
 admin.site.register(ListColumnVisibility)
@@ -25,9 +64,6 @@ admin.site.register(RecycleBin)
 admin.site.register(PartnerRole)
 admin.site.register(CustomerRole)
 admin.site.register(TeamRole)
-admin.site.register(ScoringRule)
-admin.site.register(ScoringCriterion)
-admin.site.register(ScoringCondition)
 admin.site.register(RecycleBinPolicy)
 admin.site.register(RecentlyViewed)
 admin.site.register(ImportHistory)
@@ -36,9 +72,13 @@ admin.site.register(ExportSchedule)
 admin.site.register(FieldPermission)
 
 
-@admin.register(HorillaUser)
+@admin.register(User)
 class HorillaUserAdmin(UserAdmin):
-    model = HorillaUser
+    """
+    Custom admin configuration for Horilla User model.
+    """
+
+    model = User
     list_display = ["username", "email", "is_active", "is_staff"]
     fieldsets = (
         (None, {"fields": ("username", "password")}),

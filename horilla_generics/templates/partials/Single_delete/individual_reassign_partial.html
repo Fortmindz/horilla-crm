@@ -1,11 +1,7 @@
 {% load static %}
 {% load i18n %}
 
-<div id="messages-container" style="display: none;">
-    {% for message in messages %}
-        <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-    {% endfor %}
-</div>
+{% include "messages.html" %}
 {% for record in records %}
     <div class="flex items-center gap-2 mb-2" data-record-id="{{ record.id }}">
         <span class="text-sm text-gray-600 flex-grow min-w-0 overflow-hidden text-ellipsis">{{ record }}</span>
@@ -50,9 +46,6 @@
         hx-get="{{ search_url }}?action=delete_single_record&record_id={{ record.id }}&delete_type=hard&delete_mode={{ delete_mode }}" hx-target="#modalBox" hx-swap="innerHTML" hx-push-url="false" hx-on::before-request="this.classList.add('opacity-50')" hx-on::after-request="this.classList.remove('opacity-50')" class="text-sm px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-opacity" style="width:85px;" title="{% trans 'Hard Delete' %}">
             {% trans 'Hard Delete' %}
         </button>
-        {% comment %} <button hx-get="{{ search_url }}?action=delete_single_record&record_id={{ record.id }}" hx-target="#modalBox" hx-swap="innerHTML" hx-push-url="false" hx-on::before-request="this.classList.add('opacity-50')" hx-on::after-request="this.classList.remove('opacity-50')" class="text-sm px-2 py-1 transition-opacity" title="{% trans 'Delete this record' %}" style="width:30px;">
-            <img src="{% static 'assets/icons/a4.svg' %}" alt="Delete" class="inline w-4 h-4" />
-        </button> {% endcomment %}
         <input type="hidden" name="action_{{ record.id }}" value="reassign" id="action_{{ record.id }}">
     </div>
 {% endfor %}

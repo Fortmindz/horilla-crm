@@ -15,16 +15,4 @@
     <option value="{{ operator.0 }}">{{ operator.1 }}</option>
   {% endfor %}
 </select>
-<script>
-  $(document).ready(function () {
-
-    $("select[name='operator']").on("select2:select", function (e) {
-      $(this).closest("select")[0].dispatchEvent(new Event("change"));
-
-    });
-  });
-  document.addEventListener('htmx:afterSettle', function(event) {
-      initializeSelect2Pagination();
-});
-</script>
 </div>

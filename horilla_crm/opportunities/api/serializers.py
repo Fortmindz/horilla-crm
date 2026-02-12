@@ -6,7 +6,6 @@ from rest_framework import serializers
 
 from horilla_core.api.serializers import HorillaUserSerializer
 from horilla_crm.opportunities.models import (
-    BigDealAlert,
     DefaultOpportunityMember,
     Opportunity,
     OpportunityStage,
@@ -19,6 +18,8 @@ class OpportunityStageSerializer(serializers.ModelSerializer):
     """Serializer for OpportunityStage model"""
 
     class Meta:
+        """Meta options for OpportunityStageSerializer."""
+
         model = OpportunityStage
         fields = "__all__"
 
@@ -30,6 +31,8 @@ class OpportunitySerializer(serializers.ModelSerializer):
     stage_details = OpportunityStageSerializer(source="stage", read_only=True)
 
     class Meta:
+        """Meta options for OpportunitySerializer."""
+
         model = Opportunity
         fields = "__all__"
 
@@ -40,6 +43,8 @@ class OpportunityTeamSerializer(serializers.ModelSerializer):
     owner_details = HorillaUserSerializer(source="owner", read_only=True)
 
     class Meta:
+        """Meta options for OpportunityTeamSerializer."""
+
         model = OpportunityTeam
         fields = "__all__"
 
@@ -51,6 +56,8 @@ class OpportunityTeamMemberSerializer(serializers.ModelSerializer):
     opportunity_details = OpportunitySerializer(source="opportunity", read_only=True)
 
     class Meta:
+        """Meta options for OpportunityTeamMemberSerializer."""
+
         model = OpportunityTeamMember
         fields = "__all__"
 
@@ -62,13 +69,7 @@ class DefaultOpportunityMemberSerializer(serializers.ModelSerializer):
     team_details = OpportunityTeamSerializer(source="team", read_only=True)
 
     class Meta:
+        """Meta options for DefaultOpportunityMemberSerializer."""
+
         model = DefaultOpportunityMember
-        fields = "__all__"
-
-
-class BigDealAlertSerializer(serializers.ModelSerializer):
-    """Serializer for BigDealAlert model"""
-
-    class Meta:
-        model = BigDealAlert
         fields = "__all__"

@@ -1,8 +1,17 @@
+"""
+Global search utilities for horilla_generics.
+
+Provides a GlobalSearchView that performs cross-model searches and renders
+search results and model-specific tabs for the generic global search UI.
+"""
+
+# Standard library
 import re
 from functools import reduce
 from operator import or_
 from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
+# Third-party (Django)
 from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import CharField, ForeignKey, ManyToManyField, Q, TextField
@@ -10,15 +19,19 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views import View
 
+# First-party (Horilla)
 from horilla.registry.feature import FEATURE_REGISTRY
 from horilla_generics.views import HorillaListView
 from horilla_utils.methods import get_section_info_for_model
 
 
 class GlobalSearchView(LoginRequiredMixin, View):
+    """View for performing cross-model global searches across registered models."""
+
     template_name = "global_search.html"
     include_models = FEATURE_REGISTRY.get("global_search_models", [])
 
@@ -72,6 +85,13 @@ class GlobalSearchView(LoginRequiredMixin, View):
         return columns
 
     def get_dynamic_model_config(self):
+        """
+        Build configuration for included models used in global search.
+
+        Scans installed models and returns a mapping containing searchable fields,
+        display columns, icons and other metadata required for rendering model
+        search tabs and results.
+        """
         model_config = {}
         all_models = apps.get_models()
 
@@ -118,24 +138,11 @@ class GlobalSearchView(LoginRequiredMixin, View):
 
             summary_fields = search_fields[:3]
 
-            status_field = None
-            for field in model._meta.fields:
-                if field.name.lower() in [
-                    "status",
-                    "state",
-                    "lead_status",
-                    "campaign_status",
-                ]:
-                    status_field = field.name
-                    break
-
             model_config[model_name] = {
                 "app_name": app_label,
                 "search_fields": search_fields,
                 "display_field": display_field,
                 "summary_fields": summary_fields,
-                "status_field": status_field,
-                "status_colors": self.default_status_colors if status_field else {},
                 "icons": self.default_icons,
                 "max_results": self.default_max_results,
                 "model": model,
@@ -162,7 +169,7 @@ class GlobalSearchView(LoginRequiredMixin, View):
         if user.has_perm(full_view_perm):
             return base_queryset
 
-        elif user.has_perm(view_own_perm):
+        if user.has_perm(view_own_perm):
             owner_fields = getattr(model, "OWNER_FIELDS", None)
 
             if owner_fields:
@@ -193,7 +200,7 @@ class GlobalSearchView(LoginRequiredMixin, View):
                         # Handle direct fields (non-relational)
                         elif not field.is_relation:
                             queries.append(Q(**{field_name: user}))
-                    except Exception as e:
+                    except Exception:
                         # Skip fields that cause errors
                         continue
 
@@ -204,47 +211,48 @@ class GlobalSearchView(LoginRequiredMixin, View):
 
                 # If no valid ownership fields, return empty queryset
                 return base_queryset.none()
-            else:
-                # Fallback to common ownership field patterns
-                ownership_fields = ["created_by", "user", "owner", "employee_id"]
 
-                queries = []
-                for field_name in ownership_fields:
-                    try:
-                        field = model._meta.get_field(field_name)
+            # else:
+            # Fallback to common ownership field patterns
+            ownership_fields = ["created_by", "user", "owner", "employee_id"]
 
-                        # Handle ForeignKey fields
-                        if isinstance(field, ForeignKey):
-                            related_model = field.related_model
-                            if (
-                                related_model._meta.model_name.lower()
-                                in ["user", "employee"]
-                                or related_model == user.__class__
-                                or related_model._meta.label_lower == "auth.user"
-                            ):
-                                queries.append(Q(**{field_name: user}))
-                        # Handle ManyToManyField
-                        elif isinstance(field, ManyToManyField):
-                            related_model = field.related_model
-                            if (
-                                related_model._meta.model_name.lower()
-                                in ["user", "employee"]
-                                or related_model == user.__class__
-                                or related_model._meta.label_lower == "auth.user"
-                            ):
-                                queries.append(Q(**{field_name: user}))
-                        # Handle direct fields
-                        elif not field.is_relation:
+            queries = []
+            for field_name in ownership_fields:
+                try:
+                    field = model._meta.get_field(field_name)
+
+                    # Handle ForeignKey fields
+                    if isinstance(field, ForeignKey):
+                        related_model = field.related_model
+                        if (
+                            related_model._meta.model_name.lower()
+                            in ["user", "employee"]
+                            or related_model == user.__class__
+                            or related_model._meta.label_lower == "auth.user"
+                        ):
                             queries.append(Q(**{field_name: user}))
-                    except Exception as e:
-                        continue
+                    # Handle ManyToManyField
+                    elif isinstance(field, ManyToManyField):
+                        related_model = field.related_model
+                        if (
+                            related_model._meta.model_name.lower()
+                            in ["user", "employee"]
+                            or related_model == user.__class__
+                            or related_model._meta.label_lower == "auth.user"
+                        ):
+                            queries.append(Q(**{field_name: user}))
+                    # Handle direct fields
+                    elif not field.is_relation:
+                        queries.append(Q(**{field_name: user}))
+                except Exception:
+                    continue
 
-                if queries:
-                    # Combine all queries with OR
-                    combined_query = reduce(or_, queries)
-                    return base_queryset.filter(combined_query).distinct()
+            if queries:
+                # Combine all queries with OR
+                combined_query = reduce(or_, queries)
+                return base_queryset.filter(combined_query).distinct()
 
-                return base_queryset.none()
+            return base_queryset.none()
 
         return base_queryset.none()
 
@@ -298,16 +306,6 @@ class GlobalSearchView(LoginRequiredMixin, View):
                     summary_parts.append(highlight_text(value))
 
             item.summary = " • ".join(str(part) for part in summary_parts if part)
-            item.status = (
-                getattr(item, config["status_field"], None)
-                if config["status_field"]
-                else None
-            )
-            item.status_color = (
-                config["status_colors"].get(item.status, "gray")
-                if item.status
-                else None
-            )
 
         list_view = HorillaListView()
         list_view.request = request
@@ -318,7 +316,7 @@ class GlobalSearchView(LoginRequiredMixin, View):
         list_view.paginate_by = 100
         list_view.object_list = results
         list_view.table_height = False
-        list_view.table_height_as_class = "h-[650px]"
+        list_view.table_height_as_class = "h-[calc(_100vh_-_160px_)]"
         list_view.bulk_select_option = False
         list_view.clear_session_button_enabled = False
         list_view.table_width = False
@@ -349,8 +347,6 @@ class GlobalSearchView(LoginRequiredMixin, View):
                 "search_params": query_params.urlencode(),
                 "model_name": model_name,
                 "icons": config["icons"],
-                "status_colors": config["status_colors"],
-                "status_field": config["status_field"],
                 "view_id": f"global-search-{model_name.lower()}",
             }
         )
@@ -358,6 +354,13 @@ class GlobalSearchView(LoginRequiredMixin, View):
         return render_to_string("list_view.html", table_context, request)
 
     def get(self, request):
+        """
+        Handle GET requests to perform and route global search queries.
+
+        Validates the incoming query, manages previous URL/session state, and
+        either redirects back to previous page when no query is provided or
+        renders the global search results.
+        """
         query = request.GET.get("q", "").strip()
         filter_type = request.GET.get("filter", "all")
         previous_url = request.GET.get("prev_url", "/")
@@ -366,6 +369,11 @@ class GlobalSearchView(LoginRequiredMixin, View):
         if previous_url:
             try:
                 previous_url = unquote(unquote(previous_url))
+                if not url_has_allowed_host_and_scheme(
+                    url=previous_url,
+                    allowed_hosts={request.get_host()},
+                ):
+                    previous_url = "/"
 
                 if "?" in previous_url:
 
@@ -394,7 +402,7 @@ class GlobalSearchView(LoginRequiredMixin, View):
                     previous_url = request.session.get("pre_search_url", "/")
                 else:
                     request.session["pre_search_url"] = previous_url
-            except:
+            except Exception:
                 previous_url = request.session.get("pre_search_url", "/")
 
         if not query:

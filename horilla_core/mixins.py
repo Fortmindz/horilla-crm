@@ -1,20 +1,23 @@
+"""Mixin classes for Django views and forms.
+
+This module provides reusable mixin classes that can be added to Django views,
+forms, and filtersets to add common functionality:
+
+- FiscalYearCalendarMixin: Generates fiscal year calendar data with custom configurations
+- OwnerQuerysetMixin: Restricts User field querysets based on permissions and role hierarchy
+- OwnerFiltersetMixin: Restricts User filter querysets based on permissions and role hierarchy
+"""
+
 import calendar as cal_module
 from calendar import monthcalendar
 from datetime import datetime, timedelta
 
-from horilla_core.models import HorillaUser
-
-
-class CompanyFilterMixin:
-    def get_queryset(self):
-        qs = super().get_queryset()
-        company = getattr(self.request, "active_company", None)
-        if company:
-            qs = qs.filter(company=company)
-        return qs
+from horilla.auth.models import User
 
 
 class FiscalYearCalendarMixin:
+    """Mixin to generate fiscal year calendar data based on configuration."""
+
     def get_calendar_data(
         self,
         fiscal_year_data,
@@ -23,6 +26,7 @@ class FiscalYearCalendarMixin:
         week_start_day,
         current_year=None,
     ):
+        """Generate fiscal year calendar data."""
         if current_year is None:
             current_year = datetime.now().year
 
@@ -295,13 +299,17 @@ class FiscalYearCalendarMixin:
 class OwnerQuerysetMixin:
     """
     Mixin to dynamically filter any ForeignKey or ManyToManyField
-    whose related model is `HorillaUser`, based on the current user.
+    whose related model is `User`, based on the current user.
 
     - For superusers: Shows all users.
     - For non-superusers: Shows the current user + their subordinates (recursive via subroles).
     """
 
     def __init__(self, *args, **kwargs):
+        # Get instance from kwargs before super() is called
+        # This is important because after super().__init__(), instance might be None for new objects
+        instance_from_kwargs = kwargs.get("instance")
+
         super().__init__(*args, **kwargs)
         request = kwargs.get("request") or getattr(self, "request", None)
         user = request.user if request else None
@@ -309,10 +317,19 @@ class OwnerQuerysetMixin:
         if not (user and hasattr(self, "fields")):
             return
 
-        if user.is_superuser:
-            allowed_users = HorillaUser.objects.all()
-        else:
+        model = self._meta.model
+
+        app_label = model._meta.app_label
+        model_name = model._meta.model_name
+        add_perm = f"{app_label}.add_{model_name}"
+        add_own_perm = f"{app_label}.add_own_{model_name}"
+
+        if user.is_superuser or user.has_perm(add_perm):
+            allowed_users = User.objects.all()
+
+        elif user.has_perm(add_own_perm):
             user_role = getattr(user, "role", None)
+
             if user_role:
 
                 def get_subordinate_roles(role):
@@ -326,33 +343,73 @@ class OwnerQuerysetMixin:
                 subordinate_roles = get_subordinate_roles(user_role)
                 # all_roles = [user_role] + subordinate_roles
 
-                subordinate_users = HorillaUser.objects.filter(
+                subordinate_users = User.objects.filter(
                     role__in=subordinate_roles
                 ).distinct()
-                allowed_users = HorillaUser.objects.filter(
+                allowed_users = User.objects.filter(
                     id__in=[user.id]
                     + list(subordinate_users.values_list("id", flat=True))
                 )
             else:
-                allowed_users = HorillaUser.objects.filter(id=user.id)
+                allowed_users = User.objects.filter(id=user.id)
+
+        else:
+            allowed_users = User.objects.filter(id=user.id)
+
+        allowed_users = allowed_users.filter(is_active=True)
+
+        # Get company for filtering foreign key fields
+        # Priority: 1. Instance's company (when editing), 2. Active company, 3. User's company
+        company = None
+
+        # Try to get instance from multiple sources
+        instance = (
+            instance_from_kwargs
+            or getattr(self, "instance", None)
+            or getattr(self, "instance_obj", None)
+        )
+
+        # If editing an existing object, use the object's company
+        if (
+            instance
+            and hasattr(instance, "pk")
+            and instance.pk
+            and hasattr(instance, "company")
+            and instance.company
+        ):
+            company = instance.company
+        elif request:
+            company = getattr(request, "active_company", None)
+            if not company and hasattr(request.user, "company"):
+                company = request.user.company
 
         for field_name, field in self.fields.items():
             model_field = self._meta.model._meta.get_field(field_name)
 
-            if model_field.is_relation and model_field.related_model == HorillaUser:
+            if model_field.is_relation and model_field.related_model == User:
                 field.queryset = allowed_users
+            elif model_field.is_relation and hasattr(
+                model_field.related_model, "company"
+            ):
+                # Filter foreign key fields by company if the related model has a company field
+                # When editing: use the object's company
+                # When creating: use the active company
+                # This ensures forms show objects from the correct company
+                if company:
+                    # Get the current queryset or create a new one
+                    if hasattr(field, "queryset") and field.queryset is not None:
+                        queryset = field.queryset.filter(company=company)
+                    else:
+                        queryset = model_field.related_model.objects.filter(
+                            company=company
+                        )
+                    field.queryset = queryset
 
 
 class OwnerFiltersetMixin:
     """
-    Mixin to dynamically filter `HorillaUser`-related filters
-    in a Django FilterSet.
-
-    Usage:
-        class EmployeeFilter(OwnerFiltersetMixin, HorillaFilterSet):
-            class Meta:
-                model = Employee
-                fields = ['manager', 'created_by', 'user']
+    Mixin to dynamically filter `User`-related filters
+    in a Django FilterSet based on parent model permissions.
     """
 
     def __init__(self, *args, **kwargs):
@@ -367,10 +424,21 @@ class OwnerFiltersetMixin:
         if not (user and hasattr(self, "filters")):
             return
 
-        # Determine allowed users
-        if user.is_superuser:
-            allowed_users = HorillaUser.objects.all()
-        else:
+        # Get parent model info for permission checking
+        parent_model = self._meta.model
+        app_label = parent_model._meta.app_label
+        model_name = parent_model._meta.model_name
+
+        # Build permission strings
+        view_perm = f"{app_label}.view_{model_name}"
+        view_own_perm = f"{app_label}.view_own_{model_name}"
+
+        # Determine allowed users based on parent model permissions
+        if user.is_superuser or user.has_perm(view_perm):
+            # User has full view permission - allow all users
+            allowed_users = User.objects.all()
+        elif user.has_perm(view_own_perm):
+            # User has view_own permission - restrict to user and subordinates
             user_role = getattr(user, "role", None)
             if user_role:
 
@@ -383,24 +451,33 @@ class OwnerFiltersetMixin:
                     return all_sub_roles
 
                 subordinate_roles = get_subordinate_roles(user_role)
-                subordinate_users = HorillaUser.objects.filter(
+                subordinate_users = User.objects.filter(
                     role__in=subordinate_roles
                 ).distinct()
-                allowed_users = HorillaUser.objects.filter(
+                allowed_users = User.objects.filter(
                     id__in=[user.id]
                     + list(subordinate_users.values_list("id", flat=True))
                 )
             else:
-                allowed_users = HorillaUser.objects.filter(id=user.id)
+                # User has view_own but no role - only see themselves
+                allowed_users = User.objects.filter(id=user.id)
+        else:
+            # No permission - only see themselves
+            allowed_users = User.objects.filter(id=user.id)
 
-        # Restrict queryset for filters that reference HorillaUser
+        # Restrict queryset for filters that reference User
         for field_name, filter_obj in self.filters.items():
             try:
                 model_field = self._meta.model._meta.get_field(field_name)
-                if model_field.is_relation and model_field.related_model == HorillaUser:
+                if model_field.is_relation and model_field.related_model == User:
+                    # Restrict the filter's field queryset (used by Select2)
                     if hasattr(filter_obj, "field") and hasattr(
                         filter_obj.field, "queryset"
                     ):
                         filter_obj.field.queryset = allowed_users
+
+                    # Also restrict the filter's queryset if it has one
+                    if hasattr(filter_obj, "queryset"):
+                        filter_obj.queryset = allowed_users
             except Exception:
                 continue

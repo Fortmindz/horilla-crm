@@ -78,7 +78,10 @@ INSTALLED_APPS = [
     "horilla_utils",
     "horilla_notifications",
     "horilla_mail",
+    "horilla_activity",
+    "horilla_calendar",
     "horilla_keys",
+    "horilla_automations",
 ]
 
 
@@ -101,6 +104,11 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
+# Swagger/OpenAPI Settings
+SWAGGER_SETTINGS = {
+    "DEFAULT_AUTO_SCHEMA_CLASS": "horilla.api_urls.VerboseNameAutoSchema",
+}
+
 # -----------------------------------------------------------------------------
 # Middleware Configuration
 # -----------------------------------------------------------------------------
@@ -116,6 +124,7 @@ MIDDLEWARE = [
     "horilla_core.middlewares.Horilla405Middleware",
     "horilla_core.middlewares.SVGSecurityMiddleware",
     "horilla_core.middlewares.HTMXRedirectMiddleware",
+    "horilla_core.middlewares.EnsureSectionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -143,7 +152,7 @@ TEMPLATES = [
                 "horilla.context_processors.unread_notifications",
                 "horilla.context_processors.menu_context_processor",
                 "horilla.context_processors.currency_context",
-                "horilla.context_processors.collect_all_versions",
+                "horilla.context_processors.branding",
             ],
         },
     },
@@ -375,9 +384,12 @@ AUDITLOG_EXCLUDE_TRACKING_MODELS = (
 )
 
 
-DB_INIT_PASSWORD = env(
-    "DB_INIT_PASSWORD", default="d3f6a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d"
-)
+try:
+    from .password_utils import get_init_password
+
+    DB_INIT_PASSWORD = get_init_password()
+except ImportError as e:
+    pass
 
 
 ALLOWED_LANGUAGES = [
@@ -386,3 +398,7 @@ ALLOWED_LANGUAGES = [
     ("de", "German", "german.jpeg"),
     ("fr", "French", "france.webp"),
 ]
+
+AUDITLOG_LOGENTRY_MODEL = "auditlog.LogEntry"
+
+BRANDING_MODULE = None

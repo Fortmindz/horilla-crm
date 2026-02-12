@@ -2,6 +2,7 @@
 Opportunities module models.
 """
 
+# Third-party imports (Django)
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator, MaxValueValidator, MinValueValidator
 from django.db import models, transaction
@@ -11,25 +12,18 @@ from django.urls import reverse_lazy
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla import settings
-from horilla.registry.feature import feature_enabled
 from horilla.registry.permission_registry import permission_exempt_model
-from horilla_core.models import (
-    Company,
-    CustomerRole,
-    HorillaCoreModel,
-    HorillaUser,
-    MultipleCurrency,
-)
-from horilla_core.utils import compute_score
+from horilla_core.models import Company, CustomerRole, HorillaCoreModel
 from horilla_crm.accounts.models import Account
 from horilla_crm.campaigns.models import Campaign
 from horilla_crm.contacts.models import Contact
+from horilla_crm.leads.utils import compute_score
 from horilla_utils.methods import render_template
 from horilla_utils.middlewares import _thread_local
 
 
-@feature_enabled(import_data=True, export_data=True, global_search=True)
 class OpportunityStage(HorillaCoreModel):
     """Opportunity Stage model for flexible stage management"""
 
@@ -105,9 +99,27 @@ class OpportunityStage(HorillaCoreModel):
 
             if self.pk is None:
                 # For new stages, use provided order or next available order
+                desired_order = self.order
                 if not self.order:
                     self.order = self.get_next_order_for_company(self.company)
-                self._desired_position = self.order if not self.is_final else None
+                    desired_order = self.order
+                else:
+                    # Check if the provided order already exists for this company
+                    if OpportunityStage.objects.filter(
+                        company=self.company, order=self.order
+                    ).exists():
+                        # If order conflicts, use a temporary high value to avoid constraint violation
+                        # The _reorder_all_statuses method will handle proper ordering
+                        # Find a safe temporary value that won't conflict
+                        max_order = OpportunityStage.objects.filter(
+                            company=self.company
+                        ).aggregate(max_order=models.Max("order"))["max_order"]
+                        # Use a value that's guaranteed to be unique (higher than max + large offset)
+                        # and higher than reordering temp values (10000+)
+                        self.order = max((max_order or 0) + 50000, 100000)
+                    else:
+                        desired_order = self.order
+                self._desired_position = desired_order if not self.is_final else None
             else:
                 original = OpportunityStage.objects.get(pk=self.pk)
                 is_final_changed = self.is_final != original.is_final
@@ -147,7 +159,7 @@ class OpportunityStage(HorillaCoreModel):
             non_final_statuses = [s for s in non_final_statuses if s != self]
             non_final_statuses.sort(key=lambda x: x.order)
 
-            max_order = max([s.order for s in non_final_statuses], default=0)
+            max_order = max((s.order for s in non_final_statuses), default=0)
 
             if desired_order > max_order:
                 non_final_statuses.append(self)
@@ -250,7 +262,6 @@ class OpportunityStage(HorillaCoreModel):
         return str(self.name)
 
 
-@feature_enabled(all=True)
 class Opportunity(HorillaCoreModel):
     """Django model based on Salesforce Opportunity object"""
 
@@ -345,7 +356,7 @@ class Opportunity(HorillaCoreModel):
         related_name="opportunities",
     )
     owner = models.ForeignKey(
-        HorillaUser,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         verbose_name=_("Owner"),
         help_text="Opportunity Owner",
@@ -415,6 +426,14 @@ class Opportunity(HorillaCoreModel):
         This method to get edit url
         """
         return reverse_lazy("opportunities:opportunity_edit", kwargs={"pk": self.pk})
+
+    def get_duplicate_url(self):
+        """
+        This method to get edit url
+        """
+        return reverse_lazy(
+            "opportunities:opportunity_single_edit", kwargs={"pk": self.pk}
+        )
 
     def get_delete_url(self):
         """
@@ -530,8 +549,8 @@ class OpportunityContactRole(HorillaCoreModel):
     class Meta:
         """Meta options for OpportunityContactRole model."""
 
-        verbose_name = "Opportunity Contact Role"
-        verbose_name_plural = "Opportunity Contact Roles"
+        verbose_name = _("Opportunity Contact Role")
+        verbose_name_plural = _("Opportunity Contact Roles")
         unique_together = ("contact", "opportunity")
 
     def __str__(self):
@@ -557,14 +576,13 @@ ACCESS_LEVEL_CHOICES = [
 ]
 
 
-@feature_enabled(global_search=True)
 class OpportunityTeam(HorillaCoreModel):
     """Represents a team assigned to manage opportunities."""
 
     team_name = models.CharField(max_length=255, verbose_name=_("Team Name"))
     description = models.TextField(blank=True, verbose_name=_("Description"))
     owner = models.ForeignKey(
-        HorillaUser,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="owner",
         verbose_name=_("Owner"),
@@ -625,7 +643,7 @@ class OpportunityTeamMember(HorillaCoreModel):
         max_length=255, choices=TEAM_ROLE_CHOICES, verbose_name=_("Member Role")
     )
     user = models.ForeignKey(
-        HorillaUser,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="opportunty_team_users",
         verbose_name=_("Team Members"),
@@ -671,7 +689,7 @@ class DefaultOpportunityMember(HorillaCoreModel):
     )
 
     user = models.ForeignKey(
-        HorillaUser,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="default_opportunity_memberships",
         verbose_name=_("Team Member"),
@@ -748,6 +766,8 @@ class OpportunitySettings(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for OpportunitySettings."""
+
         verbose_name = _("Opportunity Setting")
         verbose_name_plural = _("Opportunity Settings")
         unique_together = ("company",)
@@ -758,7 +778,7 @@ class OpportunitySettings(HorillaCoreModel):
     @classmethod
     def get_settings(cls, company):
         """Get or create settings for the given company"""
-        settings, created = cls.objects.get_or_create(
+        settings, _created = cls.objects.get_or_create(
             company=company, defaults={"team_selling_enabled": False}
         )
         return settings
@@ -852,7 +872,6 @@ class OpportunitySplitType(HorillaCoreModel):
 
     split_label = models.CharField(
         max_length=255,
-        unique=True,
         verbose_name=_("Split Label"),
         help_text=_("Name of the split type (e.g., Revenue, Overlay)"),
     )
@@ -875,6 +894,8 @@ class OpportunitySplitType(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for OpportunitySplitType."""
+
         verbose_name = _("Opportunity Split Type")
         verbose_name_plural = _("Opportunity Split Types")
         unique_together = ("company", "split_field", "totals_100_percent")
@@ -883,7 +904,7 @@ class OpportunitySplitType(HorillaCoreModel):
         return str(self.split_label)
 
     def is_active_col(self):
-
+        """Return HTML for active status column."""
         html = render_template(
             path="opportunity_split/is_active_col.html", context={"instance": self}
         )
@@ -896,7 +917,6 @@ class OpportunitySplitType(HorillaCoreModel):
         return not self.totals_100_percent
 
 
-@feature_enabled(report_choices=True)
 class OpportunitySplit(HorillaCoreModel):
     """
     Represents credit splits for each Opportunity.
@@ -947,6 +967,12 @@ class OpportunitySplit(HorillaCoreModel):
         ),
     )
 
+    class Meta:
+        """Meta options for OpportunitySplit."""
+
+        verbose_name = _("Opportunity Split")
+        verbose_name_plural = _("Opportunity Splits")
+
     def actions(self):
         """
         This method for get custom column for action.
@@ -962,77 +988,3 @@ class OpportunitySplit(HorillaCoreModel):
                 "disabled": disabled,
             },
         )
-
-
-class BigDealAlert(HorillaCoreModel):
-    """Model to store Big Deal Alert configuration."""
-
-    alert_name = models.CharField(max_length=255, verbose_name=_("Alert Name"))
-
-    trigger_amount = models.DecimalField(
-        max_digits=15, decimal_places=2, default=0.00, verbose_name=_("Trigger Amount")
-    )
-
-    trigger_probability = models.PositiveIntegerField(
-        default=0,
-        verbose_name=_("Trigger Probability"),
-        help_text=_(
-            "Trigger alert when opportunity probability reaches this percentage"
-        ),
-    )
-
-    sender_name = models.CharField(
-        max_length=255, blank=True, null=True, verbose_name=_("Sender Name")
-    )
-    sender_email = models.EmailField(
-        blank=True, null=True, verbose_name=_("Sender Email")
-    )
-
-    notify_emails = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name=_("Notify Emails"),
-        help_text=_("Comma-separated emails to notify"),
-    )
-    notify_cc_emails = models.TextField(
-        blank=True, null=True, verbose_name=_("Notify CC Emails")
-    )
-    notify_bcc_emails = models.TextField(
-        blank=True, null=True, verbose_name=_("Notify BCC Emails")
-    )
-
-    notify_opportunity_owner = models.BooleanField(
-        default=False, verbose_name=_("Notify Opportunity Owner")
-    )
-    active = models.BooleanField(
-        default=False, verbose_name=_("Active")
-    )  # Add active field
-
-    class Meta:
-        """Meta options for BigDealAlert model."""
-
-        verbose_name = _("Big Deal Alert")
-        verbose_name_plural = _("Big Deal Alerts")
-
-    def __str__(self):
-        return str(self.alert_name)
-
-    def notify_email_list(self):
-        """Return a list of primary notification emails."""
-        return [email.strip() for email in self.notify_emails.split(",")]
-
-    def notify_cc_emails_list(self):
-        """Return a list of CC notification emails."""
-        return [email.strip() for email in self.notify_cc_emails.split(",")]
-
-    def notify_bcc_emails_list(self):
-        """Return a list of BCC notification emails."""
-        return [email.strip() for email in self.notify_bcc_emails.split(",")]
-
-    def active_return(self):
-        """Return 'Yes' if opportunity owner is notified, else 'No'."""
-        return "Yes" if self.notify_opportunity_owner else "No"
-
-    def probality_return(self):
-        """Return the trigger probability as a percentage string."""
-        return f"{self.trigger_probability} %"

@@ -1,20 +1,29 @@
+"""
+Views related to Role management in Horilla Core.
+"""
+
+# Standard library imports
 from functools import cached_property
 from urllib.parse import urlencode
 
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
 
+from horilla.auth.models import User
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_core.filters import UserFilter
 from horilla_core.forms import AddUsersToRoleForm
-from horilla_core.models import HorillaUser, Role
+from horilla_core.models import Role
 from horilla_generics.views import (
     HorillaListView,
     HorillaNavView,
@@ -26,6 +35,9 @@ from horilla_utils.middlewares import _thread_local
 
 @method_decorator(htmx_required, name="dispatch")
 class AddRole(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    View to create or edit a Role
+    """
 
     model = Role
     fields = ["role_name", "parent_role", "description"]
@@ -43,12 +55,18 @@ class AddRole(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """
+        Determine the form URL based on whether editing or creating a role.
+        """
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:edit_roles_view", kwargs={"pk": pk})
         return reverse_lazy("horilla_core:create_roles_view")
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET request to display the role form.
+        """
         pk = kwargs.get("pk")
         if pk:
             try:
@@ -60,6 +78,9 @@ class AddRole(LoginRequiredMixin, HorillaSingleFormView):
         return super().get(request, *args, **kwargs)
 
     def get_initial(self):
+        """
+        Set initial data for the form, particularly the parent_role if provided.
+        """
         initial = super().get_initial()
         role_id = self.request.GET.get("role_id")
         role = Role.objects.filter(pk=role_id).first()
@@ -67,22 +88,25 @@ class AddRole(LoginRequiredMixin, HorillaSingleFormView):
             initial["parent_role"] = role
         return initial
 
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse("<script>$('#reloadButton').click();closeModal();</script>")
-
 
 @method_decorator(htmx_required, name="dispatch")
 class AddUserToRole(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    View to add users to a Role
+    """
 
-    model = HorillaUser
+    model = User
     form_class = AddUsersToRoleForm
     full_width_fields = ["role", "users"]
     modal_height = False
     form_url = reverse_lazy("horilla_core:add_user_to_roles_view")
     hidden_fields = ["role"]
+    save_and_new = False
 
     def get_initial(self):
+        """
+        Set initial data for the form, particularly the role if provided.
+        """
         initial = super().get_initial()
         role_id = self.request.GET.get("role_id")
         role = Role.objects.filter(pk=role_id).first()  # Get the first object or None
@@ -91,6 +115,9 @@ class AddUserToRole(LoginRequiredMixin, HorillaSingleFormView):
         return initial
 
     def form_valid(self, form):
+        """
+        Handle valid form submission to add users to the role.
+        """
         users = form.save(commit=True)
         messages.success(
             self.request,
@@ -103,11 +130,17 @@ class AddUserToRole(LoginRequiredMixin, HorillaSingleFormView):
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class RoleUsersListView(LoginRequiredMixin, HorillaListView):
+    """
+    List view to display users in a specific role
+    """
 
-    model = HorillaUser
+    model = User
     filterset_class = UserFilter
     table_width = False
     view_id = "user-roles"
@@ -116,21 +149,40 @@ class RoleUsersListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("horilla_core:view_user_in_role")
     bulk_delete_enabled = False
     bulk_update_fields = ["role"]
+    save_to_list_option = False
+    filter_url_push = False
 
     def get_queryset(self):
+        """
+        Filter the queryset to only include users in the specified role.
+        """
         queryset = super().get_queryset()
         role_id = self.request.GET.get("role_id")
-        queryset = queryset.filter(role=role_id)
-        return queryset
+        if role_id:
+            try:
+                Role.objects.get(pk=role_id)
+                queryset = queryset.filter(role=role_id)
+                return queryset
+            except Exception:
+                messages.error(self.request, _("The requested role does not exist."))
+                return HttpResponse(
+                    "<script>$('#reloadButton').click();closeContentModal();</script>"
+                )
+        return queryset.none()
 
     @cached_property
     def col_attrs(self):
+        """
+        Define column attributes, including HTMX attributes for interactivity.
+        """
         query_params = self.request.GET.dict()
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
         query_string = urlencode(query_params)
-        if self.request.user.has_perm("horilla_core.view_horillauser"):
+        if self.request.user.has_perm(
+            f"{User._meta.app_label}.view_{User._meta.model_name}"
+        ):
             htmx_attrs = {
                 "hx-get": f"{{get_detail_view_url}}?{query_string}",
                 "hx-target": "#role-container",
@@ -152,49 +204,76 @@ class RoleUsersListView(LoginRequiredMixin, HorillaListView):
     columns = [
         (_("Users"), "get_avatar_with_name"),
     ]
-
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.delete_role"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                    hx-post="{get_delete_user_from_role}"
-                    hx-target="#deleteModeBox"
-                    hx-swap="innerHTML"
-                    hx-trigger="confirmed"
-                    hx-on:click="hxConfirm(this,'Are you sure you want to delete the user from this role?')"
-                    hx-on::after-request="$('#reloadMessagesButton').click();"
-                """,
-                }
-            )
-        return actions
+    actions = [
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_role",
+            "attrs": """
+                hx-post="{get_delete_user_from_role}"
+                hx-target="#deleteModeBox"
+                hx-swap="innerHTML"
+                hx-trigger="confirmed"
+                hx-on:click="hxConfirm(this,'Are you sure you want to delete the user from this role?')"
+                hx-on::after-request="$('#reloadMessagesButton').click();"
+            """,
+        }
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class UsersInRoleView(LoginRequiredMixin, TemplateView):
+    """
+    Detail view to display users in a specific role
+    """
 
     template_name = "role/view_user.html"
 
+    def get(self, request, *args, **kwargs):
+        """
+        Handle GET request and validate role_id.
+        """
+        role_id = request.GET.get("role_id")
+
+        if not role_id:
+            messages.error(request, _("Please select a role to continue."))
+            return HttpResponse(
+                "<script>$('#reloadButton').click();closeContentModal()</script>"
+            )
+
+        try:
+            Role.objects.get(pk=role_id)
+            return super().get(request, *args, **kwargs)
+        except Exception:
+            messages.error(request, _("The requested role does not exist."))
+            return HttpResponse(
+                "<script>$('#reloadButton').click();closeContentModal()</script>"
+            )
+
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("horilla_core.view_horillauser"), name="dispatch"
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
 )
 class RoleUsersNavView(LoginRequiredMixin, HorillaNavView):
+    """
+    Nav view to display users in a specific role
+    """
 
     search_url = reverse_lazy("horilla_core:view_user_in_role_list_view")
     main_url = reverse_lazy("horilla_core:view_user_in_role")
     filterset_class = UserFilter
-    model_name = "HorillaUser"
+    model_name = str(User.__name__)
     model_app_label = "horilla_core"
     nav_width = False
     gap_enabled = False
@@ -204,8 +283,12 @@ class RoleUsersNavView(LoginRequiredMixin, HorillaNavView):
     reload_option = False
     border_enabled = False
     navbar_indication = True
+    search_push_url = False
 
     def get_context_data(self, **kwargs):
+        """
+        Add role information to the context data.
+        """
         context = super().get_context_data(**kwargs)
         role_id = self.request.GET.get("role_id")
         role = Role.objects.filter(pk=role_id).first()
@@ -226,10 +309,13 @@ class DeleteUserFromRole(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Handle POST request to remove a user from a role.
+        """
         user_id = kwargs.get("pk")
         try:
-            user = get_object_or_404(HorillaUser, pk=user_id)
-        except:
+            user = get_object_or_404(User, pk=user_id)
+        except Exception:
             messages.error(request, _("The requested user does not exist."))
             return HttpResponse(
                 "<script>$('#reloadButton').click();closeDeleteModeModal();closeContentModal();</script>"
@@ -255,11 +341,16 @@ class DeleteUserFromRole(LoginRequiredMixin, View):
     name="dispatch",
 )
 class RoleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    View to delete a Role
+    """
 
     model = Role
 
     def get_post_delete_response(self):
-
+        """
+        Handle post-delete response to refresh the role list.
+        """
         return HttpResponse(
             "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
         )

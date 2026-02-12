@@ -1,7 +1,6 @@
 """App configuration for the contacts module."""
 
 from django.apps import AppConfig
-from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
 
@@ -45,7 +44,7 @@ class ContactsConfig(AppConfig):
             urlpatterns.append(
                 path("contacts/", include("horilla_crm.contacts.urls")),
             )
-
+            __import__("horilla_crm.contacts.registration")  # noqa: F401
             __import__("horilla_crm.contacts.menu")  # noqa: F401
             __import__("horilla_crm.contacts.signals")  # noqa:F401
             __import__("horilla_crm.contacts.dashboard")

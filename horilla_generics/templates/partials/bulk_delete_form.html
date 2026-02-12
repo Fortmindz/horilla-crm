@@ -81,7 +81,7 @@
                                                 onclick="event.preventDefault();"
                                                     hx-trigger='confirmed'
                                                     hx-on:click = "hxConfirmForm(this,'Are you sure you want to hard delete this dependency ? ');">
-                                                    <img src="{% static 'assets/icons/a4-red.svg' %}" alt="" width="17" />
+                                                    <img src="{% static 'assets/icons/a4-red.svg' %}" alt="{% trans 'Delete' %}" width="17" />
                                                 </button>
                                             </form>
                                         </div>
@@ -120,7 +120,7 @@
                 class="text-sm px-6 py-2 bg-[#21b442] text-white rounded-md hover:bg-[#198230] transition duration-300" hx-indicator="#confirm-delete-spinner">
                 <span class="flex items-center gap-2">
                     <span id="confirm-delete-spinner" class="htmx-indicator">
-                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                        <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                     </span>
                    {% trans " Confirm Delete" %}
                 </span>

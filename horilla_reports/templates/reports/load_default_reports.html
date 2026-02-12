@@ -5,7 +5,7 @@
     <div class="flex justify-between items-center mb-3">
         <h2 class="text-md font-semibold">{% trans "Select Default Reports" %}</h2>
         <button type="button" onclick="closeModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     {% if reports %}

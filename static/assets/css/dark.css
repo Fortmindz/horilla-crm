@@ -33,7 +33,7 @@ body.dark .nav-link img {
 }
 body.dark .bg-primary-100,
 body.dark .select2-dropdown,
-body.dark .bg-\[\#f0f0f0\],
+body.dark .bg-dark-25,
 body.dark .bg-yellow-50,
 body.dark div:where(.swal2-popup),
 body.dark .bg-\[\#f1f1f1\],
@@ -132,7 +132,7 @@ body.dark .dropdown-content a:hover {
 body.dark button.text-gray-500 img,
 body.dark #profile-edit-btn img,
 body.dark #navBar img,
-body.dark .bg-\[\#f0f0f0\] img,
+body.dark .bg-dark-25 img,
 body.dark #dropdownLeftEndButton img,
 body.dark
   .after\:bg-\[url\(\/static\/assets\/icons\/right-arrow\.svg\)\]::after,
@@ -147,6 +147,11 @@ body.dark button.absolute img,
 body.dark .dropdown-wrapper .text-gray-600 img,
 body.dark .cursor-pointer img {
   filter: brightness(0) invert(1);
+}
+body.dark .svg-themed,
+body.dark button .svg-themed,
+body.dark button.cursor-pointer .svg-themed {
+  filter: none !important;
 }
 body.dark #settings-sidebar .border-t:first-child {
   border-color: transparent !important;

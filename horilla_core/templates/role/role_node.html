@@ -1,14 +1,15 @@
 {% load horilla_tags i18n %}
 
-{% has_perm "horilla_core.add_horillauser" as can_add_user_role %}
+{% get_user_model_meta as user_meta %}
+{% has_perm user_meta.app_label|add:".add_"|add:user_meta.model_name as can_add_user_role %}
 {% has_perm "horilla_core.add_role" as can_add_role %}
-{% has_perm "horilla_core.view_horillauser" as can_view_user %}
+{% has_perm user_meta.app_label|add:".view_"|add:user_meta.model_name as can_view_user %}
 {% has_perm "horilla_core.delete_role" as can_delete_role %}
 
 
 <li data-role-id="{{ role.id }}">
   <a href="javascript:void(0);">
-    <div class="member-view-box">
+    <div class="member-view-box bg-primary-400 border-primary-500">
       <div class="member-header whitespace-nowrap">
         {{ role.name }}
       </div>

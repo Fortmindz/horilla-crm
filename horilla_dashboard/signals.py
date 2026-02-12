@@ -1,27 +1,8 @@
-from django.db.models.signals import post_save, pre_save
-from django.dispatch import receiver
+"""
+Signal handlers for the horilla_dashboard app.
 
-from horilla_core.models import HorillaUser
-from horilla_keys.models import ShortcutKey
+This module contains Django signal receivers related to dashboard lifecycle
+events (e.g., pre/post-save behavior).
+"""
 
-
-# Define your horilla_dashboard signals here
-@receiver(post_save, sender=HorillaUser)
-def create_dashboard_shortcuts(sender, instance, created, **kwargs):
-    predefined = [
-        {
-            "page": "/horilla_dashboard/dashboard-list-view/",
-            "key": "D",
-            "command": "alt",
-        },
-    ]
-
-    for item in predefined:
-        if not ShortcutKey.objects.filter(user=instance, page=item["page"]).exists():
-            ShortcutKey.objects.create(
-                user=instance,
-                page=item["page"],
-                key=item["key"],
-                command=item["command"],
-                company=instance.company,
-            )
+# Currently, there are no signal handlers defined for this app.

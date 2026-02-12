@@ -1,7 +1,29 @@
+"""
+Fiscal Year management views for Horilla Core.
+
+This module contains views and HTMX endpoints to handle:
+- Creation and editing of Fiscal Year configurations
+- Dynamic form field updates based on fiscal year type
+- Calendar previews for fiscal years
+- Week start day calculations
+- Fiscal Year instance navigation and display
+
+Classes:
+    - FiscalYearFormView
+    - FiscalYearFieldsView
+    - CalculateWeekStartDayView
+    - FiscalYearCalendarPreviewView
+    - FiscalYearCalendarView
+"""
+
+# Standard library
 import calendar
 from datetime import datetime
 from functools import cached_property
 
+from django.contrib import messages
+
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.template.loader import render_to_string
@@ -12,6 +34,7 @@ from django.views import View
 from django.views.generic import DetailView
 from django.views.generic.edit import FormView
 
+# First-party / Horilla imports
 from horilla.exceptions import HorillaHttp404
 from horilla_core.decorators import htmx_required
 from horilla_core.forms import FiscalYearForm
@@ -23,7 +46,10 @@ from horilla_generics.views import HorillaSingleFormView
 @method_decorator(htmx_required, name="dispatch")
 class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
     """
-    Form view for fiscal year with dynamic field rendering
+    Form view for creating or editing a Fiscal Year configuration.
+
+    Dynamically renders form fields based on the fiscal year type
+    (standard or custom) and calculates preview data for display.
     """
 
     model = FiscalYear
@@ -37,6 +63,7 @@ class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
         "period_display_option",
     ]
     template_name = "settings/fiscal_year_form.html"
+    save_and_new = False
 
     def get_fields(self):
         """Return fields based on fiscal year type"""
@@ -48,7 +75,8 @@ class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
 
         if fiscal_year_type == "standard":
             return base_fields + ["start_date_month", "display_year_based_on"]
-        elif fiscal_year_type == "custom":
+
+        if fiscal_year_type == "custom":
             return base_fields + [
                 "format_type",
                 "quarter_based_format",
@@ -60,11 +88,14 @@ class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
                 "number_weeks_by",
                 "period_display_option",
             ]
-        else:
-            return base_fields + ["format_type"]
+
+        return base_fields + ["format_type"]
 
     @cached_property
     def form_url(self):
+        """
+        Resolve form submission URL for create or update operation.
+        """
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("horilla_core:fiscal_year_form_edit", kwargs={"pk": pk})
@@ -206,6 +237,9 @@ class FiscalYearFieldsView(LoginRequiredMixin, FormView):
     template_name = "settings/fiscal_year_fields.html"
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET request for FiscalYearFieldsView class
+        """
         fiscal_year_type = request.GET.get("fiscal_year_type", "")
         format_type = request.GET.get("format_type", "")
         year_based_format = request.GET.get("year_based_format", "")
@@ -232,12 +266,13 @@ class FiscalYearFieldsView(LoginRequiredMixin, FormView):
             "display_year_based_on": request.GET.get("display_year_based_on", ""),
             "number_weeks_by": request.GET.get("number_weeks_by", ""),
         }
+
         if fiscal_year_obj:
-            form = FiscalYearForm(
-                instance=fiscal_year_obj, data=form_data if request.GET else None
-            )
+            form = FiscalYearForm(instance=fiscal_year_obj, data=form_data)
         else:
-            form = FiscalYearForm(initial=form_data if fiscal_year_type else {})
+            form = FiscalYearForm(data=form_data if fiscal_year_type else None)
+
+        form.errors.clear()
 
         preview_data = self.calculate_preview_data(
             fiscal_year_type,
@@ -345,6 +380,11 @@ class CalculateWeekStartDayView(LoginRequiredMixin, View):
     """
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET request to calculate the week start day for a given start date.
+
+        Returns an HTMX-rendered partial template with the selected week start day.
+        """
         start_date_month = request.GET.get("start_date_month")
         start_date_day = request.GET.get("start_date_day")
         current_year = datetime.now().year  # Use current year or allow passing a year
@@ -382,13 +422,13 @@ class CalculateWeekStartDayView(LoginRequiredMixin, View):
                     date_obj = datetime(current_year, month, day)
                     day_of_week = date_obj.weekday()
                     day_mapping = {
-                        0: "monday",
-                        1: "tuesday",
-                        2: "wednesday",
-                        3: "thursday",
-                        4: "friday",
-                        5: "saturday",
-                        6: "sunday",
+                        0: "mon",
+                        1: "tue",
+                        2: "wed",
+                        3: "thu",
+                        4: "fri",
+                        5: "sat",
+                        6: "sun",
                     }
                     selected_day = day_mapping.get(day_of_week, "")
 
@@ -406,9 +446,16 @@ class CalculateWeekStartDayView(LoginRequiredMixin, View):
 class FiscalYearCalendarPreviewView(
     LoginRequiredMixin, FormView, FiscalYearCalendarMixin
 ):
+    """
+    HTMX endpoint to preview the fiscal year calendar based on user selections.
+    """
+
     template_name = "settings/fiscal_year_calendar_preview.html"
 
     def get(self, request, *args, **kwargs):
+        """
+        Handle GET request
+        """
         fiscal_year_data = {
             "fiscal_year_type": request.GET.get("fiscal_year_type", "standard"),
             "format_type": request.GET.get("format_type", ""),
@@ -439,9 +486,24 @@ class FiscalYearCalendarPreviewView(
 
 @method_decorator(htmx_required, name="dispatch")
 class FiscalYearCalendarView(LoginRequiredMixin, DetailView, FiscalYearCalendarMixin):
+    """
+    Detailed view for a Fiscal Year and its instances with calendar visualization.
+    """
+
     model = FiscalYear
     template_name = "settings/fiscal_calendar.html"
     context_object_name = "fiscal_year"
+
+    def get(self, request, *args, **kwargs):
+        pk = self.kwargs.get("pk")
+        try:
+            FiscalYear.objects.get(pk=pk)
+        except Exception as e:
+            messages.error(self.request, str(e))
+            return HttpResponse(
+                "<script>$('#tab-fiscal-year-view').click();closeCalendarPreviewModal()</script>"
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_object(self, queryset=None):
         pk = self.kwargs.get(self.pk_url_kwarg)
@@ -538,8 +600,6 @@ class FiscalYearCalendarView(LoginRequiredMixin, DetailView, FiscalYearCalendarM
                 self.template_name, context, request=self.request
             )
             return HttpResponse(rendered)
-        else:
-            rendered = render_to_string(
-                self.template_name, context, request=self.request
-            )
-            return HttpResponse(rendered)
+
+        rendered = render_to_string(self.template_name, context, request=self.request)
+        return HttpResponse(rendered)

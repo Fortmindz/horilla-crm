@@ -1,8 +1,10 @@
 """Models for horilla_dashboard app."""
 
+# Standard library imports
 import json
 import logging
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.conf import settings
 from django.core.validators import MinValueValidator
@@ -11,8 +13,9 @@ from django.urls import reverse_lazy
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
-from horilla.registry.feature import feature_enabled
 from horilla.registry.permission_registry import permission_exempt_model
+
+# First-party / Horilla imports
 from horilla.utils.choices import OPERATOR_CHOICES
 from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
 from horilla_dashboard.methods import limit_content_types
@@ -22,7 +25,6 @@ from horilla_utils.methods import render_template
 logger = logging.getLogger(__name__)
 
 
-@feature_enabled(global_search=True)
 class DashboardFolder(HorillaCoreModel):
     """Model for organizing horilla_dashboard in folders"""
 
@@ -86,7 +88,6 @@ class DashboardFolder(HorillaCoreModel):
         )
 
 
-@feature_enabled(global_search=True)
 class Dashboard(HorillaCoreModel):
     """Main dashboard model"""
 
@@ -181,6 +182,7 @@ class Dashboard(HorillaCoreModel):
         )
 
     def is_default_col(self):
+        """Return rendered HTML indicating whether this dashboard is the default."""
 
         html = render_template(
             path="is_default_dashboard.html", context={"instance": self}
@@ -444,7 +446,13 @@ class DashboardComponent(HorillaCoreModel):
                             and field.many_to_one,
                         }
                     )
-                except:
+                except Exception as e:
+                    logger.warning(
+                        "Could not get field '%s' for model '%s': %s",
+                        column,
+                        model.__name__,
+                        e,
+                    )
                     columns_with_headers.append(
                         {
                             "field": column,

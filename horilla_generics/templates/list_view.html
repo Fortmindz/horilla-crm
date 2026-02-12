@@ -4,13 +4,15 @@
 <style>
     .htmx-indicator{
         display:none;
-
+        pointer-events: none;
     }
     .htmx-request .htmx-indicator{
-        display:inline;
+        display:flex !important;
+        pointer-events: auto;
     }
     .htmx-request.htmx-indicator{
-        display:inline;
+        display:flex !important;
+        pointer-events: auto;
     }
     .pagination-indicator{
         display:none;
@@ -23,13 +25,15 @@
     }
 
 </style>
-<div id="{{ view_id|safe }}">
-    <div id="messages-container" style="display: none;">
-        {% for message in messages %}
-            <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-        {% endfor %}
-    </div>
-    <button id="reloadButton"  hidden hx-get="{{ request.path }}?{{request.GET.urlencode}}" hx-target="#{{ view_id|safe }}" hx-trigger="click" hx-swap="outerHTML" hx-select="#{{ view_id|safe }}">click</button>
+<div id="{{ view_id|safe }}" style="position: relative;">
+    <div id="loading-indicator" class="htmx-indicator tabloading" style="z-index: 30;">
+        <div class="flex justify-center items-center p-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+        </div>
+      </div>
+      {% include "messages.html" %}
+    <button id="reloadButton"  hidden hx-get="{{ request.path }}?{{request.GET.urlencode}}" hx-target="#{{ view_id|safe }}" hx-trigger="click" hx-swap="outerHTML" hx-select="#{{ view_id|safe }}"  hx-indicator="#loading-indicator">click</button>
+
     {% if filter_set_class %}
         {% include "filterpanel.html" %}
     {% endif %}
@@ -42,11 +46,16 @@
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-md font-semibold">{% trans 'Select Columns to Export (Optional)'%}</h2>
                     <button onclick="closeExport()" class="text-gray-500 hover:text-gray-500 text-xl cursor-pointer">
-                        <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+                        <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
                     </button>
                 </div>
 
-                <form id="exportForm" action="{{ search_url }}" method="POST">
+                <form id="exportForm"
+                      hx-post="{{ search_url }}"
+                      hx-ext="download"
+                      hx-trigger="submit"
+                      hx-swap="none"
+                      hx-indicator="#exportSpinner">
                     {% csrf_token %}
                     <label for="exportFormat" class="text-xs text-color-600">{% trans 'Export Format'%}</label>
                     <div class="flex w-full">
@@ -93,8 +102,9 @@
                     <input type="hidden" id="exportRecordIds" name="record_ids">
 
                     <div class="flex justify-end gap-2">
-                        <button type="submit"  onclick="closeExport();$('.unselect-all-btn').click();"
-                            class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-800" hx-indicator="#exportSpinner">
+                        <button type="submit"
+                                onclick="closeExport();$('.unselect-all-btn').click();"
+                                class="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-800">
                             <span class="flex items-center gap-2">
                                     {% trans 'Export'%}
                             </span>
@@ -133,7 +143,7 @@
                                 id="export-all-btn-{{ view_id|safe }}"
                                 style="display: none;">
                                 <i class="fa-solid fa-file pe-1"></i>
-                                {% trans 'Export Selected'%}
+                                {% trans 'Export Selected' %}
                             </button>
                         {% endif %}
 
@@ -160,7 +170,11 @@
 
                         {% if bulk_delete_enabled %}
                             {% has_perm app_label|add:".delete_"|add:model_name|lower as has_delete_perm %}
-                            {% if has_delete_perm %}
+                            {% has_perm app_label|add:".delete_own_"|add:model_name|lower as has_delete_own_perm %}
+                            {% has_perm app_label|add:".view_"|add:model_name|lower as has_view_perm %}
+                            {% has_perm app_label|add:".view_own_"|add:model_name|lower as has_view_own_perm %}
+
+                            {% if has_view_perm and has_delete_perm or has_delete_own_perm and has_view_own_perm %}
                                 <button
                                     class="text-xs px-4 py-2 bg-[#c0392b26] rounded-md hover:bg-[#c0392b] transition duration-300 text-[#c0392b]  border border-[#c0392b42] hover:text-[white]"
                                     hx-post="{{ search_url }}"
@@ -332,9 +346,22 @@
                             {% endfor %}
 
                             {% if visible_actions or action_method %}
-                                <th class="sticky top-0 right-0 font-bold text-left p-3 {% if table_class %} bg-primary-300 text-sm  {% else %} text-[.8rem] bg-white font-bold border-[.3px] border-[#e9e9e9] text-left p-2 rounded-tr-md {% endif %} z-50 w-[180px]">
-                                    {% trans 'Actions' %}
-                                </th>
+                                {% if visible_actions %}
+                                    {% has_any_actions_for_queryset visible_actions queryset as show_actions_column %}
+                                    {% if use_dropdown %}
+                                        {% has_any_actions_for_queryset dropdown_actions queryset as show_dropdown_actions %}
+                                    {% endif %}
+
+                                    {% if show_actions_column or show_dropdown_actions %}
+                                        <th class="sticky top-0 right-0 font-bold text-left p-3 {% if table_class %} bg-primary-300 text-sm  {% else %} text-[.8rem] bg-white font-bold border-[.3px] border-[#e9e9e9] text-left p-2 rounded-tr-md {% endif %} z-50 w-[180px]">
+                                            {% trans 'Actions' %}
+                                        </th>
+                                    {% endif %}
+                                {% else %}
+                                    <th class="sticky top-0 right-0 font-bold text-left p-3 {% if table_class %} bg-primary-300 text-sm  {% else %} text-[.8rem] bg-white font-bold border-[.3px] border-[#e9e9e9] text-left p-2 rounded-tr-md {% endif %} z-50 w-[180px]">
+                                        {% trans 'Actions' %}
+                                    </th>
+                                {% endif %}
                             {% endif %}
                         </tr>
                     </thead>
@@ -344,7 +371,7 @@
                 </table>
                 <div id="loadingIndicator" class="pagination-indicator">
                     <div class="flex justify-center items-center p-4">
-                        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#e54f38]"></div>
+                        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
                     </div>
                 </div>
             </div>
@@ -353,9 +380,9 @@
         {% if no_record_section %}
             <div class="flex justify-between items-center {% if table_width %} h-20 {% endif %}">
             </div>
-            <img
-                src="{% static 'assets/img/not-found.svg' %}"
-                alt="" class="w-60  m-auto mb-4 mt-5"
+            <img src="{% static no_found_img|default:'assets/img/not-found.svg' %}"
+                alt="404"
+                class="w-60 m-auto mb-4 mt-5"
             />
             {% if view_type|slice:":11" == "saved_list_" %}
                 <p class="text-sm text-center pb-3">
@@ -393,10 +420,10 @@
                         hx-get="{{ no_record_add_button.url }}"
                         hx-target="{{ no_record_add_button.target|default:'#modalBox' }}"
                         hx-swap="{{ no_record_add_button.swap|default:'innerHTML' }}"
-                        onclick="{{ no_record_add_button.after_request|default:'openModal()' }}"
+                        onclick="{{ no_record_add_button.onclick|default:'openModal()' }}"
                         class="{{ no_record_add_button.class|default:'text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white] m-auto flex' }}"
                         {% if no_record_add_button.attrs %}{{ no_record_add_button.attrs|safe }}{% endif %}>
-                        {{ no_record_add_button.title|default:" Add New" }}
+                        {{ no_record_add_button.title|default:_("Add New") }}
                     </button>
                 {% endif %}
             {% endif %}

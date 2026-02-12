@@ -5,7 +5,7 @@
     <div class="flex justify-between items-center mb-2">
         <h2 class="text-md font-semibold">Import {{selected_module }}</h2>
         <button type="button" onclick="closeModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     {% endif %}
@@ -62,7 +62,7 @@
                     <div class="col-span-6">
                         <div class="flex flex-col gap-1">
                             <label for="" class="text-xs text-color-600">{% trans "Import Name" %}</label>
-                            <input type="text" name="import_name" placeholder="Enter Import Name"
+                            <input type="text" name="import_name" placeholder="{% trans "Enter Import Name" %}"
                                 value="{{ selected_import_name|default:'' }}"
                                 class="text-color-600 mt-1 px-2 py-[7px] placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-[3px] focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" required>
                         </div>

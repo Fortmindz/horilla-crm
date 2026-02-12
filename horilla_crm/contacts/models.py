@@ -2,6 +2,7 @@
 Models for managing contacts in the CRM system, including contact details,
 """
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.conf import settings
 from django.db import models
@@ -9,12 +10,12 @@ from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from djmoney.settings import CURRENCY_CHOICES
 
-from horilla.registry.feature import feature_enabled
 from horilla.utils.choices import LANGUAGE_CHOICES
+
+# First-party / Horilla imports
 from horilla_core.models import HorillaCoreModel
-from horilla_core.utils import compute_score
+from horilla_crm.leads.utils import compute_score
 from horilla_utils.middlewares import _thread_local
 
 CONTACT_SOURCE_CHOICES = [
@@ -26,7 +27,6 @@ CONTACT_SOURCE_CHOICES = [
 ]
 
 
-@feature_enabled(all=True)
 class Contact(HorillaCoreModel):
     """Django model for Contact object."""
 
@@ -117,7 +117,6 @@ class Contact(HorillaCoreModel):
         this method is to get related account delete url
         """
         try:
-            contact = None
             request = getattr(_thread_local, "request", None)
             if request and hasattr(request, "resolver_match"):
                 object_id = request.resolver_match.kwargs.get("pk")
@@ -167,6 +166,14 @@ class Contact(HorillaCoreModel):
         """
 
         return reverse_lazy("contacts:contact_change_owner", kwargs={"pk": self.pk})
+
+    def get_duplicate_url(self):
+        """
+        This method to get edit url
+        """
+        return reverse_lazy(
+            "contacts:contact_single_update_form", kwargs={"pk": self.pk}
+        )
 
     def get_detail_url(self):
         """

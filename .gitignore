@@ -153,3 +153,6 @@ whoosh_index/
 
 #PyCharm
 .idea/
+
+.init_password
+.encryption_key

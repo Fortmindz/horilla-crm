@@ -1,10 +1,10 @@
 {% load static %}
 {% load i18n %}
 {% load horilla_tags %}
-<div class="relative bg-white rounded-lg shadow-sm">
+<div id="{{ view_id|safe }}-multi-container" class="relative bg-white rounded-lg shadow-sm">
     <form method="post" hx-post="{{ form_url }}?{{ request.GET.urlencode }}" autocomplete="off"
-        hx-target="#modalBox"
-        hx-swap="innerHTML"
+        hx-target="#{{ view_id|safe }}-multi-container"
+        hx-swap="outerHTML"
         enctype="multipart/form-data"
         class="w-full">
         {% csrf_token %}
@@ -13,7 +13,7 @@
             <h2 class="text-lg font-semibold">{{ form_title }}</h2>
 
             <a id="modalCloseButton" onclick="closeModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-                <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+                <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
             </a>
         </div>
 
@@ -22,7 +22,7 @@
             <ul class="flex gap-2 text-sm font-normal text-gray-500">
                 <li>
                     <a
-                       class="inline-flex items-center px-3 py-1 rounded-sm w-full text-xs text-white bg-primary-600"
+                       class="inline-flex items-center px-3 py-1 rounded-sm w-full text-xs text-white bg-primary-600 cursor-pointer"
                        hx-get="{{ form_url }}"
                        hx-target="#modalBox"
                        hx-swap="innerHTML">
@@ -31,7 +31,7 @@
                 </li>
                 <li>
                     <a
-                       class="inline-flex items-center px-3 py-1 rounded-sm w-full text-xs bg-primary-200 text-primary-600"
+                       class="inline-flex items-center px-3 py-1 rounded-sm w-full text-xs bg-primary-200 text-primary-600 cursor-pointer"
                        hx-get="{{ single_step_url }}?{{ request.GET.urlencode }}"
                        hx-target="#modalBox"
                        hx-swap="innerHTML">
@@ -47,7 +47,7 @@
                 {% for i in total_steps|get_range %}
                     <li class="{% if i <= current_step %}active{% endif %}">
                         <div class="sec {% if i >= 2 and i != total_steps %} flex [flex-flow:column] items-center{% elif i == total_steps %}flex [flex-flow:column] items-end {% endif %}">
-                            <span class="bg-[#e54f38] h-[30px] w-[30px] flex items-center justify-center rounded-[50px] text-[white]">{{ i }}</span>
+                            <span class="bg-primary-600 h-[30px] w-[30px] flex items-center justify-center rounded-[50px] text-[white]">{{ i }}</span>
                             <p class="text-[.8rem] mb-0">{{ step_titles|get_item:i }}</p>
                         </div>
                     </li>
@@ -64,14 +64,43 @@
                     {% endfor %}
                 </div>
             {% endif %}
+            <!-- Render all hidden fields -->
+            {% for field in form %}
+                {% if field.is_hidden %}
+                    {{ field }}
+                {% endif %}
+            {% endfor %}
+            <!-- Display errors for hidden fields -->
+            {% for field in form %}
+                {% if field.is_hidden and field.errors %}
+                    <div class="flex gap-1bg-red-50 text-red-500 px-4 py-3 rounded-lg text-sm mb-4">
+                        <strong>
+                            {% if field.label %}
+                                {{ field.label }}
+                            {% else %}
+                                {{ field.name|title }}
+                            {% endif %}:
+                        </strong>
+                        {% for error in field.errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
             <div class="grid md:grid-cols-2 grid-cols-1 gap-4 h-[300px] md:h-auto  overflow-hidden overflow-y-auto pe-2 md:pe-0">
                 {% for field in form|get_fields_for_step:current_step %}
+                    {% with field_perm=field_permissions|get_item:field.name|default:"readwrite" %}
+                    {% comment %} Skip hidden fields, but show mandatory fields in create mode {% endcomment %}
+                    {% if field_perm != "hidden" or not is_edit and field.field.required %}
                     <div class="{% if field.field.widget.attrs.fullwidth %}col-span-2{% else %}{% if field.field.widget.input_type == 'checkbox' %}text-sm flex items-center gap-2 relative{% else %}flex flex-col{% endif %}{% endif %}">
                         {% if field.field.widget.input_type == 'checkbox' %}
                             <label class="inline-flex items-center cursor-pointer">
                                 <span class="me-3 text-xs text-color-600">
                                     {{ field.label }}
                                     {% if field.field.required %}<span class="text-red-500">*</span>{% endif %}
+                                    {% if field.field.widget.attrs.readonly or field.field.widget.attrs.data_readonly or field.field.widget.attrs.disabled or field.field.widget.attrs.data_disabled %}
+                                        <span class="ml-2 text-xs text-gray-500 italic">(Read Only)</span>
+                                    {% endif %}
                                 </span>
                                 {{ field }}
                                 <div class="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-primary-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
@@ -82,6 +111,9 @@
                                 <span class="me-3 text-xs text-color-600">
                                     {{ field.label }}
                                     {% if field.field.required %}<span class="text-red-500">*</span>{% endif %}
+                                    {% if field.field.widget.attrs.readonly or field.field.widget.attrs.data_readonly or field.field.widget.attrs.disabled or field.field.widget.attrs.data_disabled %}
+                                        <span class="ml-2 text-xs text-gray-500 italic">(Read Only)</span>
+                                    {% endif %}
                                 </span>
                             </label>
                             <div class="w-full">
@@ -180,6 +212,9 @@
                                     <label for="{{ field.id_for_label }}" class="text-xs text-color-600">
                                         {{ field.label }}
                                         {% if field.field.required %}<span class="text-red-500">*</span>{% endif %}
+                                        {% if field.field.widget.attrs.readonly or field.field.widget.attrs.data_readonly or field.field.widget.attrs.disabled or field.field.widget.attrs.data_disabled %}
+                                            <span class="ml-2 text-xs text-gray-500 italic">(Read Only)</span>
+                                        {% endif %}
                                     </label>
                                     {% if field.help_text %}
                                         <span class="group relative ml-1">
@@ -193,19 +228,30 @@
                                     {% endif %}
                                 </div>
                                 {% if field.name in dynamic_create_fields and field.name in related_models_info %}
+                                    {% with initial_data=related_models_info|get_item_form:field.name|get_item_form:'initial' %}
                                     <button type="button"
                                         id="generic-button"
                                         class="whitespace-nowrap text-primary-600 hover:text-primary-800 text-xs font-semibold px-2 py-1 bg-primary-300 rounded border border-primary-200  transition-colors"
-                                        hx-get="{% url 'horilla_generics:dynamic_create' related_models_info|get_item_form:field.name|get_item_form:'app_label' related_models_info|get_item_form:field.name|get_item_form:'model_name' %}?target_field={{ field.name }}&fields={{ dynamic_create_field_mapping|get_item_form:field.name|get_item_form:'fields'|join:',' }}&full_width_fields={{ dynamic_create_field_mapping|get_item_form:field.name|get_item_form:'full_width_fields'|join:',' }}"
+                                        hx-get="{% url 'horilla_generics:dynamic_create' related_models_info|get_item_form:field.name|get_item_form:'app_label' related_models_info|get_item_form:field.name|get_item_form:'model_name' %}?target_field={{ field.name }}&fields={{ dynamic_create_field_mapping|get_item_form:field.name|get_item_form:'fields'|join:',' }}&full_width_fields={{ dynamic_create_field_mapping|get_item_form:field.name|get_item_form:'full_width_fields'|join:',' }}{% if related_models_info|get_item_form:field.name|get_item_form:'permission' %}&permission={{ related_models_info|get_item_form:field.name|get_item_form:'permission' }}{% endif %}{% if initial_data %}{% for key, value in initial_data.items %}&initial_{{ key }}={{ value }}{% endfor %}{% endif %}"
                                         hx-target="#dynamicCreateModalBox"
                                         hx-on:click="openDynamicModal();"
                                         hx-swap="innerHTML"
                                         >
-                                        + Add
+                                        + {% trans "Add" %}
                                     </button>
+                                    {% endwith %}
                                 {% endif %}
                             </div>
-                            {{ field }}
+                            <div class="relative">
+                                {{ field }}
+                                {% if field.field.widget.attrs.readonly or field.field.widget.attrs.data_readonly or field.field.widget.attrs.disabled or field.field.widget.attrs.data_disabled %}
+                                    <div class="absolute right-3 pb-3 transform -translate-y-1/2 pointer-events-none">
+                                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                        </svg>
+                                    </div>
+                                {% endif %}
+                            </div>
                         {% endif %}
                         {% if field.errors %}
                             <div class="text-red-500 text-xs mt-1">
@@ -215,6 +261,8 @@
                             </div>
                         {% endif %}
                     </div>
+                    {% endif %}
+                    {% endwith %}
                 {% endfor %}
             </div>
         </div>
@@ -224,7 +272,7 @@
                 <button type="button" name="previous" value="previous" hx-post="{{ form_url }}"
                         hx-target="#modalBox"
                         hx-swap="innerHTML"
-                        class="text-sm border-[1px] border-[solid] hover:border-[#9b210f] hover:bg-secondary-600 rounded-[5px] px-4 py-2 text-[#e54f38] flex gap-3 btn-with-icon border-[#e54f38] transition-[.3s] hover:text-[white]"
+                        class="text-sm border-[1px] border-[solid] hover:bg-primary-600 rounded-[5px] px-4 py-2 text-primary-600 flex gap-3 btn-with-icon border-primary-600 transition-[.3s] hover:text-[white]"
                         >
                         {% trans "Previous" %}
                 </button>
@@ -236,6 +284,12 @@
                     {% trans "Next" %}
                 </button>
             {% else %}
+                {% if not is_edit and save_and_new %}
+                    <button type="submit" name="save_and_new" value="save_and_new"
+                            class="text-sm px-4 py-2 bg-primary-500 rounded-md hover:bg-primary-600 hover:text-[white] transition duration-300 text-primary-600 border border-primary-600">
+                        {% trans "Save & New" %}
+                    </button>
+                {% endif %}
                 <button type="submit"
                         class="text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white]"
                         >

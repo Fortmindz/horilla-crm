@@ -2,21 +2,26 @@
 Handles campaign-related views, including list, create, update, and delete operations.
 """
 
+# Standard library imports
 import logging
 from functools import cached_property
 from urllib.parse import urlencode
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import FormView, View
 
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
+from horilla_activity.views import HorillaActivitySectionView
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
@@ -32,7 +37,6 @@ from horilla_crm.campaigns.forms import (
 from horilla_crm.campaigns.models import Campaign, CampaignMember
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
-    HorillaActivitySectionView,
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
@@ -88,11 +92,14 @@ class CampaignNavbar(LoginRequiredMixin, HorillaNavView):
         """
         Function to return new button configuration
         """
-        if self.request.user.has_perm("campaigns:add_campaign"):
+        if self.request.user.has_perm(
+            "campaigns:add_campaign"
+        ) or self.request.user.has_perm("campaigns.add_own_campaign"):
             return {
                 "url": f"""{ reverse_lazy('campaigns:campaign_create')}?new=true""",
                 "attrs": {"id": "campaign-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -133,23 +140,17 @@ class CampaignListView(LoginRequiredMixin, HorillaListView):
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
         query_string = urlencode(query_params)
-        attrs = {}
-        if self.request.user.has_perm(
-            "campaigns.view_campaign"
-        ) or self.request.user.has_perm("campaigns.view_own_campaign"):
-            attrs = {
-                "hx-get": f"{{get_detail_view_url}}?{query_string}",
-                "hx-target": "#mainContent",
-                "hx-swap": "outerHTML",
-                "hx-push-url": "true",
-                "hx-select": "#mainContent",
-                "style": "cursor:pointer",
-                "class": "hover:text-primary-600",
-            }
         return [
             {
                 "campaign_name": {
-                    **attrs,
+                    "hx-get": f"{{get_detail_view_url}}?{query_string}",
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
+                    "permission": "campaigns.view_campaign",
+                    "own_permission": "campaigns.view_own_campaign",
+                    "owner_field": "campaign_owner",
                 }
             }
         ]
@@ -162,76 +163,80 @@ class CampaignListView(LoginRequiredMixin, HorillaListView):
         "budget_cost",
     ]
 
-    @cached_property
-    def actions(self):
-        """
-        Function to return list of actions for each record in the list view
-        """
-        actions = []
-
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("campaigns.change_campaign")
-            or (
-                self.get_queryset().filter(campaign_owner=self.request.user).exists()
-                and self.request.user.has_perm("campaigns.change_own_campaign")
-            )
-        )
-
-        if show_actions:
-            actions.extend(
-                [
-                    {
-                        "action": "Edit",
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_edit_campaign_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                    {
-                        "action": "Change Owner",
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_change_owner_url}"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("campaigns.delete_campaign"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
-                            hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
+    campaingn_permissions = {
+        "permission": "campaigns.change_campaign",
+        "own_permission": "campaigns.change_own_campaign",
+        "owner_field": "campaign_owner",
+    }
+    actions = [
+        {
+            **campaingn_permissions,
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "attrs": """
+                        hx-get="{get_edit_campaign_url}?new=true"
+                        hx-target="#modalBox"
+                        hx-swap="innerHTML"
+                        onclick="openModal()"
                         """,
-                    }
-                )
-        return actions
+        },
+        {
+            **campaingn_permissions,
+            "action": "Change Owner",
+            "src": "assets/icons/a2.svg",
+            "img_class": "w-4 h-4",
+            "attrs": """
+                        hx-get="{get_change_owner_url}"
+                        hx-target="#modalBox"
+                        hx-swap="innerHTML"
+                        onclick="openModal()"
+                        """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "campaigns.delete_campaign",
+            "own_permission": "campaigns.delete_own_campaign",
+            "owner_field": "campaign_owner",
+            "attrs": """
+                        hx-post="{get_delete_url}"
+                        hx-target="#deleteModeBox"
+                        hx-swap="innerHTML"
+                        hx-trigger="click"
+                        hx-vals='{{"check_dependencies": "true"}}'
+                        onclick="openDeleteModeModal()"
+                    """,
+        },
+        {
+            "action": _("Duplicate"),
+            "src": "assets/icons/duplicate.svg",
+            "img_class": "w-4 h-4",
+            "permission": "campaigns.add_campaign",
+            "own_permission": "campaigns.add_own_campaign",
+            "owner_field": "campaign_owner",
+            "attrs": """
+                            hx-get="{get_duplicate_url}?duplicate=true"
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            onclick="openModal()"
+                            """,
+        },
+    ]
 
     def no_record_add_button(self):
         """
         Function to return no record add button configuration
         """
-        if self.request.user.has_perm("campaigns.add_campaign"):
+        if self.request.user.has_perm(
+            "campaigns.add_campaign"
+        ) or self.request.user.has_perm("campaigns.add_own_campaign"):
             return {
                 "url": f"""{ reverse_lazy('campaigns:campaign_create')}?new=true""",
                 "attrs": 'id="campaign-create"',
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -268,6 +273,8 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
     main_url = reverse_lazy("campaigns:campaign_view")
     group_by_field = "status"
 
+    actions = CampaignListView.actions
+
     columns = [
         "campaign_name",
         "campaign_owner",
@@ -281,83 +288,24 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
         """
         Function to return attributes for kanban cards
         """
-        query_params = self.request.GET.dict()
+
+        # Build query params
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
+
         query_string = urlencode(query_params)
-        if self.request.user.has_perm(
-            "campaigns.view_campaign"
-        ) or self.request.user.has_perm("campaigns.view_own_campaign"):
-            return f"""
-                    hx-get="{{get_detail_view_url}}?{query_string}"
-                    hx-target="#mainContent"
-                    hx-swap="outerHTML"
-                    hx-push-url="true"
-                    hx-select="#mainContent"
-                    style ="cursor:pointer",
-                    """
 
-    @cached_property
-    def actions(self):
-        """
-        Return list of actions for the detail view
-        """
-        actions = []
-
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("campaigns.change_campaign")
-            or (
-                self.get_queryset().filter(campaign_owner=self.request.user).exists()
-                and self.request.user.has_perm("campaigns.change_own_campaign")
-            )
-        )
-
-        if show_actions:
-            actions.extend(
-                [
-                    {
-                        "action": "Edit",
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_edit_campaign_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                    {
-                        "action": "Change Owner",
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_change_owner_url}"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("campaigns.delete_campaign"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
-                            hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
-                        """,
-                    }
-                )
-        return actions
+        return {
+            "hx-get": f"{{get_detail_view_url}}?{query_string}",
+            "hx-target": "#mainContent",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#mainContent",
+            "permission": "campaigns.view_campaign",
+            "own_permission": "campaigns.view_own_campaign",
+            "owner_field": "campaign_owner",
+        }
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -370,10 +318,11 @@ class CampaignFormView(LoginRequiredMixin, HorillaMultiStepFormView):
     model = Campaign
     fullwidth_fields = ["number_sent", "description"]
     total_steps = 3
+    detail_url_name = "campaigns:campaign_detail_view"
     step_titles = {
-        "1": "Campaign Information",
-        "2": "Financial Information",
-        "3": "Additional Information",
+        "1": _("Campaign Information"),
+        "2": _("Financial Information"),
+        "3": _("Additional Information"),
     }
 
     single_step_url_name = {
@@ -399,7 +348,7 @@ class CampaignSingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     model = Campaign
     form_class = CampaignSingleForm
     full_width_fields = ["description"]
-
+    detail_url_name = "campaigns:campaign_detail_view"
     multi_step_url_name = {
         "create": "campaigns:campaign_create",
         "edit": "campaigns:campaign_edit",
@@ -434,6 +383,7 @@ class CampaignChangeOwnerForm(LoginRequiredMixin, HorillaSingleFormView):
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy("campaigns:campaign_change_owner", kwargs={"pk": pk})
+        return None
 
 
 @method_decorator(
@@ -465,73 +415,7 @@ class CampaignDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailV
 
     tab_url = reverse_lazy("campaigns:campaign_detail_view_tabs")
 
-    @cached_property
-    def actions(self):
-        """
-        Return list of actions for the detail view
-        """
-        actions = []
-
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("campaigns.change_campaign")
-            or (
-                self.get_queryset().filter(campaign_owner=self.request.user).exists()
-                and self.request.user.has_perm("campaigns.change_own_campaign")
-            )
-        )
-
-        if show_actions:
-            actions.extend(
-                [
-                    {
-                        "action": "Edit",
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_edit_campaign_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                    {
-                        "action": "Change Owner",
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-get="{get_change_owner_url}"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("campaigns.delete_campaign"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
-                            hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
-                        """,
-                    }
-                )
-        return actions
-
-    def get(self, request, *args, **kwargs):
-        if not self.model.objects.filter(
-            campaign_owner_id=self.request.user, pk=self.kwargs["pk"]
-        ).first() and not self.request.user.has_perm("campaigns.view_campaign"):
-            return render(self.request, "error/403.html")
-        return super().get(request, *args, **kwargs)
+    actions = CampaignListView.actions
 
 
 @method_decorator(
@@ -594,20 +478,6 @@ class CampaignDetailViewTabs(LoginRequiredMixin, HorillaDetailTabView):
         "notes_attachments": "campaigns:campaign_notes_attachments",
         "history": "campaigns:campaign_history_tab_view",
     }
-
-    def get(self, request, *args, **kwargs):
-        user = request.user
-        lead_id = self.object_id
-
-        is_owner = Campaign.objects.filter(campaign_owner_id=user, pk=lead_id).exists()
-        has_permission = user.has_perm("campaigns.view_campaign") or user.has_perm(
-            "campaigns.view_own_campaign"
-        )
-
-        if not (is_owner or has_permission):
-            return render(request, "error/403.html")
-
-        return super().get(request, *args, **kwargs)
 
 
 @method_decorator(
@@ -674,40 +544,28 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
         pk = self.request.GET.get("object_id")
         referrer_url = "campaign_detail_view"
 
-        member_actions = []
-
-        can_edit_members = (
-            user.is_superuser
-            or user.has_perm("campaigns.change_campaignmember")
-            or (
-                user.has_perm("campaigns.change_own_campaignmember")
-                and CampaignMember.user_has_owned_members(user)
-            )
-        )
-
-        if can_edit_members:
-            member_actions.append(
-                {
-                    "action": "edit",
-                    "src": "/assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                    hx-get="{get_edit_campaign_member}"
-                    hx-target="#modalBox"
-                    hx-swap="innerHTML"
-                    onclick="event.stopPropagation();openModal()"
-                    hx-indicator="#modalBox"
+        member_actions = [
+            {
+                "action": "edit",
+                "src": "/assets/icons/edit.svg",
+                "img_class": "w-4 h-4",
+                "permission": "campaigns.change_campaignmember",
+                "own_permission": "campaigns.change_own_campaignmember",
+                "owner_field": "created_by",
+                "attrs": """
+                        hx-get="{get_edit_campaign_member}"
+                        hx-target="#modalBox"
+                        hx-swap="innerHTML"
+                        onclick="event.stopPropagation();openModal()"
+                        hx-indicator="#modalBox"
                 """,
-                }
-            )
-
-        if user.has_perm("campaigns.delete_campaignmember"):
-            member_actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
+            },
+            {
+                "action": "Delete",
+                "src": "assets/icons/a4.svg",
+                "img_class": "w-4 h-4",
+                "permission": "campaigns.delete_campaignmember",
+                "attrs": """
                     hx-post="{get_delete_url}"
                     hx-target="#modalBox"
                     hx-swap="innerHTML"
@@ -715,13 +573,11 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                     hx-vals='{{"check_dependencies": "false"}}'
                     onclick="openModal()"
                 """,
-                }
-            )
+            },
+        ]
 
         members_config = {
             "title": "Campaign Members",
-            "can_add": True,
-            "add_url": reverse_lazy("campaigns:add_campaign_members"),
             "columns": [
                 ("Name", "get_title"),
                 (
@@ -733,11 +589,10 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                     "get_member_status_display",
                 ),
             ],
+            "can_add": self.request.user.has_perm("campaigns.add_campaignmember"),
+            "add_url": reverse_lazy("campaigns:add_to_campaign"),
+            "actions": member_actions,
         }
-
-        if member_actions:
-            members_config["actions"] = member_actions
-
         if (
             user.has_perm("leads.view_lead")
             or user.has_perm("contacts.view_contact")
@@ -764,8 +619,6 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
 
         child_campaigns_config = {
             "title": "Child Campaigns",
-            "can_add": True,
-            "add_url": reverse_lazy("campaigns:create_child_campaign"),
             "columns": [
                 (
                     Campaign._meta.get_field("campaign_name").verbose_name,
@@ -779,6 +632,9 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                     "action": "edit",
                     "src": "/assets/icons/edit.svg",
                     "img_class": "w-4 h-4",
+                    "permission": "campaigns.change_campaign",
+                    "own_permission": "campaigns.change_own_campaign",
+                    "owner_field": "campaign_owner",
                     "attrs": """
                         hx-get="{get_edit_campaign_url}"
                         hx-target="#modalBox"
@@ -792,6 +648,7 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                         "action": "Delete",
                         "src": "assets/icons/a4.svg",
                         "img_class": "w-4 h-4",
+                        "permission": "campaigns.delete_campaign",
                         "attrs": """
                         hx-delete="{get_delete_child_campaign_url}"
                         hx-on:click="hxConfirm(this,'Are you sure you want to remove this child campaign relationship?')"
@@ -800,32 +657,30 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                         hx-trigger="confirmed"
                     """,
                     }
-                    if self.request.user.has_perm("campaigns.delete_campaign")
-                    else {}
                 ),
             ],
+            "can_add": self.request.user.has_perm("campaigns.add_campaign"),
+            "add_url": reverse_lazy("campaigns:create_child_campaign"),
         }
 
-        if user.has_perm("campaigns.view_campaign") or user.has_perm(
-            "campaigns.view_own_campaign"
-        ):
-            child_campaigns_config["col_attrs"] = [
-                {
-                    "campaign_name": {
-                        "style": "cursor:pointer",
-                        "class": "hover:text-primary-600",
-                        "hx-get": (
-                            f"{{get_detail_view_url}}?referrer_app={self.model._meta.app_label}"
-                            f"&referrer_model={self.model._meta.model_name}"
-                            f"&referrer_id={pk}&referrer_url={referrer_url}"
-                        ),
-                        "hx-target": "#mainContent",
-                        "hx-swap": "outerHTML",
-                        "hx-push-url": "true",
-                        "hx-select": "#mainContent",
-                    }
+        child_campaigns_config["col_attrs"] = [
+            {
+                "campaign_name": {
+                    "permission": "campaigns.change_campaign",
+                    "own_permission": "campaigns.change_own_campaign",
+                    "owner_field": "campaign_owner",
+                    "hx-get": (
+                        f"{{get_detail_view_url}}?referrer_app={self.model._meta.app_label}"
+                        f"&referrer_model={self.model._meta.model_name}"
+                        f"&referrer_id={pk}&referrer_url={referrer_url}"
+                    ),
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
                 }
-            ]
+            }
+        ]
 
         opportunities_config = {
             "title": "Related Opportunities",
@@ -857,24 +712,26 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
             ],
         }
 
-        if user.has_perm("opportunities.view_opportunity"):
-            opportunities_config["col_attrs"] = [
-                {
-                    "name": {
-                        "style": "cursor:pointer",
-                        "class": "hover:text-primary-600",
-                        "hx-get": (
-                            f"{{get_detail_url}}?referrer_app={self.model._meta.app_label}"
-                            f"&referrer_model={self.model._meta.model_name}"
-                            f"&referrer_id={pk}&referrer_url={referrer_url}"
-                        ),
-                        "hx-target": "#mainContent",
-                        "hx-swap": "outerHTML",
-                        "hx-push-url": "true",
-                        "hx-select": "#mainContent",
-                    }
+        opportunities_config["col_attrs"] = [
+            {
+                "name": {
+                    "style": "cursor:pointer",
+                    "class": "hover:text-primary-600",
+                    "hx-get": (
+                        f"{{get_detail_url}}?referrer_app={self.model._meta.app_label}"
+                        f"&referrer_model={self.model._meta.model_name}"
+                        f"&referrer_id={pk}&referrer_url={referrer_url}"
+                    ),
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
+                    "permission": "opportunities.view_opportunity",
+                    "own_permission": "opportunities.view_own_opportunity",
+                    "owner_field": "owner",
                 }
-            ]
+            }
+        ]
 
         return {
             "members": members_config,
@@ -898,10 +755,8 @@ class AddChildCampaignFormView(LoginRequiredMixin, FormView):
     def get(self, request, *args, **kwargs):
 
         campaign_id = request.GET.get("id")
-        if (
-            request.user.has_perm("campaigns.change_campaign")
-            or request.user.has_perm("campaigns.create_campaign")
-            or request.user.is_superuser
+        if request.user.has_perm("campaigns.change_campaign") or request.user.has_perm(
+            "campaigns.create_campaign"
         ):
             return super().get(request, *args, **kwargs)
 
@@ -956,7 +811,7 @@ class AddChildCampaignFormView(LoginRequiredMixin, FormView):
         context["view_id"] = "add-child-campaign-form-view"
         context["condition_fields"] = []
         context["header"] = self.header
-
+        context["field_permissions"] = {}
         return context
 
     def form_valid(self, form):
@@ -1095,6 +950,7 @@ class AddToCampaignFormview(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     form_title = _("Add to Campaign")
     hidden_fields = ["lead"]
+    save_and_new = False
 
     def get(self, request, *args, **kwargs):
         lead_id = request.GET.get("id")
@@ -1153,6 +1009,7 @@ class AddCampaignMemberFormview(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     form_title = _("Add Campaign Members")
     full_width_fields = ["member_status", "member_type", "lead", "contact"]
+    save_and_new = False
 
     def get_initial(self):
         initial = super().get_initial()
@@ -1216,6 +1073,7 @@ class AddContactToCampaignFormView(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     form_title = _("Add to Campaign")
     hidden_fields = ["contact"]
+    save_and_new = False
 
     def form_valid(self, form):
         form.instance.member_type = "contact"

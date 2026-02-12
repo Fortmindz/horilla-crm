@@ -3,16 +3,23 @@ Signal handlers for Opportunities in Horilla CRM.
 Handles automatic updates when company-related events occur, e.g., currency change.
 """
 
+# Standard library imports
 import threading
 from decimal import Decimal
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.db import models
 from django.db.models.signals import post_save, pre_save
-from django.dispatch import receiver
+from django.dispatch import Signal, receiver
+from django.http import HttpResponse
+from django.shortcuts import render
+from django.urls import reverse_lazy
 
-from horilla_core.models import HorillaUser
+# First-party / Horilla imports
+from horilla.auth.models import User
 from horilla_core.signals import company_currency_changed
+from horilla_crm.leads.signals import lead_stage_created
 from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunityContactRole,
@@ -24,6 +31,49 @@ from horilla_crm.opportunities.models import (
 from horilla_keys.models import ShortcutKey
 
 _thread_locals = threading.local()
+
+opp_stage_created = Signal()
+
+
+@receiver(lead_stage_created)
+def handle_lead_stage_group_created(
+    sender, company, stages, request, view, initialization, **kwargs
+):
+    """
+    Handle post-creation actions for lead stage groups.
+    This returns the appropriate response based on initialization flag.
+    """
+
+    if initialization:
+        context = {
+            "progress_steps": view.get_progress_steps(),
+            "current_step": view.current_step,
+            "company_id": company.id,
+        }
+        return render(
+            request, "opportunity_stage/oppor_stages_initialize.html", context
+        )
+
+    url = reverse_lazy(
+        "opportunities:load_opp_stages", kwargs={"company_id": company.id}
+    )
+    return HttpResponse(
+        f"""
+        <script>
+            closeModal();
+            $('#reloadButton').click();
+            openContentModal();
+            var div = document.createElement('div');
+            div.setAttribute('hx-get', '{url}');
+            div.setAttribute('hx-target', '#contentModalBox');
+            div.setAttribute('hx-trigger', 'load');
+            div.setAttribute('hx-swap', 'innerHTML');
+            document.body.appendChild(div);
+            htmx.process(div);
+        </script>
+        """,
+        headers={"X-Debug": "Modal transition in progress"},
+    )
 
 
 @receiver(company_currency_changed)
@@ -65,21 +115,23 @@ def update_crm_on_currency_change(sender, **kwargs):
         )
 
 
-@receiver(post_save, sender=HorillaUser)
+@receiver(post_save, sender=User)
 def create_opportunity_shortcuts(sender, instance, created, **kwargs):
+    """Create default keyboard shortcuts for opportunities when a user is created."""
     predefined = [
         {"page": "/opportunities/opportunities-view/", "key": "O", "command": "alt"},
     ]
 
     for item in predefined:
-        if not ShortcutKey.objects.filter(user=instance, page=item["page"]).exists():
-            ShortcutKey.objects.create(
-                user=instance,
-                page=item["page"],
-                key=item["key"],
-                command=item["command"],
-                company=instance.company,
-            )
+        ShortcutKey.all_objects.get_or_create(
+            user=instance,
+            key=item["key"],
+            command=item["command"],
+            defaults={
+                "page": item["page"],
+                "company": instance.company,
+            },
+        )
 
 
 @receiver(pre_save, sender=Opportunity)
@@ -114,7 +166,7 @@ def sync_opportunity_owner(sender, instance, created, **kwargs):
     owner_changed = old_owner_id and old_owner_id != new_owner.id
 
     # Create/update team member for new owner
-    team_member, tm_created = OpportunityTeamMember.objects.update_or_create(
+    _team_member, _tm_created = OpportunityTeamMember.objects.update_or_create(
         opportunity=instance,
         user=new_owner,
         defaults={
@@ -230,7 +282,7 @@ def create_opportunity_contact_role(sender, instance, created, **kwargs):
             try:
                 contact = Contact.objects.get(pk=contact_id)
 
-                role, created_role = OpportunityContactRole.objects.get_or_create(
+                _role, _created_role = OpportunityContactRole.objects.get_or_create(
                     contact=contact,
                     opportunity=instance,
                     company=company or getattr(instance, "company", None),

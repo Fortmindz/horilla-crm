@@ -2,8 +2,10 @@
 This view handles the methods for user view
 """
 
+# Standard library imports
 from urllib.parse import urlencode
 
+# Django imports
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
@@ -15,6 +17,7 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView
 
+# Horilla first-party imports
 from horilla.exceptions import HorillaHttp404
 from horilla_core.decorators import (
     htmx_required,
@@ -63,14 +66,25 @@ class BranchNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
+        """
+        Return configuration for the "New Branch" button.
+
+        The button is shown only if the user has permission to add a company.
+        """
         if self.request.user.has_perm("horilla_core.add_company"):
             return {
-                "url": f"""{ reverse_lazy('horilla_core:create_company')}?new=true""",
+                "url": f"""{ reverse_lazy('horilla_core:create_company_multi_step')}?new=true""",
                 "attrs": {"id": "branch-create"},
             }
+        return None
 
     @cached_property
     def actions(self):
+        """
+        Return available action configurations for the branch navbar view.
+
+        Actions are displayed only if the user has permission to view companies.
+        """
         if self.request.user.has_perm("horilla_core.view_company"):
             return [
                 {
@@ -83,6 +97,7 @@ class BranchNavbar(LoginRequiredMixin, HorillaNavView):
                             """,
                 }
             ]
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -111,44 +126,43 @@ class BranchListView(LoginRequiredMixin, HorillaListView):
         "currency",
     ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-        if self.request.user.has_perm("horilla_core.change_company"):
-            actions.append(
-                {
-                    "action": "Edit",
-                    "src": "assets/icons/edit.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                            hx-get="{get_edit_url}?new=true"
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            """,
-                }
-            )
-        if self.request.user.has_perm("horilla_core.delete_company"):
-            actions.append(
-                {
-                    "action": "Delete",
-                    "src": "assets/icons/a4.svg",
-                    "img_class": "w-4 h-4",
-                    "attrs": """
-                        hx-post="{get_delete_url}"
-                        hx-target="#deleteModeBox"
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.change_company",
+            "attrs": """
+                        hx-get="{get_edit_url}?new=true"
+                        hx-target="#modalBox"
                         hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{{"check_dependencies": "true"}}'
-                        onclick="openDeleteModeModal()"
-                    """,
-                }
-            )
-        return actions
+                        onclick="openModal()"
+                        """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_company",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]
 
     @cached_property
     def col_attrs(self):
+        """
+        Return column-level HTMX attributes for branch list rows.
+
+        Enables row click navigation to the branch detail view
+        when the user has view company permission.
+        """
         query_params = self.request.GET.dict()
         query_params = {}
         if "section" in self.request.GET:
@@ -207,6 +221,13 @@ class BranchDetailView(LoginRequiredMixin, DetailView):
     name="dispatch",
 )
 class BranchDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    HTMX-enabled delete view for branches.
+
+    Handles branch deletion and refreshes the branches list
+    and company dropdown after successful deletion.
+    """
+
     model = Company
     reassign_all_visibility = False
     reassign_individual_visibility = False

@@ -7,7 +7,7 @@ from django.apps import AppConfig
 from django.utils.translation import gettext_lazy as _
 
 
-class CoreConfig(AppConfig):
+class HorillaCoreConfig(AppConfig):
     """
     Configuration for the Horilla Core application.
     Includes URL registration and optional scheduler,signals and menu startup.
@@ -57,6 +57,7 @@ class CoreConfig(AppConfig):
             )
 
             # Import required modules
+            __import__("horilla_core.registration")
             __import__("horilla_core.signals")
             __import__("horilla_core.scheduler")
             __import__("horilla_core.login_history")
@@ -74,7 +75,7 @@ class CoreConfig(AppConfig):
         except Exception as e:
             import logging
 
-            logging.warning(f"Horilla CoreConfig.ready failed: {e}")
+            logging.warning("Horilla CoreConfig.ready failed: %s", e)
 
         super().ready()
 

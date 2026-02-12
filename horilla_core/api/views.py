@@ -6,10 +6,11 @@ This module includes enhanced API views with search, filtering, bulk update, and
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import filters, permissions, viewsets
+from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from horilla.auth.models import User
 from horilla_core.api.docs import BULK_DELETE_DOCS, BULK_UPDATE_DOCS, SEARCH_FILTER_DOCS
 from horilla_core.api.mixins import BulkOperationsMixin, SearchFilterMixin
 from horilla_core.api.permissions import IsCompanyMember, IsOwnerOrAdmin
@@ -24,8 +25,6 @@ from horilla_core.api.serializers import (
     ImportHistorySerializer,
     PartnerRoleSerializer,
     RoleSerializer,
-    ScoringCriterionSerializer,
-    ScoringRuleSerializer,
     TeamRoleSerializer,
 )
 from horilla_core.models import (
@@ -35,12 +34,9 @@ from horilla_core.models import (
     Department,
     Holiday,
     HorillaAttachment,
-    HorillaUser,
     ImportHistory,
     PartnerRole,
     Role,
-    ScoringCriterion,
-    ScoringRule,
     TeamRole,
 )
 
@@ -129,9 +125,9 @@ class RoleViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelViewSet)
 
 
 class HorillaUserViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelViewSet):
-    """ViewSet for HorillaUser model"""
+    """ViewSet for User model"""
 
-    queryset = HorillaUser.objects.all()
+    queryset = User.objects.all()
     serializer_class = HorillaUserSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
     search_fields = ["username", "email", "first_name", "last_name"]
@@ -186,28 +182,6 @@ class PartnerRoleViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelV
     permission_classes = [permissions.IsAuthenticated, IsCompanyMember]
     search_fields = ["name", "description"]
     filterset_fields = ["name", "company", "is_active"]
-
-
-class ScoringRuleViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelViewSet):
-    """ViewSet for ScoringRule model"""
-
-    queryset = ScoringRule.objects.all()
-    serializer_class = ScoringRuleSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCompanyMember]
-    search_fields = ["name", "description"]
-    filterset_fields = ["name", "company", "is_active"]
-
-
-class ScoringCriterionViewSet(
-    SearchFilterMixin, BulkOperationsMixin, viewsets.ModelViewSet
-):
-    """ViewSet for ScoringCriterion model"""
-
-    queryset = ScoringCriterion.objects.all()
-    serializer_class = ScoringCriterionSerializer
-    permission_classes = [permissions.IsAuthenticated, IsCompanyMember]
-    search_fields = ["name", "description"]
-    filterset_fields = ["name", "rule", "is_active"]
 
 
 class ImportHistoryViewSet(

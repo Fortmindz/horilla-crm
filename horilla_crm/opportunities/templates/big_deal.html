@@ -1,13 +1,9 @@
 {% load static i18n horilla_tags%}
 {% block settings %}
 <div class="col-span-10" id="{{view_id|safe }}">
-    <div id="messages-container" style="display: none;">
-        {% for message in messages %}
-            <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-        {% endfor %}
-    </div>
+    {% include "messages.html" %}
     <button id="reloadButton"  hidden hx-get="{{ request.path }}?{{request.GET.urlencode}}" hx-target="#{{ view_id|safe }}" hx-trigger="click" hx-swap="outerHTML" hx-select="#{{ view_id|safe }}">click</button>
-    {% has_perm "opportunities.view_bigdealalert" as can_view_big_deal_alert %}
+    {% has_perm "horilla_automations.view_horillaautomation" as can_view_big_deal_alert %}
     {% if can_view_big_deal_alert %}
         {% if alerts %}
             {% for alert in alerts %}
@@ -41,7 +37,7 @@
                             <button class="w-5 sm:w-auto" hx-get="{% url 'opportunities:big_deal_update_form' alert.id %}" hx-target="#modalBox" hx-swap="innerHTML" onclick="openModal()">
                                 <img
                                     src="{% static '/assets/icons/a1.svg'%} "
-                                    alt=""
+                                    alt="{% trans 'Edit' %}"
                                     width="25"
                                     height="25"
                                 />
@@ -49,7 +45,7 @@
                             <button class="w-5 sm:w-auto" hx-post="{% url 'opportunities:big_deal_delete' alert.id %}" hx-target="#deleteModeBox" hx-swap="innerHTML" hx-trigger="click" hx-vals='{"check_dependencies":"true"}' onclick="event.stopPropagation();openDeleteModeModal();">
                                 <img
                                     src="{% static '/assets/icons/a4.svg' %}"
-                                    alt=""
+                                    alt="{% trans 'Delete' %}"
                                     width="25"
                                     height="25"
                                 />
@@ -147,7 +143,7 @@
             </div>
             <img
                 src="{% static 'assets/img/not-found.svg' %}"
-                alt="" class="w-60  m-auto mb-4 mt-5"/>
+                alt="404" class="w-60  m-auto mb-4 mt-5"/>
             <p class="text-sm text-center mb-3">
                 {% if no_record_msg %}
                     {{no_record_msg}}

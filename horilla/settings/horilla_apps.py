@@ -1,4 +1,6 @@
-from horilla.settings import INSTALLED_APPS
+"""Extension of INSTALLED_APPS with Horilla modules."""
+
+from horilla.settings.base import INSTALLED_APPS
 
 INSTALLED_APPS.extend(
     [
@@ -7,8 +9,6 @@ INSTALLED_APPS.extend(
         "horilla_crm.leads",
         "horilla_crm.campaigns",
         "horilla_crm.opportunities",
-        "horilla_crm.timeline",
-        "horilla_crm.activity",
         "horilla_crm.forecast",
     ]
 )

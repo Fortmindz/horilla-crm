@@ -2,20 +2,16 @@
 {% load horilla_tags i18n  static %}
 {% block my_settings %}
 <div id="my-profile-view">
-    <div id="messages-container" style="display: none;">
-        {% for message in messages %}
-            <div class="message" data-level="{{ message.tags }}" data-message="{{ message }}"></div>
-        {% endfor %}
-    </div>
+    {% include "messages.html" %}
     <button id="reloadButton"  hidden hx-get="{{ request.path }}?{{request.GET.urlencode}}" hx-target="#my-profile-view" hx-trigger="click" hx-swap="outerHTML" hx-select="#my-profile-view">click</button>
     <div class="mb-4">
       <div class="flex justify-between items-center mb-2">
         <div class="flex gap-4 items-center relative">
           <div class="relative flex items-center">
             {% if request.user.profile %}
-                <img src="{{ request.user.profile.url }}" alt="Profile Image" class="w-[35px] h-[35px] rounded-full object-cover" />
+                <img src="{{ request.user.profile.url }}" alt="{% trans 'Profile Image' %}" class="w-[35px] h-[35px] rounded-full object-cover" />
             {% else %}
-                <img src="{{ request.user.get_avatar }}" alt="Avatar" class="w-[35px] h-[35px] rounded-full object-cover" />
+                <img src="{{ request.user.get_avatar }}" alt="{% trans 'Avatar' %}" class="w-[35px] h-[35px] rounded-full object-cover" />
             {% endif %}
           </div>
           <div class="font-semibold transition duration-300">{{request.user.get_full_name}}</div>
@@ -28,7 +24,7 @@
                     hx-target="#modalBox"
                     hx-swap="innerHTML"
                     onclick="openModal()">
-                    <img src="{% static '/assets/icons/edit.svg' %}" alt="" width="15" />
+                    <img src="{% static '/assets/icons/edit.svg' %}" alt="{% trans 'Edit' %}" width="15" />
             </button>
             </div>
         {% endif %}

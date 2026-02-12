@@ -50,18 +50,18 @@
             <!-- Loading Indicator Overlay -->
             <div id="tab-{{ tab.id }}-indicator" class="htmx-indicator tabloading ">
                 <div class="flex justify-center items-center p-4">
-                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#e54f38]"></div>
+                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
                 </div>
             </div>
 
             <div class="tab-content" id="inner-tab-{{ tab.id }}-content"
                 {% if active_target %}
                     {% if active_target == 'tab-'|add:tab.id|add:'-content' %}
-                        hx-get="{{ tab.url }}?{{request.GET.urlencode}}" hx-trigger="load" hx-swap="innerHTML" hx-indicator="#tab-{{ tab.id }}-indicator"
+                        hx-get="{{ tab.url }}?{{request.GET.urlencode}}" hx-trigger="load" hx-swap="innerHTML" hx-indicator="#tab-{{ tab.id }}-indicator" hx-disinherit="*"
                     {% endif %}
                 {% else %}
                     {% if forloop.first %}
-                        hx-get="{{ tab.url }}?{{request.GET.urlencode}}" hx-trigger="load" hx-swap="innerHTML" hx-indicator="#tab-{{ tab.id }}-indicator"
+                        hx-get="{{ tab.url }}?{{request.GET.urlencode}}" hx-trigger="load" hx-swap="innerHTML" hx-indicator="#tab-{{ tab.id }}-indicator" hx-disinherit="*"
                     {% endif %}
                 {% endif %}
                 style="height:100%">

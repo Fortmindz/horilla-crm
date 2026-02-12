@@ -16,7 +16,6 @@ from rest_framework.response import Response
 
 from horilla_core.api.docs import BULK_DELETE_DOCS, BULK_UPDATE_DOCS, SEARCH_FILTER_DOCS
 from horilla_core.api.mixins import BulkOperationsMixin, SearchFilterMixin
-from horilla_notifications.api.docs import NOTIFICATION_API_DOCS
 from horilla_notifications.api.filters import NotificationFilter
 from horilla_notifications.api.permissions import IsNotificationOwner
 from horilla_notifications.api.serializers import NotificationSerializer

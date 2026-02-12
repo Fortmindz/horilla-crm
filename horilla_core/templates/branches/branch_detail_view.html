@@ -19,9 +19,9 @@
                     </button>
                     <div class="relative flex items-center">
                         {% if current_obj.icon %}
-                            <img src="{{ current_obj.icon.url }}" alt="Profile Image" class="w-[35px] h-[35px] rounded-full object-cover" />
+                            <img src="{{ current_obj.icon.url }}" alt="{% trans 'Profile Image' %}" class="w-[35px] h-[35px] rounded-full object-cover" />
                         {% else %}
-                            <img src="{{ current_obj.get_avatar }}" alt="Avatar" class="w-[35px] h-[35px] rounded-full object-cover" />
+                            <img src="{{ current_obj.get_avatar }}" alt="{% trans 'Avatar' %}" class="w-[35px] h-[35px] rounded-full object-cover" />
                         {% endif %}
                     </div>
                     <div class="font-semibold transition duration-300"> {{ current_obj.name }} </div>
@@ -29,11 +29,11 @@
                 <div class="flex gap-2 mb-2">
                     {% if can_change_company and request.active_company  %}
                         <button class="border rounded-md p-3 border-dark-50"
-                            hx-get="{% url 'horilla_core:edit_company' current_obj.pk %}?details=true"
+                            hx-get="{% url 'horilla_core:edit_company_multi_step' current_obj.pk %}?details=true"
                             hx-target="#modalBox"
                             hx-swap="innerHTML"
                             onclick="openModal()">
-                            <img src="{% static '/assets/icons/edit.svg' %}" alt="" width="15" />
+                            <img src="{% static '/assets/icons/edit.svg' %}" alt="{% trans 'Edit' %}" width="15" />
                         </button>
                     {% endif %}
                 </div>

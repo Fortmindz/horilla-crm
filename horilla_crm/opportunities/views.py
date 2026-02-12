@@ -1,19 +1,29 @@
+"""Views for opportunities module."""
+
+# Standard library imports
 from urllib.parse import urlencode
 
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.db.models import ForeignKey
+from django.http import Http404, HttpResponse
+from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property  # type: ignore
 from django.utils.translation import gettext_lazy as _
+from django.views import View
 
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
+from horilla_activity.views import HorillaActivitySectionView
 from horilla_core.decorators import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
+from horilla_core.utils import is_owner
 from horilla_crm.contacts.models import ContactAccountRelationship
 from horilla_crm.opportunities.filters import OpportunityFilter
 from horilla_crm.opportunities.forms import OpportunityFormClass, OpportunitySingleForm
@@ -21,11 +31,11 @@ from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunityContactRole,
     OpportunitySettings,
+    OpportunityStage,
 )
 from horilla_crm.opportunities.signals import set_opportunity_contact_id
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
-    HorillaActivitySectionView,
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
@@ -44,9 +54,7 @@ from horilla_utils.middlewares import _thread_local
 
 
 class OpportunityView(LoginRequiredMixin, HorillaView):
-    """
-    Render the lead page.
-    """
+    """Render the opportunities page."""
 
     nav_url = reverse_lazy("opportunities:opportunities_nav")
     list_url = reverse_lazy("opportunities:opportunities_list")
@@ -61,6 +69,7 @@ class OpportunityView(LoginRequiredMixin, HorillaView):
     name="dispatch",
 )
 class OpportunityNavbar(LoginRequiredMixin, HorillaNavView):
+    """Navigation bar view for opportunities."""
 
     nav_title = Opportunity._meta.verbose_name_plural
     search_url = reverse_lazy("opportunities:opportunities_list")
@@ -74,11 +83,15 @@ class OpportunityNavbar(LoginRequiredMixin, HorillaNavView):
 
     @cached_property
     def new_button(self):
-        if self.request.user.has_perm("opportunities.add_opportunity"):
+        """Return new button configuration for opportunities."""
+        if self.request.user.has_perm(
+            "opportunities.add_opportunity"
+        ) or self.request.user.has_perm("opportunities.add_own_opportunity"):
             return {
                 "url": f"""{reverse_lazy("opportunities:opportunity_create")}?new=true""",
                 "attrs": {"id": "opportunity-create"},
             }
+        return None
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -105,23 +118,21 @@ class OpportunityListView(LoginRequiredMixin, HorillaListView):
 
     @cached_property
     def col_attrs(self):
+        """Return column attributes for opportunity list view."""
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
         query_string = urlencode(query_params)
-        attrs = {}
-        if self.request.user.has_perm(
-            "opportunities.view_opportunity"
-        ) or self.request.user.has_perm("opportunities.view_own_opportunity"):
-            attrs = {
-                "hx-get": f"{{get_detail_url}}?{query_string}",
-                "hx-target": "#mainContent",
-                "hx-swap": "outerHTML",
-                "hx-push-url": "true",
-                "hx-select": "#mainContent",
-                "style": "cursor:pointer",
-                "class": "hover:text-primary-600",
-            }
+        attrs = {
+            "hx-get": f"{{get_detail_url}}?{query_string}",
+            "hx-target": "#mainContent",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#mainContent",
+            "permission": "opportunities.view_opportunity",
+            "own_permission": "opportunities.view_own_opportunity",
+            "owner_field": "owner",
+        }
         return [
             {
                 "name": {
@@ -131,11 +142,15 @@ class OpportunityListView(LoginRequiredMixin, HorillaListView):
         ]
 
     def no_record_add_button(self):
-        if self.request.user.has_perm("opportunities.add_opportunity"):
+        """Return add button configuration when no records exist."""
+        if self.request.user.has_perm(
+            "opportunities.add_opportunity"
+        ) or self.request.user.has_perm("opportunities.add_own_opportunity"):
             return {
                 "url": f"""{ reverse_lazy('opportunities:opportunity_create')}?new=true""",
                 "attrs": 'id="opportunity-create"',
             }
+        return None
 
     columns = [
         "name",
@@ -146,61 +161,68 @@ class OpportunityListView(LoginRequiredMixin, HorillaListView):
         "primary_campaign_source",
     ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
+    opp_permissions = {
+        "permission": "opportunities.change_opportunity",
+        "own_permission": "opportunities.change_own_opportunity",
+        "owner_field": "owner",
+    }
 
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("opportunities.change_opportunity")
-            or self.get_queryset().filter(owner=self.request.user).exists()
-        )
-
-        if show_actions:
-            actions.extend(
-                [
-                    {
-                        "action": _("Edit"),
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
+    actions = [
+        {
+            **opp_permissions,
+            "action": _("Edit"),
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "attrs": """
+                    hx-get="{get_edit_url}?new=true"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    onclick="openModal()"
+                    """,
+        },
+        {
+            **opp_permissions,
+            "action": _("Change Owner"),
+            "src": "assets/icons/a2.svg",
+            "img_class": "w-4 h-4",
+            "attrs": """
+                    hx-get="{get_change_owner_url}?new=true"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    onclick="openModal()"
+                    """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "opportunities.delete_opportunity",
+            "own_permission": "opportunities.delete_own_opportunity",
+            "owner_field": "owner",
+            "attrs": """
+                        hx-post="{get_delete_url}"
+                        hx-target="#deleteModeBox"
                         hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                    {
-                        "action": _("Change Owner"),
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_change_owner_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("opportunities.delete_opportunity"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
+                        hx-trigger="click"
+                        hx-vals='{{"check_dependencies": "true"}}'
+                        onclick="openDeleteModeModal()"
+                    """,
+        },
+        {
+            "action": _("Duplicate"),
+            "src": "assets/icons/duplicate.svg",
+            "img_class": "w-4 h-4",
+            "permission": "opportunities.add_opportunity",
+            "own_permission": "opportunities.add_own_opportunity",
+            "owner_field": "owner",
+            "attrs": """
+                            hx-get="{get_duplicate_url}?duplicate=true"
+                            hx-target="#modalBox"
                             hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
-                        """,
-                    }
-                )
-        return actions
+                            onclick="openModal()"
+                            """,
+        },
+    ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -209,9 +231,12 @@ class OpportunityListView(LoginRequiredMixin, HorillaListView):
     name="dispatch",
 )
 class OpportunityDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """View for deleting opportunities."""
+
     model = Opportunity
 
     def get_post_delete_response(self):
+        """Return response after deleting opportunity."""
         return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
@@ -234,80 +259,28 @@ class OpportunityKanbanView(LoginRequiredMixin, HorillaKanbanView):
     main_url = reverse_lazy("opportunities:opportunities_view")
     group_by_field = "stage"
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
-
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("opportunities.change_opportunity")
-            or self.get_queryset().filter(owner=self.request.user).exists()
-        )
-
-        if show_actions:
-            actions.extend(
-                [
-                    {
-                        "action": _("Edit"),
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                    {
-                        "action": _("Change Owner"),
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_change_owner_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("opportunities.delete_opportunity"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
-                            hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
-                        """,
-                    }
-                )
-        return actions
+    actions = OpportunityListView.actions
 
     @cached_property
     def kanban_attrs(self):
-        query_params = self.request.GET.dict()
+        """
+        Returns attributes for kanban cards (as a dict).
+        """
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
+
         query_string = urlencode(query_params)
-        if self.request.user.has_perm(
-            "opportunities.view_opportunity"
-        ) or self.request.user.has_perm("opportunities.view_own_opportunity"):
-            return f"""
-                    hx-get="{{get_detail_url}}?{query_string}"
-                    hx-target="#mainContent"
-                    hx-swap="outerHTML"
-                    hx-push-url="true"
-                    hx-select="#mainContent"
-                    style ="cursor:pointer",
-                    """
+        return {
+            "hx-get": f"{{get_detail_url}}?{query_string}",
+            "hx-target": "#mainContent",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#mainContent",
+            "permission": "opportunities.view_opportunity",
+            "own_permission": "opportunities.view_own_opportunity",
+            "owner_field": "owner",
+        }
 
     columns = [
         "name",
@@ -320,13 +293,21 @@ class OpportunityKanbanView(LoginRequiredMixin, HorillaKanbanView):
 
 @method_decorator(htmx_required, name="dispatch")
 class OpportunityMultiStepFormView(LoginRequiredMixin, HorillaMultiStepFormView):
+    """Multi-step form view for creating and editing opportunities."""
+
     form_class = OpportunityFormClass
     model = Opportunity
     total_steps = 3
     fullwidth_fields = ["description"]
     dynamic_create_fields = ["stage"]
+    detail_url_name = "opportunities:opportunity_detail_view"
     dynamic_create_field_mapping = {
-        "stage": {"full_width_fields": ["description"]},
+        "stage": {
+            "fields": ["name", "order", "probability", "stage_type", "is_final"],
+            "initial": {
+                "order": OpportunityStage.get_next_order_for_company,
+            },
+        },
     }
 
     single_step_url_name = {
@@ -336,6 +317,7 @@ class OpportunityMultiStepFormView(LoginRequiredMixin, HorillaMultiStepFormView)
 
     @cached_property
     def form_url(self):
+        """Return form URL for create or update view."""
         pk = self.kwargs.get("pk")
         if pk:
             return reverse_lazy("opportunities:opportunity_edit", kwargs={"pk": pk})
@@ -348,6 +330,7 @@ class OpportunityMultiStepFormView(LoginRequiredMixin, HorillaMultiStepFormView)
     }
 
     def get_initial(self):
+        """Get initial form data with account ID if provided."""
         initial = super().get_initial()
         account_id = self.request.GET.get("id")
         initial["account"] = account_id
@@ -362,8 +345,14 @@ class OpportunitySingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     form_class = OpportunitySingleForm
     full_width_fields = ["description"]
     dynamic_create_fields = ["stage"]
+    detail_url_name = "opportunities:opportunity_detail_view"
     dynamic_create_field_mapping = {
-        "stage": {"full_width_fields": ["description"]},
+        "stage": {
+            "fields": ["name", "order", "probability", "stage_type", "is_final"],
+            "initial": {
+                "order": OpportunityStage.get_next_order_for_company,
+            },
+        },
     }
 
     multi_step_url_name = {
@@ -374,10 +363,19 @@ class OpportunitySingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     @cached_property
     def form_url(self):
         """Form URL for lead"""
-        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        pk = self.kwargs.get("pk")
         if pk:
-            return reverse_lazy("campaigns:campaign_single_edit", kwargs={"pk": pk})
-        return reverse_lazy("campaigns:campaign_single_create")
+            return reverse_lazy(
+                "opportunities:opportunity_single_edit", kwargs={"pk": pk}
+            )
+        return reverse_lazy("opportunities:opportunity_single_create")
+
+    def get_initial(self):
+        """Get initial form data with account ID from query parameters."""
+        initial = super().get_initial()
+        account_id = self.request.GET.get("id")
+        initial["account"] = account_id
+        return initial
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -385,17 +383,21 @@ class OpportunitySingleFormView(LoginRequiredMixin, HorillaSingleFormView):
     permission_required_or_denied("opportunities.add_opportunity"), name="dispatch"
 )
 class RelatedOpportunityFormView(LoginRequiredMixin, HorillaMultiStepFormView):
+    """Multi-step form view for creating opportunities related to contacts."""
+
     form_class = OpportunityFormClass
     model = Opportunity
     total_steps = 3
     fullwidth_fields = ["description"]
     dynamic_create_fields = ["stage"]
+    save_and_new = False
     dynamic_create_field_mapping = {
         "stage": {"full_width_fields": ["description"]},
     }
 
     @cached_property
     def form_url(self):
+        """Return form URL for create or update view."""
         pk = self.kwargs.get("pk")
         if pk:
             return reverse_lazy("opportunities:opportunity_edit", kwargs={"pk": pk})
@@ -408,6 +410,7 @@ class RelatedOpportunityFormView(LoginRequiredMixin, HorillaMultiStepFormView):
     }
 
     def get_initial(self):
+        """Get initial form data with contact ID if provided."""
         initial = super().get_initial()
         contact_id = self.request.GET.get("id")
 
@@ -429,7 +432,7 @@ class RelatedOpportunityFormView(LoginRequiredMixin, HorillaMultiStepFormView):
                 set_opportunity_contact_id(
                     contact_id=contact_id, company=self.request.active_company
                 )
-            response = super().form_valid(form)
+            super().form_valid(form)
             return HttpResponse(
                 "<script>htmx.trigger('#tab-opportunities-btn','click');closeModal();</script>"
             )
@@ -453,9 +456,7 @@ class RelatedOpportunityFormView(LoginRequiredMixin, HorillaMultiStepFormView):
 
 @method_decorator(htmx_required, name="dispatch")
 class OpportunityChangeOwnerForm(LoginRequiredMixin, HorillaSingleFormView):
-    """
-    Change owner form
-    """
+    """Form view for changing opportunity owner."""
 
     model = Opportunity
     fields = ["owner"]
@@ -465,11 +466,13 @@ class OpportunityChangeOwnerForm(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """Return form URL for change owner view."""
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
                 "opportunities:opportunity_change_owner", kwargs={"pk": pk}
             )
+        return None
 
     def get(self, request, *args, **kwargs):
         opportunity_id = self.kwargs.get("pk")
@@ -493,10 +496,12 @@ class OpportunityChangeOwnerForm(LoginRequiredMixin, HorillaSingleFormView):
     name="dispatch",
 )
 class OpportunityDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailView):
+    """Detail view for opportunities."""
 
     model = Opportunity
     pipeline_field = "stage"
     tab_url = reverse_lazy("opportunities:opportunity_detail_view_tabs")
+    actions = OpportunityListView.actions
     breadcrumbs = [
         ("Sales", "leads:leads_view"),
         ("Opportunites", "opportunities:opportunities_view"),
@@ -512,70 +517,212 @@ class OpportunityDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDeta
         "forecast_category",
     ]
 
-    @cached_property
-    def actions(self):
-        instance = self.model()
-        actions = []
+    def get_badges(self):
+        """Get badges for opportunity detail view based on stage type."""
+        badges = []
+        obj = self.get_object()
 
-        show_actions = (
-            self.request.user.is_superuser
-            or self.request.user.has_perm("opportunities.change_opportunity")
-            or self.get_queryset().filter(owner=self.request.user).exists()
-        )
-
-        if show_actions:
-            actions.extend(
-                [
+        if obj.stage and hasattr(obj.stage, "stage_type"):
+            stage_type = obj.stage.stage_type
+            if stage_type == "won":
+                badges.append(
                     {
-                        "action": _("Edit"),
-                        "src": "assets/icons/edit.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_edit_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                    {
-                        "action": _("Change Owner"),
-                        "src": "assets/icons/a2.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                        hx-get="{get_change_owner_url}?new=true"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal()"
-                        """,
-                    },
-                ]
-            )
-            if self.request.user.has_perm("opportunities.delete_opportunity"):
-                actions.append(
-                    {
-                        "action": "Delete",
-                        "src": "assets/icons/a4.svg",
-                        "img_class": "w-4 h-4",
-                        "attrs": """
-                            hx-post="{get_delete_url}"
-                            hx-target="#deleteModeBox"
-                            hx-swap="innerHTML"
-                            hx-trigger="click"
-                            hx-vals='{{"check_dependencies": "true"}}'
-                            onclick="openDeleteModeModal()"
-                        """,
+                        "label": _("Closed Won"),
+                        "class": "bg-green-600",
+                        "icon": "fa-solid fa-check",
+                        "icon_class": "text-green-600",
+                        "icon_bg_class": "bg-green-100",
                     }
                 )
-        return actions
+            elif stage_type == "lost":
+                badges.append(
+                    {
+                        "label": _("Closed Lost"),
+                        "class": "bg-red-600",
+                        "icon": "fa-solid fa-times",
+                        "icon_class": "text-red-600",
+                        "icon_bg_class": "bg-red-100",
+                    }
+                )
 
-    def get(self, request, *args, **kwargs):
-        if not self.model.objects.filter(
-            owner_id=self.request.user, pk=self.kwargs["pk"]
-        ).first() and not self.request.user.has_perm("campaigns.view_campaign"):
-            from django.shortcuts import render
+        return badges
 
-            return render(self.request, "error/403.html")
-        return super().get(request, *args, **kwargs)
+    def get_pipeline_choices(self):
+        """
+        Override to group Closed Won and Closed Lost into a single "Closed" option.
+        """
+        if not self.pipeline_field:
+            return []
+        try:
+            obj = self.get_object()
+        except Http404:
+            return []
+
+        field = self.model._meta.get_field(self.pipeline_field)
+        current_value = getattr(obj, self.pipeline_field)
+
+        pipeline = []
+
+        if isinstance(field, ForeignKey):
+            related_model = field.related_model
+            order_field = None
+            try:
+                order_field = related_model._meta.get_field("order")
+            except Exception:
+                pass
+            queryset = related_model.objects.all()
+
+            if (
+                hasattr(related_model, "company")
+                and hasattr(obj, "company")
+                and obj.company
+            ):
+                queryset = queryset.filter(company=obj.company)
+
+            if order_field:
+                queryset = queryset.order_by("order")
+
+            current_order = (
+                getattr(current_value, "order", None) if current_value else None
+            )
+            current_id = current_value.id if current_value else None
+            current_stage_type = (
+                getattr(current_value, "stage_type", None) if current_value else None
+            )
+
+            closed_won_stage = None
+            closed_lost_stage = None
+            closed_stage_order = None
+            is_current_closed = False
+            is_closed_lost = current_stage_type == "lost"
+
+            for related_obj in queryset:
+                stage_type = getattr(related_obj, "stage_type", None)
+
+                # Collect closed stages
+                if stage_type == "won":
+                    closed_won_stage = related_obj
+                    if related_obj.id == current_id:
+                        is_current_closed = True
+                        closed_stage_order = getattr(related_obj, "order", None)
+                elif stage_type == "lost":
+                    closed_lost_stage = related_obj
+                    if related_obj.id == current_id:
+                        is_current_closed = True
+                        closed_stage_order = getattr(related_obj, "order", None)
+                else:
+                    # Regular open stages
+                    is_completed = False
+                    is_current = related_obj.id == current_id
+                    is_final = getattr(related_obj, "is_final", False)
+
+                    # If current stage is "Closed Lost", don't mark other stages as completed
+                    # They should appear gray/ash instead of green
+                    if not is_closed_lost and current_order is not None:
+                        related_order = getattr(related_obj, "order", None)
+                        is_completed = (
+                            related_order is not None and related_order < current_order
+                        )
+
+                    pipeline.append(
+                        (
+                            str(related_obj),
+                            related_obj.id,
+                            is_completed,
+                            is_current,
+                            is_final,
+                            False,  # Not closed won
+                        )
+                    )
+
+            # Add "Closed" as a single option if closed stages exist
+            if closed_won_stage or closed_lost_stage:
+                # Determine if closed is completed (if current stage is after closed stages)
+                is_closed_completed = False
+                if current_order is not None and closed_stage_order is not None:
+                    is_closed_completed = closed_stage_order < current_order
+                elif (
+                    current_stage_type not in ["won", "lost"]
+                    and current_order is not None
+                ):
+                    # If we have a closed stage order, check if current is after it
+                    if closed_won_stage:
+                        closed_order = getattr(closed_won_stage, "order", None)
+                        if closed_order and current_order > closed_order:
+                            is_closed_completed = True
+                    elif closed_lost_stage:
+                        closed_order = getattr(closed_lost_stage, "order", None)
+                        if closed_order and current_order > closed_order:
+                            is_closed_completed = True
+
+                # If current stage is closed, show the actual stage name
+                if is_current_closed and current_value:
+                    # Check if it's closed (won or lost) - both need custom styling
+                    is_closed = current_stage_type in ["won", "lost"]
+                    # Show the actual closed stage name
+                    pipeline.append(
+                        (
+                            str(
+                                current_value
+                            ),  # Show actual stage name (e.g., "Closed Won" or "Closed Lost")
+                            current_value.id,
+                            is_closed_completed,
+                            True,  # This is the current stage
+                            True,  # Mark as final stage
+                            is_closed,  # Flag to indicate if it's closed (won or lost) for custom styling
+                        )
+                    )
+                else:
+                    # Show "Closed" option that opens the selection modal
+                    pipeline.append(
+                        (
+                            _("Closed"),
+                            "closed",  # Special identifier for closed stage
+                            is_closed_completed,
+                            False,  # Not current if we're showing "Closed"
+                            True,  # Mark as final stage
+                            False,  # Not closed won
+                        )
+                    )
+        else:
+            return []
+
+        return pipeline
+
+    @cached_property
+    def final_stage_action(self):
+        """Final stage action for opportunity - opens closed stage selection modal."""
+        return {
+            "hx-get": reverse_lazy(
+                "opportunities:select_closed_stage", kwargs={"pk": self.object.pk}
+            ),
+            "hx-target": "#modalBox",
+            "hx-swap": "innerHTML",
+            "onclick": "openModal()",
+        }
+
+    def get_pipeline_custom_colors(self):
+        """
+        Get custom colors for pipeline stages.
+        Returns a dict with bg_color, text_color, and hover_color (optional).
+        If None, default colors will be used.
+        """
+        obj = self.get_object()
+        if obj.stage and hasattr(obj.stage, "stage_type"):
+            stage_type = obj.stage.stage_type
+            if stage_type == "won":
+                return {
+                    "bg_color": "bg-green-600",
+                    "text_color": "text-white",
+                    "hover_color": None,  # No hover for closed won
+                }
+            elif stage_type == "lost":
+                return {
+                    "bg_color": "bg-red-600",
+                    "text_color": "text-white",
+                    "hover_color": None,  # No hover for closed lost
+                }
+        return None
 
 
 @method_decorator(
@@ -585,6 +732,7 @@ class OpportunityDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDeta
     name="dispatch",
 )
 class OpportunityDetailViewTabView(LoginRequiredMixin, HorillaDetailTabView):
+    """Detail view tab view for opportunities."""
 
     def __init__(self, **kwargs):
         request = getattr(_thread_local, "request", None)
@@ -600,19 +748,6 @@ class OpportunityDetailViewTabView(LoginRequiredMixin, HorillaDetailTabView):
         "history": "opportunities:opportunity_history_tab_view",
     }
 
-    def get(self, request, *args, **kwargs):
-        user = request.user
-        opportunity_id = self.object_id
-
-        is_owner = Opportunity.objects.filter(owner_id=user, pk=opportunity_id).exists()
-        has_permission = user.has_perm(
-            "opportunities.view_opportunity"
-        ) or user.has_perm("opportunities.view_own_opportunities")
-        if not (is_owner or has_permission):
-            return render(request, "error/403.html", status=403)
-
-        return super().get(request, *args, **kwargs)
-
 
 @method_decorator(
     permission_required_or_denied(
@@ -621,6 +756,7 @@ class OpportunityDetailViewTabView(LoginRequiredMixin, HorillaDetailTabView):
     name="dispatch",
 )
 class OpportunityDetailTab(LoginRequiredMixin, HorillaDetailSectionView):
+    """Detail tab view for opportunities."""
 
     model = Opportunity
     non_editable_fields = ["expected_revenue"]
@@ -661,6 +797,7 @@ class OpportunityActivityTabView(LoginRequiredMixin, HorillaActivitySectionView)
 class OpportunitiesNotesAndAttachments(
     LoginRequiredMixin, HorillaNotesAttachementSectionView
 ):
+    """Notes and attachments section view for opportunities."""
 
     model = Opportunity
 
@@ -686,41 +823,40 @@ class OpportunityHistoryTabView(LoginRequiredMixin, HorillaHistorySectionView):
     name="dispatch",
 )
 class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView):
+    """Related lists section view for opportunities."""
 
     model = Opportunity
 
     @cached_property
     def related_list_config(self):
+        """Return related list configuration for opportunities."""
         query_params = {}
         if "section" in self.request.GET:
             query_params["section"] = self.request.GET.get("section")
         query_string = urlencode(query_params)
         pk = self.request.GET.get("object_id")
         referrer_url = "opportunity_detail_view"
-
-        contact_col_attrs = []
-        if self.request.user.has_perm("contacts.view_contact"):
-            contact_col_attrs = [
-                {
-                    "first_name": {
-                        "style": "cursor:pointer",
-                        "class": "hover:text-primary-600",
-                        "hx-get": f"{{get_detail_url}}?referrer_app={self.model._meta.app_label}&referrer_model={self.model._meta.model_name}&referrer_id={pk}&referrer_url={referrer_url}&{query_string}",
-                        "hx-target": "#mainContent",
-                        "hx-swap": "outerHTML",
-                        "hx-push-url": "true",
-                        "hx-select": "#mainContent",
-                    }
+        contact_col_attrs = [
+            {
+                "first_name": {
+                    "permission": "contacts.view_contact",
+                    "own_permission": "contacts.view_own_contact",
+                    "owner_field": "contact_owner",
+                    "hx-get": f"{{get_detail_url}}?referrer_app={self.model._meta.app_label}&referrer_model={self.model._meta.model_name}&referrer_id={pk}&referrer_url={referrer_url}&{query_string}",
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
                 }
-            ]
-
+            }
+        ]
         config = {
             "custom_related_lists": {
                 "contact": {
                     "app_label": "contacts",
                     "model_name": "Contact",
                     "intermediate_model": "OpportunityContactRole",
-                    "intermediate_field": "opportunity_roles",
+                    "intermediate_field": "contact",
                     "related_field": "opportunity",
                     "config": {
                         "title": _("Contact Roles"),
@@ -752,7 +888,20 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                                 "opportunity_roles__is_primary",
                             ),
                         ],
-                        "can_add": True,
+                        "can_add": self.request.user.has_perm(
+                            "opportunities.add_opportunitycontactrole"
+                        )
+                        and (
+                            (
+                                is_owner(Opportunity, pk)
+                                and self.request.user.has_perm(
+                                    "opportunities.change_own_opportunity"
+                                )
+                            )
+                            or self.request.user.has_perm(
+                                "opportunities.change_opportunity"
+                            )
+                        ),
                         "add_url": reverse_lazy(
                             "opportunities:add_opportunity_contact_role"
                         ),
@@ -761,6 +910,12 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                                 "action": "edit",
                                 "src": "/assets/icons/edit.svg",
                                 "img_class": "w-4 h-4",
+                                "permission": "opportunities.change_opportunitycontactrole",
+                                "own_permission": "opportunities.change_own_opportunitycontactrole",
+                                "owner_field": "created_by",
+                                "intermediate_model": "OpportunityContactRole",
+                                "intermediate_field": "contact",
+                                "parent_field": "opportunity",
                                 "attrs": """
                                     hx-get="{get_opportunity_contact_role_edit_url}"
                                     hx-target="#modalBox"
@@ -773,6 +928,7 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                                 "action": "Delete",
                                 "src": "assets/icons/a4.svg",
                                 "img_class": "w-4 h-4",
+                                "permission": "opportunities.delete_opportunitycontactrole",
                                 "attrs": """
                                         hx-post="{get_opportunity_contact_role_delete_url}"
                                         hx-target="#deleteModeBox"
@@ -788,7 +944,44 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                 },
             },
         }
+        add_perm = (
+            is_owner(Opportunity, pk)
+            and self.request.user.has_perm("opportunities.change_own_opportunity")
+        ) or self.request.user.has_perm("opportunities.change_opportunity")
         if OpportunitySettings.is_team_selling_enabled():
+            custom_buttons = []
+            if (
+                self.request.user.has_perm("opportunities.add_opportunityteammember")
+                and add_perm
+            ):
+                custom_buttons.extend(
+                    [
+                        {
+                            "label": _("Add Team"),
+                            "url": reverse_lazy("opportunities:add_default_team"),
+                            "attrs": """
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            onclick="openModal()"
+                            hx-indicator="#modalBox"
+                        """,
+                            "icon": "fa-solid fa-users",
+                            "class": "text-xs px-4 py-1.5 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-white",
+                        },
+                        {
+                            "label": _("Add Members"),
+                            "url": reverse_lazy("opportunities:add_opportunity_member"),
+                            "attrs": """
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            onclick="openModal()"
+                            hx-indicator="#modalBox"
+                        """,
+                            "icon": "fa-solid fa-user-plus",
+                            "class": "text-xs px-4 py-1.5 bg-white border border-primary-600 text-primary-600 rounded-md hover:bg-primary-50 transition duration-300",
+                        },
+                    ]
+                )
             config["opportunity_team_members"] = {
                 "title": "Opportunity Team",
                 "columns": [
@@ -806,37 +999,13 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                     ),
                 ],
                 "can_add": False,
-                "custom_buttons": [
-                    {
-                        "label": _("Add Team"),
-                        "url": reverse_lazy("opportunities:add_default_team"),
-                        "attrs": """
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            hx-indicator="#modalBox"
-                        """,
-                        "icon": "fa-solid fa-users",
-                        "class": "text-xs px-4 py-1.5 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-white",
-                    },
-                    {
-                        "label": _("Add Members"),
-                        "url": reverse_lazy("opportunities:add_opportunity_member"),
-                        "attrs": """
-                            hx-target="#modalBox"
-                            hx-swap="innerHTML"
-                            onclick="openModal()"
-                            hx-indicator="#modalBox"
-                        """,
-                        "icon": "fa-solid fa-user-plus",
-                        "class": "text-xs px-4 py-1.5 bg-white border border-primary-600 text-primary-600 rounded-md hover:bg-primary-50 transition duration-300",
-                    },
-                ],
+                "custom_buttons": custom_buttons,
                 "actions": [
                     {
                         "action": "Edit",
                         "src": "/assets/icons/edit.svg",
                         "img_class": "w-4 h-4",
+                        "permission": "opportunities.change_opportunityteammember",
                         "attrs": """
                                     hx-get="{get_edit_url}"
                                     hx-target="#modalBox"
@@ -849,6 +1018,7 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                         "action": "Delete",
                         "src": "/assets/icons/a4.svg",
                         "img_class": "w-4 h-4",
+                        "permission": "opportunities.delete_opportunityteammember",
                         "attrs": """
                                     hx-post="{get_delete_url}"
                                     hx-target="#deleteModeBox"
@@ -861,6 +1031,25 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                 ],
             }
             if OpportunitySettings.is_split_enabled():
+                splits_custom_buttons = []
+                if (
+                    self.request.user.has_perm("opportunities.add_opportunitysplit")
+                    and add_perm
+                ):
+                    splits_custom_buttons.append(
+                        {
+                            "label": _("Manage Opportunity Splits"),
+                            "url": reverse_lazy(
+                                "opportunities:manage_opportunity_splits"
+                            ),
+                            "attrs": """
+                            hx-target="#contentModalBox"
+                            hx-swap="innerHTML"
+                            onclick="openContentModal()"
+                        """,
+                            "class": "text-xs px-4 py-1.5 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-white",
+                        }
+                    )
                 config["splits"] = {
                     "title": _("Opportunity Splits"),
                     "columns": [
@@ -890,22 +1079,10 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
                         ),
                     ],
                     "can_add": False,
-                    "custom_buttons": [
-                        {
-                            "label": _("Manage Opportunity Splits"),
-                            "url": reverse_lazy(
-                                "opportunities:manage_opportunity_splits"
-                            ),
-                            "attrs": """
-                                hx-target="#contentModalBox"
-                                hx-swap="innerHTML"
-                                onclick="openContentModal()"
-                            """,
-                            "class": "text-xs px-4 py-1.5 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-white",
-                        },
-                    ],
-                    "action_method": "actions",
+                    "custom_buttons": splits_custom_buttons,
                 }
+                if self.request.user.has_perm("opportunities.delete_opportunitysplit"):
+                    config["splits"]["action_method"] = "actions"
 
         return config
 
@@ -925,7 +1102,7 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
 
     @property
     def excluded_related_lists(self):
-        """Property wrapper for excluded_related_lists"""
+        """Property wrapper for excluded_related_lists."""
         return self.get_excluded_related_lists()
 
     @excluded_related_lists.setter
@@ -937,6 +1114,7 @@ class OpportunityRelatedLists(LoginRequiredMixin, HorillaRelatedListSectionView)
 
 @method_decorator(htmx_required, name="dispatch")
 class OpportunityContactRoleFormview(LoginRequiredMixin, HorillaSingleFormView):
+    """Form view for creating and editing opportunity contact roles."""
 
     model = OpportunityContactRole
     fields = ["is_primary", "role", "contact", "opportunity"]
@@ -944,10 +1122,11 @@ class OpportunityContactRoleFormview(LoginRequiredMixin, HorillaSingleFormView):
     modal_height = False
     form_title = _("Add Contact Role")
     hidden_fields = ["opportunity"]
+    save_and_new = False
 
     def form_valid(self, form):
+        """Handle form validation and create contact-account relationship."""
         super().form_valid(form)
-
         opportunity_contact_role = form.instance
         contact = opportunity_contact_role.contact
         opportunity = opportunity_contact_role.opportunity
@@ -967,14 +1146,16 @@ class OpportunityContactRoleFormview(LoginRequiredMixin, HorillaSingleFormView):
         )
 
     def get_initial(self):
+        """Get initial form data with opportunity ID if provided."""
         initial = super().get_initial()
-        id = self.request.GET.get("id")
-        if id:
-            initial["opportunity"] = id
+        obj_id = self.request.GET.get("id")
+        if obj_id:
+            initial["opportunity"] = obj_id
         return initial
 
     @cached_property
     def form_url(self):
+        """Return form URL for create or update view."""
         if self.kwargs.get("pk"):
             return reverse_lazy(
                 "opportunities:edit_opportunity_contact_role",
@@ -1014,3 +1195,84 @@ class OpportunityContactRoleDeleteView(LoginRequiredMixin, HorillaSingleDeleteVi
         return HttpResponse(
             "<script>htmx.trigger('#tab-contact-btn','click');</script>"
         )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.change_opportunity", "opportunities.change_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class SelectClosedStageView(LoginRequiredMixin, View):
+    """View to select between Closed Won and Closed Lost stages."""
+
+    def get(self, request, *args, **kwargs):
+        """Render the closed stage selection modal."""
+        opportunity = get_object_or_404(Opportunity, pk=kwargs.get("pk"))
+
+        # Get closed won and closed lost stages for the company
+        company = opportunity.company if hasattr(opportunity, "company") else None
+        closed_won_stage = None
+        closed_lost_stage = None
+        current_stage = (
+            opportunity.stage
+            if hasattr(opportunity, "stage") and opportunity.stage
+            else None
+        )
+        current_stage_id = current_stage.id if current_stage else None
+
+        if company:
+            closed_won_stage = OpportunityStage.objects.filter(
+                company=company, stage_type="won"
+            ).first()
+            closed_lost_stage = OpportunityStage.objects.filter(
+                company=company, stage_type="lost"
+            ).first()
+
+        context = {
+            "opportunity": opportunity,
+            "closed_won_stage": closed_won_stage,
+            "closed_lost_stage": closed_lost_stage,
+            "current_stage": current_stage,
+            "current_stage_id": current_stage_id,
+        }
+
+        return render(
+            request,
+            "opportunities/select_closed_stage.html",
+            context,
+        )
+
+    def post(self, request, *args, **kwargs):
+        """Handle the selection of closed won or closed lost."""
+        opportunity = get_object_or_404(Opportunity, pk=kwargs.get("pk"))
+        stage_id = request.POST.get("stage_id")
+
+        if not stage_id:
+            return HttpResponse(
+                "<script>alert('Please select a stage');</script>",
+                status=400,
+            )
+
+        try:
+            stage = OpportunityStage.objects.get(pk=stage_id)
+            # Verify it's a closed stage
+            if stage.stage_type not in ["won", "lost"]:
+                return HttpResponse(
+                    "<script>alert('Invalid stage selected');</script>",
+                    status=400,
+                )
+
+            # Update the opportunity stage
+            opportunity.stage = stage
+            opportunity.save()
+
+            return HttpResponse(
+                "<script>closeModal();$('#reloadButton').click();</script>"
+            )
+        except OpportunityStage.DoesNotExist:
+            return HttpResponse(
+                "<script>alert('Stage not found');</script>",
+                status=404,
+            )

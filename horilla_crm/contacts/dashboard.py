@@ -1,3 +1,6 @@
+"""Dashboard utilities for contacts module."""
+
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla_dashboard.utils import DefaultDashboardGenerator
 
 from .models import Contact
@@ -23,11 +26,10 @@ def contact_table_fields(model_class):
         for f in model_class._meta.fields:
             if len(fields) >= 4:
                 break
-            if f.name not in [x["name"] for x in fields] and f.get_internal_type() in [
-                "CharField",
-                "TextField",
-                "EmailField",
-            ]:
+            if (
+                f.name not in [x["name"] for x in fields]
+                and f.get_internal_type() in TABLE_FALLBACK_FIELD_TYPES
+            ):
                 fields.append(
                     {
                         "name": f.name,
@@ -44,5 +46,6 @@ DefaultDashboardGenerator.extra_models.append(
         "name": "Contacts",
         "icon": "fa-address-book",
         "color": "green",
+        "include_kpi": True,  # Set to True to show KPI
     }
 )

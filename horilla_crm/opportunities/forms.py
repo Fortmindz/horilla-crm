@@ -1,12 +1,16 @@
 """Forms for managing Opportunity-related models in the CRM application."""
 
+# Standard library imports
 import logging
 
+# Django imports
 from django import forms
 from django.db import models
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
+# Horilla / first-party imports
+from horilla.auth.models import User
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_crm.opportunities.models import (
     DefaultOpportunityMember,
@@ -66,7 +70,7 @@ class OpportunityFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
             self.fields["updated_by"].required = False
 
 
-class OpportunitySingleForm(HorillaModelForm):
+class OpportunitySingleForm(OwnerQuerysetMixin, HorillaModelForm):
     """
     Custom form for opportunity to add HTMX attributes
     Inherits from HorillaModelForm to preserve all existing behavior.
@@ -153,11 +157,8 @@ class OpportunityTeamForm(HorillaModelForm):
         condition_field_choices = {}
 
         try:
-            # Get choices for user field (ForeignKey)
-            from .models import HorillaUser  # Import here to avoid circular imports
-
             user_choices = [("", "---------")]
-            users = HorillaUser.objects.all()[:100]  # Limit for performance
+            users = User.objects.all()[:100]  # Limit for performance
             user_choices.extend([(user.pk, str(user)) for user in users])
             condition_field_choices["user"] = user_choices
 
@@ -343,12 +344,8 @@ class OpportunityTeamForm(HorillaModelForm):
                     if value:
                         if field_name == "user":
                             try:
-                                from .models import (  # Import here to avoid circular imports
-                                    HorillaUser,
-                                )
-
-                                value = HorillaUser.objects.get(pk=value)
-                            except (HorillaUser.DoesNotExist, ValueError):
+                                value = User.objects.get(pk=value)
+                            except (User.DoesNotExist, ValueError):
                                 self.add_error(
                                     None, f"Invalid user selected for row {row_id}"
                                 )
@@ -402,15 +399,11 @@ class OpportunityTeamMemberForm(HorillaModelForm):
         self.row_id = kwargs.pop("row_id", "0")
         super().__init__(*args, **kwargs)
 
-        for field_name in ["user", "team_role", "opportunity_access_level"]:
-            if field_name in self.fields:
-                self.fields[field_name].required = False
-
     class Meta:
         """Meta options for OpportunityTeamMemberForm."""
 
         model = DefaultOpportunityMember
-        fields = ["team", "user", "team_role", "opportunity_access_level"]
+        fields = ["team"]
 
 
 class OpportunityMemberForm(HorillaModelForm):
@@ -420,15 +413,11 @@ class OpportunityMemberForm(HorillaModelForm):
         self.row_id = kwargs.pop("row_id", "0")
         super().__init__(*args, **kwargs)
 
-        for field_name in ["user", "team_role", "opportunity_access"]:
-            if field_name in self.fields:
-                self.fields[field_name].required = False
-
     class Meta:
-        """Meta options for OpportunityTeamMemberForm."""
+        """Meta options for OpportunityMemberForm."""
 
         model = OpportunityTeamMember
-        fields = ["opportunity", "user", "team_role", "opportunity_access"]
+        fields = ["opportunity"]
 
 
 class AddDefaultTeamForm(forms.Form):
@@ -457,6 +446,15 @@ class AddDefaultTeamForm(forms.Form):
         kwargs.pop("row_id", None)
         self.request = kwargs.pop("request", None)
         self.opportunity = kwargs.pop("opportunity", None)
+        self.condition_hx_include = kwargs.pop("condition_hx_include", "")
+        self.field_permissions = kwargs.pop("field_permissions", {})
+        self.save_and_new = kwargs.pop("save_and_new", "")
+        self.duplicate_mode = kwargs.pop("duplicate_mode", False)
+        self.row_id = kwargs.pop("row_id", "0")
+        self.instance_obj = kwargs.get(
+            "instance"
+        )  # Store instance for condition methods
+        self.model_name = kwargs.pop("model_name", None)
         super().__init__(*args, **kwargs)
         self.fields["team"].queryset = OpportunityTeam.objects.filter(
             owner=self.request.user

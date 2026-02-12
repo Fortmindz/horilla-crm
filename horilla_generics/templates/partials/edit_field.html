@@ -57,14 +57,14 @@
 
           <div class="absolute right-3 top-0 bottom-0 m-auto flex gap-3 items-center">
             <button type="submit" class="cursor-pointer hover:scale-110 transition-transform">
-              <img src="{% static './assets/icons/tick.svg' %}" alt="Save" width="16" />
+              <img src="{% static './assets/icons/tick.svg' %}" alt="{% trans 'Save' %}" width="16" />
             </button>
             <button type="button"
                     class="cursor-pointer hover:scale-110 transition-transform"
                     hx-get="{% url 'horilla_generics:cancel_edit' pk=object_id field_name=field_info.name app_label=app_label model_name=model_name %}"
                     hx-target="#field-{{ field_info.name }}"
                     hx-swap="outerHTML">
-              <img src="{% static './assets/icons/close1.svg' %}" alt="Cancel" width="13" />
+              <img src="{% static './assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="13" />
             </button>
           </div>
         </div>
@@ -87,14 +87,14 @@
       {% if field_info.field_type != 'select' %}
         <div class="absolute right-3 top-0 bottom-0 m-auto flex gap-3 {% if field_info.field_type == 'textarea' %}items-start pt-2{% else %}items-center{% endif %}">
           <button type="submit" class="cursor-pointer hover:scale-110 transition-transform">
-            <img src="{% static './assets/icons/tick.svg' %}" alt="Save" width="16" />
+            <img src="{% static './assets/icons/tick.svg' %}" alt="{% trans 'Save' %}" width="16" />
           </button>
           <button type="button"
                   class="cursor-pointer hover:scale-110 transition-transform"
                   hx-get="{% url 'horilla_generics:cancel_edit' pk=object_id field_name=field_info.name app_label=app_label model_name=model_name %}"
                   hx-target="#field-{{ field_info.name }}"
                   hx-swap="outerHTML">
-            <img src="{% static './assets/icons/close1.svg' %}" alt="Cancel" width="13" />
+            <img src="{% static './assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="13" />
           </button>
         </div>
       {% endif %}

@@ -30,10 +30,6 @@
   bottom: 0;
 }
 
-.progress li.active .sec::before {
-  background-color: #e54f38;
-}
-
 .progress li span {
   position: relative;
   z-index: 1;
@@ -288,12 +284,6 @@
 
 .select2-container--default .select2-selection--multiple .select2-selection__choice__display {
   font-size: 0.7rem;
-}
-
-.select2-container--default .select2-selection--multiple .select2-selection__choice {
-  background-color: #e54f38 !important;
-  color: white;
-  border: unset !important;
 }
 
 .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
@@ -728,7 +718,7 @@ canvas {
   min-width: 160px;
   box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
   border-radius: 8px;
-  border: 1px solid #fbe5e1;
+  border: 1px solid;
 }
 
 .dropdown-wrapper {
@@ -873,7 +863,6 @@ canvas {
   font-size: 18px;
   line-height: 1;
   color: #ffffff;
-  background: #e54f38;
   border-radius: 50%;
   transform: rotate(0);
   transition: all 0.5s ease;
@@ -902,7 +891,6 @@ canvas {
   width: 35px;
   height: 35px;
   border-radius: 50%;
-  background: #e54f38;
   cursor: pointer;
   position: absolute;
   transition: all 0.5s ease;
@@ -1046,11 +1034,8 @@ canvas {
   border-radius: 10px;
   position: relative;
   border: 1px;
-  border-color: #ffb6ab;
   border-style: solid;
-  /* box-shadow: 0px 0px 20px rgb(0 0 0 / 5%); */
   position: relative;
-  background-color: #ffe4e0;
 }
 
 .member-view-box:after {
@@ -1631,6 +1616,18 @@ input[type="radio"] {
   }
 }
 
+.tablebtn button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.tablebtn button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
+.tablebtn button:only-child {
+  border-radius: 5px;
+}
+
 /* Chrome, Safari, Edge, Opera */
 input::-webkit-inner-spin-button,
 input::-webkit-outer-spin-button {
@@ -1901,4 +1898,8 @@ input::placeholder {
   align-items: center;
   justify-content: center;
   z-index: 50;
+}
+
+.progress li.active .sec::before {
+  background-color: #E54F38;
 }

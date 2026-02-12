@@ -19,7 +19,7 @@
           {% if total_results > 0  %}
           <div class="flex gap-3">
 
-            <div class="flex-1">
+            <div class="flex-1 min-w-0">
               <p class="mb-5 text-sm font-medium">{% trans "We searched for" %} "{{ query }}"</p>
 
               <!-- Loading spinner -->
@@ -34,7 +34,7 @@
               </div>
             </div>
 
-            <div class="w-[250px]  overflow-hidden overflow-x-auto">
+            <div class="w-[250px] overflow-hidden overflow-x-auto">
               <div class="bg-[#25c32417] border border-[#25c32429] text-[#21b320] font-medium text-sm px-3 py-1.5 flex gap-4 items-center justify-center rounded-md mb-2">
                 <span>
                   Search : {{ query }}
@@ -45,7 +45,7 @@
                 hx-push-url="true"
                 hx-on:click="$('#header-search').val('')"
                 hx-swap="outerHTML">
-                <img src="{% static '/assets/icons/close1.svg' %}" alt="" width="10" />
+                <img src="{% static '/assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="10" />
                 </button>
               </div>
               <ul id="custom-tabs" class="bg-white flex flex-col space-y-1 text-sm font-normal text-gray-500 dark:text-gray-400 border-[1px] border-[#dddddd] rounded-md p-3">
@@ -86,13 +86,13 @@
               hx-push-url="true"
               hx-swap="outerHTML"
               hx-on:click="$('#header-search').val('')">
-              <img src="{% static '/assets/icons/close1.svg' %}" alt="" width="10" />
+              <img src="{% static '/assets/icons/close1.svg' %}" alt="{% trans 'Cancel' %}" width="10" />
               </button>
             </div>
           </div>
           <img
               src="{% static 'assets/img/not-found.svg' %}"
-              alt="" class="w-60  m-auto mb-4 mt-5"
+              alt="404" class="w-60  m-auto mb-4 mt-5"
           />
           <p class="text-sm text-center mb-3">
              {% trans 'No search results found' %}.

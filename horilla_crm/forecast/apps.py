@@ -1,7 +1,6 @@
 """App configuration for the forecast module."""
 
 from django.apps import AppConfig
-from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
 
@@ -42,6 +41,7 @@ class ForecastConfig(AppConfig):
                 path("forecast/", include("horilla_crm.forecast.urls")),
             )
 
+            __import__("horilla_crm.forecast.registration")
             __import__("horilla_crm.forecast.menu")
             __import__("horilla_crm.forecast.signals")
 

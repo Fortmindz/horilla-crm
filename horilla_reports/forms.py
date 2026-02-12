@@ -1,26 +1,32 @@
+"""Forms for creating and validating `horilla_reports` models (Report, ReportFolder)."""
+
+# Third-party imports (Django)
 from django import forms
-from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse_lazy
 
+# First-party / Horilla imports
 from horilla_generics.forms import HorillaModelForm
 from horilla_reports.models import Report, ReportFolder
 
 
 # Define your reports forms here
 class ReportForm(HorillaModelForm):
+    """Form for creating and editing reports with module, columns, and folder selection."""
 
     class Meta:
+        """Meta options for ReportForm."""
+
         model = Report
         fields = ["name", "module", "folder", "selected_columns", "report_owner"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.request.user.is_superuser:
-            self.fields["folder"].queryset = ReportFolder.objects.all()
-        else:
-            self.fields["folder"].queryset = ReportFolder.objects.filter(
-                report_folder_owner=self.request.user
-            )
+        self.fields["folder"].queryset = (
+            ReportFolder.objects.all()
+            if self.request.user.is_superuser
+            else ReportFolder.objects.filter(report_folder_owner=self.request.user)
+        )
+
         self.fields["module"].widget.attrs.update(
             {
                 "hx-get": reverse_lazy("horilla_reports:get_module_columns_htmx"),
@@ -53,7 +59,7 @@ class ReportForm(HorillaModelForm):
                     import ast
 
                     selected = ast.literal_eval(selected)
-                except:
+                except Exception:
                     selected = [
                         item.strip().strip("'\"")
                         for item in selected.strip("[]").split(",")
@@ -72,8 +78,11 @@ class ReportForm(HorillaModelForm):
 
 
 class ChangeChartReportForm(HorillaModelForm):
+    """Form for changing the chart type of a report."""
 
     class Meta:
+        """Meta options for ChangeChartReportForm."""
+
         model = Report
         fields = ["chart_type"]
 

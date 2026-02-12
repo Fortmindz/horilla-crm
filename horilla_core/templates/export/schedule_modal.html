@@ -3,11 +3,7 @@
   <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6 relative">
 
     <form hx-post="{% url 'horilla_core:schedule_create' %}" hx-target="#scheduleModal" hx-swap="outerHTML">
-        <div id="messages-container" class="hidden" >
-            {% for message in messages %}
-                <div class="message {{ message.tags }}">{{ message }}</div>
-            {% endfor %}
-        </div>
+      {% include "messages.html" %}
       {% csrf_token %}
 
       <!-- Hidden fields -->
@@ -27,7 +23,7 @@
         <h2 class="text-lg font-semibold">{% trans "Schedule Export" %}</h2>
         <button type="button" onclick="closeModal();"
                 class="text-gray-500 hover:text-red-500 cursor-pointer">
-          <img src="{% static 'assets/icons/close.svg' %}" alt="Close" class="w-5 h-5" />
+          <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" class="w-5 h-5" />
         </button>
       </div>
 

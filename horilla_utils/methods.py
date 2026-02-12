@@ -6,9 +6,13 @@ functionality for working with models and other components in the
 Horilla application.
 """
 
+# Standard library
 import logging
+import re
 
 from django import template
+
+# Django / third-party imports
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
@@ -19,6 +23,7 @@ from django.utils.functional import lazy
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
 
+# First-party (Horilla) imports
 from horilla import settings
 from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
 from horilla_utils.middlewares import _thread_local
@@ -44,6 +49,7 @@ def get_horilla_model_class(app_label, model):
 
 
 def csrf_input(request):
+    """Return an HTML snippet for the CSRF hidden input for the given request."""
     return format_html(
         '<input type="hidden" name="csrfmiddlewaretoken" value="{}">',
         get_token(request),
@@ -52,12 +58,13 @@ def csrf_input(request):
 
 @register.simple_tag(takes_context=True)
 def csrf_token(context):
-    """
-    to access csrf token inside the render_template method
+    """Access CSRF token inside the render_template method.
+
+    Falls back to thread-local request if context does not contain a request.
     """
     try:
         request = context["request"]
-    except:
+    except Exception:
         request = getattr(_thread_local, "request")
     csrf_input_lazy = lazy(csrf_input, SafeString, str)
     return csrf_input_lazy(request)
@@ -119,7 +126,8 @@ def closest_numbers(numbers: list, input_number: int) -> tuple:
             next_number = numbers[index + 1]
         else:
             next_number = numbers[0]
-    except:
+    except ValueError:
+        # input_number not found in numbers; return defaults
         pass
     return (previous_number, next_number)
 
@@ -128,7 +136,8 @@ def get_section_info_for_model(model_input):
     """Fetch section and URL for a model's app from registered sub-section menus.
 
     Args:
-        model_input: Either a model class or a string in format 'app_label.ModelName' or just 'ModelName'
+        model_input: Either a model class or a string in
+        format 'app_label.ModelName' or just 'ModelName'
     """
 
     # Convert string to model class if needed
@@ -148,11 +157,11 @@ def get_section_info_for_model(model_input):
                         continue
 
                 if model_class is None:
-                    logger.warning(f"Could not find model '{model_input}' in any app")
+                    logger.warning("Could not find model '%s' in any app", model_input)
                     return {"section": "", "url": "#"}
 
         except (LookupError, ValueError) as e:
-            logger.warning(f"Could not get model from string '{model_input}': {e}")
+            logger.warning("Could not get model from string '%s': %s", model_input, e)
             return {"section": "", "url": "#"}
     else:
         model_class = model_input
@@ -161,12 +170,12 @@ def get_section_info_for_model(model_input):
     try:
         app_label = model_class._meta.app_label
     except AttributeError:
-        logger.warning(f"Invalid model_input type: {type(model_input)}")
+        logger.warning("Invalid model_input type: %s", type(model_input))
         return {"section": "", "url": "#"}
 
     try:
         if not isinstance(menu_registry, list):
-            logger.warning(f"sub_section_menu is not a list: {type(menu_registry)}")
+            logger.warning("sub_section_menu is not a list: %s", type(menu_registry))
             return {"section": "", "url": "#"}
 
         for menu_cls in menu_registry:
@@ -180,6 +189,52 @@ def get_section_info_for_model(model_input):
                     }
 
     except Exception as e:
-        logger.warning(f"Error in get_section_info_for_model: {e}")
+        logger.warning("Error in get_section_info_for_model: %s", e)
 
     return {"section": "", "url": "#"}
+
+
+def has_xss(value: str) -> bool:
+    """
+    Detect common XSS (Cross-Site Scripting) attempts in a string.
+
+    This function checks for various XSS patterns including:
+    - Script tags (<script>...</script>)
+    - JavaScript pseudo-protocol (javascript:)
+    - Inline event handlers (onclick, onload, etc.)
+    - Dangerous active content (embed, object, iframe, svg, etc.)
+    - JS API abuse patterns
+
+    Args:
+        value (str): The string to check for XSS patterns.
+
+    Returns:
+        bool: True if XSS patterns are detected, False otherwise.
+
+    Example:
+        >>> has_xss("<script>alert('XSS')</script>")
+        True
+        >>> has_xss("Hello world")
+        False
+        >>> has_xss("javascript:alert('XSS')")
+        True
+    """
+    if not isinstance(value, str):
+        return False
+
+    xss_patterns = [
+        # <script> ... </script> with any attributes
+        r"<\s*script[^>]*>.*?<\s*/\s*script\s*>",
+        # Opening <script> tag (for incomplete scripts)
+        r"<\s*script[^>]*>",
+        r"javascript\s*:",  # javascript: pseudo-protocol
+        r"on\w+\s*=",  # inline event handlers (onclick, onload, etc.)
+        # dangerous active content
+        r"<\s*(embed|object|iframe|svg|math|link|meta).*?>",
+        # JS API abuse
+        r"on\w+\s*=\s*['\"]?\s*(eval|setTimeout|setInterval|new\s+Function|XMLHttpRequest|fetch|\$\s*\()[^>]*",
+    ]
+
+    combined = re.compile("|".join(xss_patterns), re.IGNORECASE | re.DOTALL)
+    result = bool(combined.search(value))
+    return result

@@ -1,11 +1,18 @@
+"""Dashboard utilities for opportunities module."""
+
+# Standard library imports
 import logging
 
+# Third-party imports (Django)
 from django.db.models import Count
 from django.utils.http import urlencode
 
+# First-party / Horilla imports
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla_dashboard.utils import DefaultDashboardGenerator
 from horilla_utils.methods import get_section_info_for_model
 
+# Local application imports
 from .models import Opportunity
 
 logger = logging.getLogger(__name__)
@@ -159,11 +166,10 @@ def opportuntiy_table_fields(model_class):
         for f in model_class._meta.fields:
             if len(fields) >= 4:
                 break
-            if f.name not in [x["name"] for x in fields] and f.get_internal_type() in [
-                "CharField",
-                "TextField",
-                "EmailField",
-            ]:
+            if (
+                f.name not in [x["name"] for x in fields]
+                and f.get_internal_type() in TABLE_FALLBACK_FIELD_TYPES
+            ):
                 fields.append(
                     {
                         "name": f.name,
@@ -175,6 +181,7 @@ def opportuntiy_table_fields(model_class):
 
 
 def opportunity_table_func(generator, model_info):
+    """Generate table context for won opportunities."""
     filter_kwargs = (
         {"stage__name": "Closed Won"} if hasattr(model_info["model"], "stage") else {}
     )
@@ -183,6 +190,7 @@ def opportunity_table_func(generator, model_info):
         model_info=model_info,
         title="Closed Won Opportunities",
         filter_kwargs=filter_kwargs,
+        no_found_img="assets/img/not-found-list.svg",
         no_record_msg="No closed won opportunities found.",
         view_id="opportunities_dashboard_list",
     )
@@ -194,6 +202,7 @@ DefaultDashboardGenerator.extra_models.append(
         "name": "Opportunities",
         "icon": "fa-handshake",
         "color": "purple",
+        "include_kpi": True,
         "chart_func": create_opportunity_charts,
         "table_func": opportunity_table_func,
         "table_fields_func": opportuntiy_table_fields,

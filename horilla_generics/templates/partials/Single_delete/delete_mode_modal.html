@@ -13,7 +13,7 @@
     <div class="flex justify-between items-center mb-2">
         <h2 class="text-md font-semibold">{% trans 'Select Delete Mode'%}</h2>
         <button onclick="closeDeleteModeModal();closeModal();" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-            <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
         </button>
     </div>
     <div >
@@ -50,7 +50,7 @@
                 <button type="submit" class="text-sm px-6 py-2 bg-[#f11633] text-white rounded-md hover:bg-[#bb1b30]">
                     <span class="flex items-center gap-2">
                         <span id="hard-delete-spinner" class="htmx-indicator">
-                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                         </span>
                         {% trans 'Hard Delete'%}
                     </span>
@@ -74,7 +74,7 @@
                 <button type="submit" class="text-sm px-6 py-2 bg-[#21b442] text-white rounded-md hover:bg-[#198230] relative">
                     <span class="flex items-center gap-2">
                         <span id="soft-delete-spinner" class="htmx-indicator">
-                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="Loading..." width="25" />
+                            <img src="{% static '/assets/icons/spinner.svg' %}" alt="{% trans 'Loading...' %}" width="25" />
                         </span>
                         {% trans 'Soft Delete'%}
                     </span>

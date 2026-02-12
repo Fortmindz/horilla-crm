@@ -9,7 +9,7 @@
                 {% trans "Mail Configuration Required" %}
             </h3>
             <button type="button" onclick="closehorillaModal()" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
-                <img src="{% static 'assets/icons/close.svg' %}" alt="Close" />
+                <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
             </button>
         </div>
 
@@ -37,7 +37,7 @@
             </p>
 
             <!-- Action Button -->
-            {% if request.user.is_superuser or perms.mail.add_horillamailconfiguration %}
+            {% if  perms.mail.add_horillamailconfiguration %}
                 <button
                     onclick="window.location.href='/mail/mail-server/'"
                     class="inline-flex items-center justify-center px-5 py-2.5 bg-primary-600  text-white font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"

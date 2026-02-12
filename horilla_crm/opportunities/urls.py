@@ -1,3 +1,5 @@
+"""URL configuration for opportunities module."""
+
 from django.urls import path
 
 from . import big_deal_alert as big_deal_alert_views
@@ -189,29 +191,19 @@ urlpatterns = [
         name="big_deal_alert_nav",
     ),
     path(
-        "big-deal-main-view/",
-        big_deal_alert_views.BigDealAlertMainView.as_view(),
-        name="big_deal_main_view",
+        "big-deal-alert-list/",
+        big_deal_alert_views.BigDealAlertListView.as_view(),
+        name="big_deal_alert_list",
     ),
     path(
-        "update-status/<int:pk>/",
-        big_deal_alert_views.UpdateAlertStatusView.as_view(),
-        name="update_alert_status",
+        "big-deal-automation-create/",
+        big_deal_alert_views.BigDealAutomationFormView.as_view(),
+        name="big_deal_automation_create",
     ),
     path(
-        "big-deal-create-form/",
-        big_deal_alert_views.BigDealAlertFormView.as_view(),
-        name="big_deal_create_form",
-    ),
-    path(
-        "big-deal-update-form/<int:pk>/",
-        big_deal_alert_views.BigDealAlertFormView.as_view(),
-        name="big_deal_update_form",
-    ),
-    path(
-        "big-deal-delete/<int:pk>/",
-        big_deal_alert_views.BigDealAlertDelete.as_view(),
-        name="big_deal_delete",
+        "big-deal-automation-update/<int:pk>/",
+        big_deal_alert_views.BigDealAutomationFormView.as_view(),
+        name="big_deal_automation_update",
     ),
     # opportunity team urls
     path(
@@ -378,5 +370,10 @@ urlpatterns = [
         "add-default-team/",
         opportunity_team.AddDefaultTeamView.as_view(),
         name="add_default_team",
+    ),
+    path(
+        "select-closed-stage/<int:pk>/",
+        views.SelectClosedStageView.as_view(),
+        name="select_closed_stage",
     ),
 ]

@@ -1,3 +1,7 @@
+"""
+Views for Horilla Mail app
+"""
+
 import base64
 import html
 import logging
@@ -8,13 +12,12 @@ from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
-from django.urls import reverse
 from django.utils import timezone
-from django.utils import timezone as django_timezone
 from django.utils.decorators import method_decorator
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext as _
@@ -74,7 +77,7 @@ def extract_inline_images_with_cid(html_content):
             inline_images.append((content_file, cid))
             return f'<img{before_src}src="cid:{cid}"{after_src}>'
         except Exception as e:
-            logger.error(f"Error processing inline image: {e}")
+            logger.error("Error processing inline image: %s", e)
             return match.group(0)
 
     cleaned_html = re.sub(img_pattern, replace_img, html_content, flags=re.IGNORECASE)
@@ -130,167 +133,335 @@ class HorillaMailFormView(LoginRequiredMixin, TemplateView):
 
         return super().get(request, *args, **kwargs)
 
-    def post(self, request, *args, **kwargs):
+    def _extract_form_data(self, request):
+        """Extract form data from request."""
+        pk_value = request.GET.get("pk") or request.POST.get("pk")
+        # Normalize pk: convert string 'None', 'null', or empty to None
+        if pk_value in (None, "", "None", "null"):
+            pk_value = None
+
+        # Try to get model_name and object_id from both GET and POST
+        model_name = request.GET.get("model_name") or request.POST.get("model_name")
+        object_id = request.GET.get("object_id") or request.POST.get("object_id")
+
+        return {
+            "to_email": request.POST.get("to_email", ""),
+            "cc_email": request.POST.get("cc_email", ""),
+            "bcc_email": request.POST.get("bcc_email", ""),
+            "subject": request.POST.get("subject", ""),
+            "message_content": request.POST.get("message_content", ""),
+            "from_mail_id": request.POST.get("from_mail"),
+            "uploaded_files": request.FILES.getlist("attachments"),
+            "model_name": model_name,
+            "object_id": object_id,
+            "pk": pk_value,
+            "company": getattr(request, "active_company", None),
+        }
+
+    def _validate_required_fields(self, form_data):
+        """Validate required fields and return validation errors dict."""
+        validation_errors = {}
+        if not form_data["to_email"]:
+            validation_errors["to_email"] = _("To email is required")
+        if not form_data["from_mail_id"]:
+            validation_errors["from_mail"] = _("From mail configuration is required")
+        return validation_errors
+
+    def _build_validation_error_response(self, form_data, validation_errors, kwargs):
+        """Build and return validation error response."""
+        context = self.get_context_data(**kwargs)
+        context["validation_errors"] = validation_errors
+        context["subject"] = form_data["subject"]
+        context["message_content"] = form_data["message_content"]
+        context["form_data"] = {
+            "to_email": form_data["to_email"],
+            "cc_email": form_data["cc_email"],
+            "bcc_email": form_data["bcc_email"],
+            "subject": form_data["subject"],
+            "message_content": form_data["message_content"],
+            "from_mail_id": form_data["from_mail_id"],
+        }
+        context["to_pills"] = parse_email_pills_context(
+            form_data["to_email"] or "", "to"
+        )
+        context["cc_pills"] = parse_email_pills_context(
+            form_data["cc_email"] or "", "cc"
+        )
+        context["bcc_pills"] = parse_email_pills_context(
+            form_data["bcc_email"] or "", "bcc"
+        )
+        response = self.render_to_response(context)
+        response["HX-Select"] = "#send-mail-container"
+        return response
+
+    def _get_content_type(self, model_name, object_id, request):
+        """Get ContentType for model_name if provided."""
+        if not (model_name and object_id):
+            return None
         try:
+            return ContentType.objects.get(model=model_name.lower())
+        except ContentType.DoesNotExist:
+            messages.error(request, f"Invalid model name: {model_name}")
+            return None
 
-            to_email = request.POST.get("to_email", "")
-            cc_email = request.POST.get("cc_email", "")
-            bcc_email = request.POST.get("bcc_email", "")
-            subject = request.POST.get("subject", "")
-            message_content = request.POST.get("message_content", "")
-            from_mail_id = request.POST.get("from_mail")
-            uploaded_files = request.FILES.getlist("attachments")
-            model_name = request.GET.get("model_name")
-            object_id = request.GET.get("object_id")
-            pk = request.GET.get("pk")
+    def _get_or_create_draft_mail(
+        self, form_data, from_mail_config, content_type, request
+    ):
+        """Get existing draft mail or create a new one."""
+        draft_mail = None
+        if content_type and form_data["object_id"]:
+            try:
+                draft_mail = HorillaMail.objects.filter(
+                    pk=form_data["pk"],
+                    content_type=content_type,
+                    object_id=form_data["object_id"],
+                    mail_status="draft",
+                    created_by=request.user,
+                ).first()
+            except Exception as e:
+                logger.error("Error finding draft: %s", e)
 
-            company = getattr(request, "active_company", None)
-            setattr(_thread_local, "from_mail_id", from_mail_id)
-            missing_fields = []
-            if not to_email:
-                missing_fields.append("To email")
-            if not from_mail_id:
-                missing_fields.append("From mail configuration")
+        if not draft_mail:
+            draft_mail = HorillaMail.objects.create(
+                content_type=content_type,
+                object_id=form_data["object_id"] or 0,
+                mail_status="draft",
+                created_by=request.user,
+                sender=from_mail_config,
+                company=form_data["company"],
+            )
+        return draft_mail
 
-            if missing_fields:
-                messages.error(
-                    request, _("Missing required fields: ") + ", ".join(missing_fields)
+    def _update_draft_mail(self, draft_mail, form_data, from_mail_config):
+        """Update draft mail with form data."""
+        cleaned_message_content, inline_images = extract_inline_images_with_cid(
+            form_data["message_content"]
+        )
+        draft_mail.sender = from_mail_config
+        draft_mail.to = form_data["to_email"]
+        draft_mail.cc = form_data["cc_email"] if form_data["cc_email"] else None
+        draft_mail.bcc = form_data["bcc_email"] if form_data["bcc_email"] else None
+        draft_mail.subject = form_data["subject"] if form_data["subject"] else None
+        draft_mail.body = cleaned_message_content if cleaned_message_content else None
+        draft_mail.save()
+        return inline_images
+
+    def _save_attachments(self, draft_mail, form_data, inline_images):
+        """Save file attachments and inline images."""
+        if not draft_mail.pk:
+            return
+        for uploaded_file in form_data["uploaded_files"]:
+            attachment = HorillaMailAttachment(
+                mail=draft_mail, file=uploaded_file, company=form_data["company"]
+            )
+            attachment.save()
+        for img_file, cid in inline_images:
+            attachment = HorillaMailAttachment(
+                mail=draft_mail,
+                file=img_file,
+                company=form_data["company"],
+                is_inline=True,
+                content_id=cid,
+            )
+            attachment.save()
+
+    def _build_template_context(self, request, content_type, object_id):
+        """Build template context for email sending."""
+        template_context = {
+            "user": request.user,
+            "request": request,
+        }
+        if hasattr(request, "active_company") and request.active_company:
+            template_context["active_company"] = (request.active_company,)
+        if content_type and object_id:
+            try:
+                model_class = apps.get_model(
+                    app_label=content_type.app_label, model_name=content_type.model
                 )
-                return HttpResponse(
-                    "<script>closehorillaModal();htmx.trigger('#reloadButton','click');</script>"
-                )
+                related_object = model_class.objects.get(pk=object_id)
+                template_context["instance"] = related_object
+            except Exception as e:
+                logger.error("Error getting related object: %s", e)
+        return template_context
 
-            validation_errors = {}
-            if message_content and HorillaMail.has_xss(message_content):
-                validation_errors["body"] = _(
-                    "Message body contains potentially dangerous content (XSS detected). Please remove any scripts or malicious code."
-                )
+    def post(self, request, *args, **kwargs):
+        """
+        Handle the submission of the mail form.
+        """
+        try:
+            form_data = self._extract_form_data(request)
+            setattr(_thread_local, "from_mail_id", form_data["from_mail_id"])
 
+            validation_errors = self._validate_required_fields(form_data)
             if validation_errors:
-                context = self.get_context_data(**kwargs)
+                return self._build_validation_error_response(
+                    form_data, validation_errors, kwargs
+                )
 
-                context["validation_errors"] = validation_errors
-                context["subject"] = subject
-                context["message_content"] = message_content
-                context["form_data"] = {
-                    "to_email": to_email,
-                    "cc_email": cc_email,
-                    "bcc_email": bcc_email,
-                    "subject": subject,
-                    "message_content": message_content,
-                    "from_mail_id": from_mail_id,
-                }
-
-                context["to_pills"] = parse_email_pills_context(to_email or "", "to")
-                context["cc_pills"] = parse_email_pills_context(cc_email or "", "cc")
-                context["bcc_pills"] = parse_email_pills_context(bcc_email or "", "bcc")
-                response = self.render_to_response(context)
-                response["HX-Select"] = "#send-mail-container"
-                return response
+            # XSS validation is now handled at model level via clean() method
 
             try:
-                from_mail_config = HorillaMailConfiguration.objects.get(id=from_mail_id)
+                from_mail_config = HorillaMailConfiguration.objects.get(
+                    id=form_data["from_mail_id"]
+                )
             except HorillaMailConfiguration.DoesNotExist:
                 return JsonResponse(
                     {"success": False, "message": "Invalid mail configuration selected"}
                 )
 
-            content_type = None
-            if model_name and object_id:
-                try:
-                    content_type = ContentType.objects.get(model=model_name.lower())
-                except ContentType.DoesNotExist:
-                    messages.error(request, f"Invalid model name: {model_name}")
-                    return HttpResponse(
-                        "<script>closehorillaModal();htmx.trigger('#reloadButton','click');</script>"
-                    )
-
+            # If we have a pk, get the draft_mail first to extract model_name and object_id
             draft_mail = None
-            if content_type and object_id:
+            content_type = None
+            pk_value = form_data.get("pk")
+            # pk_value is already normalized in _extract_form_data, just check if it exists
+            if pk_value:
                 try:
-                    draft_mail = HorillaMail.objects.filter(
-                        pk=pk,
-                        content_type=content_type,
-                        object_id=object_id,
+                    # Ensure it's an integer
+                    pk_value = int(pk_value)
+                    draft_mail = HorillaMail.objects.get(
+                        pk=pk_value,
                         mail_status="draft",
                         created_by=request.user,
-                    ).first()
-                except Exception as e:
-                    logger.error(f"Error finding draft: {e}")
+                    )
+                    # Use content_type from existing draft_mail
+                    content_type = draft_mail.content_type
+                    # Extract model_name and object_id from existing draft_mail
+                    if draft_mail.content_type:
+                        form_data["model_name"] = draft_mail.content_type.model
+                    if draft_mail.object_id:
+                        form_data["object_id"] = draft_mail.object_id
+                except (HorillaMail.DoesNotExist, ValueError):
+                    pass
 
+            if not content_type:
+                if form_data.get("model_name") and form_data.get("object_id"):
+                    content_type = self._get_content_type(
+                        form_data["model_name"], form_data["object_id"], request
+                    )
+                    if not content_type:
+                        # Error already shown in _get_content_type, just return
+                        return HttpResponse(
+                            "<script>closehorillaModal();"
+                            "htmx.trigger('#reloadButton','click');</script>"
+                        )
+                else:
+                    if draft_mail and draft_mail.content_type:
+                        content_type = draft_mail.content_type
+                        form_data["model_name"] = draft_mail.content_type.model
+                        form_data["object_id"] = draft_mail.object_id
+                    elif not content_type and (
+                        form_data.get("model_name") or form_data.get("object_id")
+                    ):
+                        messages.error(
+                            request,
+                            _(
+                                "Both model_name and object_id are required to send mail related to an object."
+                            ),
+                        )
+                        return HttpResponse(
+                            "<script>closehorillaModal();"
+                            "htmx.trigger('#reloadButton','click');</script>"
+                        )
+
+            # For sending mail, only use existing draft if pk exists, don't create new draft
+            # Create a mail object for sending (will be saved only if successfully sent)
             if not draft_mail:
-                draft_mail = HorillaMail.objects.create(
+                if not content_type:
+                    messages.error(
+                        request,
+                        _(
+                            "Cannot send mail: model information is missing. Please try again from the opportunity page."
+                        ),
+                    )
+                    return HttpResponse(
+                        "<script>closehorillaModal();"
+                        "htmx.trigger('#reloadButton','click');</script>"
+                    )
+                # Create mail object for sending (not saved yet, will be saved only if sent successfully)
+                cleaned_message_content, inline_images = extract_inline_images_with_cid(
+                    form_data["message_content"]
+                )
+                draft_mail = HorillaMail(
                     content_type=content_type,
-                    object_id=object_id or 0,
-                    mail_status="draft",
+                    object_id=form_data["object_id"] or 0,
+                    mail_status="draft",  # Will be changed to "sent" if successful
                     created_by=request.user,
                     sender=from_mail_config,
-                    company=company,
-                )
-
-            cleaned_message_content, inline_images = extract_inline_images_with_cid(
-                message_content
-            )
-
-            draft_mail.sender = from_mail_config
-            draft_mail.to = to_email
-            draft_mail.cc = cc_email if cc_email else None
-            draft_mail.bcc = bcc_email if bcc_email else None
-            draft_mail.subject = subject if subject else None
-            draft_mail.body = (
-                cleaned_message_content if cleaned_message_content else None
-            )
-            draft_mail.save()
-
-            if draft_mail.pk:
-                for f in uploaded_files:
-                    attachment = HorillaMailAttachment(
-                        mail=draft_mail, file=f, company=company
-                    )
-                    attachment.save()
-
-                for img_file, cid in inline_images:
-                    attachment = HorillaMailAttachment(
-                        mail=draft_mail,
-                        file=img_file,
-                        company=company,
-                        is_inline=True,
-                        content_id=cid,
-                    )
-                    attachment.save()
-
-            template_context = {}
-
-            template_context["user"] = request.user
-            template_context["request"] = request
-
-            if hasattr(request, "active_company") and request.active_company:
-                template_context["active_company"] = (request.active_company,)
-
-            if content_type and object_id:
-                try:
-                    model_class = apps.get_model(
-                        app_label=content_type.app_label, model_name=content_type.model
-                    )
-                    related_object = model_class.objects.get(pk=object_id)
-                    template_context["instance"] = related_object
-                except Exception as e:
-                    logger.error(f"Error getting related object: {e}")
-
-            HorillaMailManager.send_mail(draft_mail, template_context)
-            draft_mail.refresh_from_db()
-            if draft_mail.mail_status == "sent":
-                messages.success(request, _("Mail sent successfully"))
-                return HttpResponse(
-                    "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');</script>"
+                    company=form_data["company"],
+                    to=form_data["to_email"],
+                    cc=form_data["cc_email"] if form_data["cc_email"] else None,
+                    bcc=form_data["bcc_email"] if form_data["bcc_email"] else None,
+                    subject=form_data["subject"] if form_data["subject"] else None,
+                    body=cleaned_message_content if cleaned_message_content else None,
                 )
             else:
+                # Update existing draft with form data
+                inline_images = self._update_draft_mail(
+                    draft_mail, form_data, from_mail_config
+                )
+
+            # Validate before sending (but don't save as draft yet)
+            try:
+                draft_mail.full_clean()
+            except ValidationError as e:
+                validation_errors = {}
+                if hasattr(e, "error_dict"):
+                    for field, errors in e.error_dict.items():
+                        if errors:
+                            validation_errors[field] = " ".join(
+                                [str(err) for err in errors]
+                            )
+                        else:
+                            validation_errors[field] = str(e)
+                elif hasattr(e, "error_list"):
+                    validation_errors["non_field_errors"] = " ".join(
+                        [str(err) for err in e.error_list]
+                    )
+                else:
+                    validation_errors["non_field_errors"] = str(e)
+
+                return self._build_validation_error_response(
+                    form_data, validation_errors, kwargs
+                )
+
+            # Save mail object (needed for attachments and sending)
+            # If it's a new mail, save it first to get pk for attachments
+            if not draft_mail.pk:
+                draft_mail.save()
+
+            self._save_attachments(draft_mail, form_data, inline_images)
+
+            object_id = (
+                draft_mail.object_id
+                if draft_mail and draft_mail.object_id
+                else form_data["object_id"]
+            )
+            template_context = self._build_template_context(
+                request, content_type, object_id
+            )
+
+            # Send mail - this will update status to "sent" or "failed" and save
+            HorillaMailManager.send_mail(draft_mail, template_context)
+            draft_mail.refresh_from_db()
+
+            if draft_mail.mail_status == "sent":
+                messages.success(request, _("Mail sent successfully"))
+                # Mail is now saved with status "sent", not "draft"
+            else:
+                # If sending failed, delete the draft that was created for sending
+                if not form_data.get(
+                    "pk"
+                ):  # Only delete if it was a new mail (not existing draft)
+                    try:
+                        draft_mail.delete()
+                    except Exception:
+                        pass
                 messages.error(
                     request, _("Failed to send mail: ") + draft_mail.mail_status_message
                 )
-                return HttpResponse(
-                    "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');</script>"
-                )
+            return HttpResponse(
+                "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');</script>"
+            )
 
         except Exception as e:
             import traceback
@@ -320,6 +491,20 @@ class HorillaMailFormView(LoginRequiredMixin, TemplateView):
 
         if pk:
             draft_mail = HorillaMail.objects.filter(pk=pk).first()
+            # If we have an existing draft_mail, try to get the related object
+            if draft_mail and draft_mail.content_type and draft_mail.object_id:
+                try:
+                    model_class = apps.get_model(
+                        app_label=draft_mail.content_type.app_label,
+                        model_name=draft_mail.content_type.model,
+                    )
+                    related_object = model_class.objects.get(pk=draft_mail.object_id)
+                    context["related_object"] = related_object
+                except Exception as e:
+                    logger.error("Error getting related object from draft_mail: %s", e)
+                    context["related_object"] = None
+            else:
+                context["related_object"] = None
 
         else:
             if model_name and object_id:
@@ -366,7 +551,9 @@ class HorillaMailFormView(LoginRequiredMixin, TemplateView):
                                     draft_mail.save()
 
                             except Exception as e:
-                                logger.error(f"Error setting related object email: {e}")
+                                logger.error(
+                                    "Error setting related object email: %s", e
+                                )
 
                     except Exception as e:
                         logger.error(str(e))
@@ -387,19 +574,29 @@ class HorillaMailFormView(LoginRequiredMixin, TemplateView):
                     pass
         existing_attachments = draft_mail.attachments.all() if draft_mail else []
         context["existing_attachments"] = existing_attachments
-        context["message_content"] = draft_mail.body if draft_mail.body else ""
-        context["subject"] = draft_mail.subject if draft_mail.subject else ""
-        model_name = None
-        model_name = draft_mail.content_type if draft_mail else None
-        if draft_mail:
-            model_name = model_name.model.capitalize()
-        context["model_name"] = model_name
-        context["object_id"] = draft_mail.object_id if draft_mail else None
+        context["message_content"] = (
+            draft_mail.body if draft_mail and draft_mail.body else ""
+        )
+        context["subject"] = (
+            draft_mail.subject if draft_mail and draft_mail.subject else ""
+        )
+
+        # Get model_name: prefer from draft_mail.content_type, fallback to GET param
+        context_model_name = None
+        if draft_mail and draft_mail.content_type:
+            context_model_name = draft_mail.content_type.model.capitalize()
+        elif model_name:
+            # Use the model_name from GET params if draft_mail doesn't have it
+            context_model_name = model_name.capitalize()
+
+        context["model_name"] = context_model_name
+        context["object_id"] = (
+            draft_mail.object_id if draft_mail and draft_mail.object_id else object_id
+        )
         context["pk"] = draft_mail.pk if draft_mail else None
         context["draft_mail"] = draft_mail
         context["primary_mail_config"] = primary_mail_config
         context["all_mail_configs"] = all_mail_configs
-        context["model_name"] = model_name
         context["to_pills"] = parse_email_pills_context(
             draft_mail.to if draft_mail else "", "to"
         )
@@ -427,6 +624,9 @@ class AddEmailView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Add email to the pill list
+        """
         email = request.POST.get("email", "").strip()
         field_type = request.POST.get("field_type", "to")
         current_email_list = request.POST.get(f"{field_type}_email_list", "")
@@ -466,6 +666,9 @@ class RemoveEmailView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Remove email from the pill list
+        """
         email_to_remove = request.POST.get("email_to_remove", "").strip()
         field_type = request.POST.get("field_type", "to")
         current_email_list = request.POST.get(f"{field_type}_email_list", "")
@@ -535,12 +738,10 @@ class EmailSuggestionView(LoginRequiredMixin, View):
                         for value in values:
                             if value and "@" in str(value):
                                 self._extract_emails_from_string(str(value), all_emails)
-                    except Exception as e:
+                    except Exception:
                         continue
 
         try:
-            from .models import HorillaMail
-
             for field_name in ["to", "cc", "bcc"]:
                 try:
                     email_values = HorillaMail.objects.values_list(
@@ -680,11 +881,6 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
         excluded_fields = {
             "is_active",
             "additional_info",
-            "company",
-            "created_at",
-            "created_by",
-            "updated_at",
-            "updated_by",
             "history",
             "password",
             "user_permissions",
@@ -751,11 +947,23 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                                 and not related_field.one_to_many
                             ):
                                 fk_field_info = {
-                                    "name": f"{field.name}.{related_field.name}",
-                                    "verbose_name": f'{getattr(related_field, "verbose_name", related_field.name)}',
+                                    "name": (f"{field.name}.{related_field.name}"),
+                                    "verbose_name": (
+                                        getattr(
+                                            related_field,
+                                            "verbose_name",
+                                            related_field.name,
+                                        )
+                                    ),
                                     "header": field.verbose_name,
-                                    "field_type": f"{field.__class__.__name__} -> {related_field.__class__.__name__}",
-                                    "template_syntax": f"{{{{ instance.{field.name}.{related_field.name} }}}}",
+                                    "field_type": (
+                                        f"{field.__class__.__name__} -> "
+                                        f"{related_field.__class__.__name__}"
+                                    ),
+                                    "template_syntax": (
+                                        f"{{{{ instance.{field.name}."
+                                        f"{related_field.name} }}}}"
+                                    ),
                                     "parent_field": field.name,
                                     "is_foreign_key": True,
                                 }
@@ -767,6 +975,10 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                 # Get all reverse relations
                 for field in model_class._meta.get_fields():
                     if field.one_to_many or field.many_to_many:
+                        # Skip fields that don't have get_accessor_name method
+                        # (e.g., AuditlogHistoryField)
+                        if not hasattr(field, "get_accessor_name"):
+                            continue
                         try:
                             # Get the accessor name (like 'employee_set' or custom related_name)
                             accessor_name = field.get_accessor_name()
@@ -789,11 +1001,26 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                                         continue
 
                                     reverse_field_info = {
-                                        "name": f"{accessor_name}.first.{reverse_field.name}",
-                                        "verbose_name": f'{getattr(reverse_field, "verbose_name", reverse_field.name)}',
+                                        "name": (
+                                            f"{accessor_name}.first."
+                                            f"{reverse_field.name}"
+                                        ),
+                                        "verbose_name": (
+                                            getattr(
+                                                reverse_field,
+                                                "verbose_name",
+                                                reverse_field.name,
+                                            )
+                                        ),
                                         "header": field.related_model._meta.verbose_name,
-                                        "field_type": f"Reverse {field.__class__.__name__} -> {reverse_field.__class__.__name__}",
-                                        "template_syntax": f"{{{{ instance.{accessor_name}.first.{reverse_field.name} }}}}",
+                                        "field_type": (
+                                            f"Reverse {field.__class__.__name__} -> "
+                                            f"{reverse_field.__class__.__name__}"
+                                        ),
+                                        "template_syntax": (
+                                            f"{{{{ instance.{accessor_name}."
+                                            f"first.{reverse_field.name} }}}}"
+                                        ),
                                         "parent_field": accessor_name,
                                         "is_reverse_relation": True,
                                     }
@@ -801,7 +1028,8 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                                     reverse_relation_fields.append(reverse_field_info)
                         except Exception as e:
                             logger.error(
-                                f"Error processing reverse relation {accessor_name}: {str(e)}"
+                                "Error processing reverse relation splits: %s",
+                                e,
                             )
                             continue
 
@@ -934,6 +1162,9 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
     """
 
     def get(self, request, *args, **kwargs):
+        """
+        Render preview of the mail
+        """
 
         pk = self.kwargs.get("pk")
         draft_mail = HorillaMail.objects.filter(pk=pk).first()
@@ -966,9 +1197,6 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
         # Render subject and body
         rendered_subject = draft_mail.render_subject()
         rendered_body = draft_mail.render_body()
-
-        # Replace cid: references with actual file URLs for inline attachments
-        import re
 
         # Pattern to find cid: in src attributes and capture data-filename if present
         cid_pattern = re.compile(
@@ -1018,6 +1246,9 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
         return HttpResponse(html_content)
 
     def post(self, request, *args, **kwargs):
+        """
+        Generate preview based on form data without saving
+        """
         try:
             # Get form data
             to_email = request.POST.get("to_email", "")
@@ -1049,7 +1280,7 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
                     content_type = ContentType.objects.get(model=model_name.lower())
                     draft_mail = HorillaMail.objects.filter(pk=pk).first()
                 except Exception as e:
-                    logger.error(f"Error finding draft mail: {e}")
+                    logger.error("Error finding draft mail: %s", e)
 
             if not draft_mail:
                 company = getattr(request, "active_company", None)
@@ -1090,7 +1321,7 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
                     template_context["instance"] = related_object
                     draft_mail.related_to = related_object
                 except Exception as e:
-                    logger.error(f"Error getting related object: {e}")
+                    logger.error("Error getting related object: %s", e)
 
             rendered_subject = ""
             rendered_content = ""
@@ -1103,7 +1334,10 @@ class HorillaMailPreviewView(LoginRequiredMixin, View):
             try:
                 rendered_content = draft_mail.render_body(template_context)
             except Exception as e:
-                rendered_content = f"<div class='alert alert-danger'>[Template Error: {str(e)}]</div>{message_content}"
+                rendered_content = (
+                    f"<div class='alert alert-danger'>[Template Error: {str(e)}]</div>"
+                    f"{message_content}"
+                )
 
             attachments = []
             if draft_mail.pk:
@@ -1171,20 +1405,14 @@ class CheckDraftChangesView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Always show confirmation modal when closing - user can choose to save or discard
+        """
         model_name = request.GET.get("model_name")
         pk = request.GET.get("pk")
         object_id = request.GET.get("object_id")
-        uploaded_files = request.FILES.getlist("attachments")
-        to_email = request.POST.get("to_email", "")
-        cc_email = request.POST.get("cc_email", "")
-        bcc_email = request.POST.get("bcc_email", "")
-        subject = request.POST.get("subject", "")
-        message_content = request.POST.get("message_content", "")
-        has_content = any([to_email, cc_email, bcc_email, subject, message_content])
-        if not has_content:
-            return HttpResponse(
-                "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');closeDeleteModeModal();</script>"
-            )
+
+        # Always show confirmation modal when closing
         return render(
             request,
             "draft_save_modal.html",
@@ -1207,6 +1435,9 @@ class SaveDraftView(LoginRequiredMixin, View):
     """
 
     def post(self, request, *args, **kwargs):
+        """
+        Save draft mail
+        """
         try:
             to_email = request.POST.get("to_email", "").strip()
             cc_email = request.POST.get("cc_email", "").strip()
@@ -1219,11 +1450,74 @@ class SaveDraftView(LoginRequiredMixin, View):
             object_id = request.GET.get("object_id")
             company = getattr(request, "active_company", None)
             pk = request.GET.get("pk")
-            # Only save if there's actual content
-            if not any([to_email, cc_email, bcc_email, subject, message_content]):
-                messages.info(request, _("No content to save as draft"))
+
+            # Normalize empty HTML content (like <p><br></p> or <p></p>)
+            def normalize_html_content(content):
+                if not content:
+                    return ""
+                # Remove common empty HTML patterns
+                normalized = content.strip()
+                normalized = re.sub(
+                    r"<p>\s*<br\s*/?>\s*</p>", "", normalized, flags=re.IGNORECASE
+                )
+                normalized = re.sub(r"<p>\s*</p>", "", normalized, flags=re.IGNORECASE)
+                normalized = normalized.strip()
+                return normalized
+
+            normalized_message = normalize_html_content(message_content)
+
+            # Get existing draft if pk exists
+            draft_mail = None
+            if pk:
+                try:
+                    draft_mail = HorillaMail.objects.get(
+                        pk=pk,
+                        mail_status="draft",
+                        created_by=request.user,
+                    )
+                except HorillaMail.DoesNotExist:
+                    pass
+
+            # Check if there are actual changes
+            has_changes = False
+
+            if draft_mail:
+                # Compare with existing draft
+                draft_body = normalize_html_content(draft_mail.body or "")
+                draft_to = (draft_mail.to or "").strip()
+                draft_cc = (draft_mail.cc or "").strip()
+                draft_bcc = (draft_mail.bcc or "").strip()
+                draft_subject = (draft_mail.subject or "").strip()
+                draft_from_id = (
+                    str(draft_mail.sender_id) if draft_mail.sender_id else ""
+                )
+
+                if (
+                    to_email != draft_to
+                    or cc_email != draft_cc
+                    or bcc_email != draft_bcc
+                    or subject != draft_subject
+                    or normalized_message != draft_body
+                    or (from_mail_id and from_mail_id != draft_from_id)
+                ):
+                    has_changes = True
+            else:
+                # New draft - check if there's any actual content (not just empty HTML)
+                has_changes = any(
+                    [to_email, cc_email, bcc_email, subject, normalized_message]
+                )
+
+            # Check for new attachments
+            if request.FILES.getlist("attachments"):
+                has_changes = True
+
+            # Only save if there are actual changes
+            if not has_changes:
+                messages.success(request, _("Draft saved successfully"))
                 return HttpResponse(
-                    "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');closeDeleteModeModal();</script>"
+                    "<script>closehorillaModal();"
+                    "$('#draft-email-tab').click();"
+                    "closeDeleteModeModal();</script>"
                 )
 
             # Get or create mail configuration
@@ -1249,16 +1543,16 @@ class SaveDraftView(LoginRequiredMixin, View):
                 except ContentType.DoesNotExist:
                     pass
 
-            # Find or create draft
-            draft_mail = None
-            if content_type and object_id:
-                draft_mail = HorillaMail.objects.filter(
-                    pk=pk,
-                    content_type=content_type,
-                    object_id=object_id,
-                    mail_status="draft",
-                    created_by=request.user,
-                ).first()
+            # Find or create draft (if we don't already have it from change detection)
+            if not draft_mail:
+                if content_type and object_id:
+                    draft_mail = HorillaMail.objects.filter(
+                        pk=pk,
+                        content_type=content_type,
+                        object_id=object_id,
+                        mail_status="draft",
+                        created_by=request.user,
+                    ).first()
 
             if not draft_mail:
 
@@ -1288,13 +1582,17 @@ class SaveDraftView(LoginRequiredMixin, View):
                     attachment.save()
             messages.success(request, _("Draft saved successfully"))
             return HttpResponse(
-                "<script>closehorillaModal();$('#draft-email-tab').click();closeDeleteModeModal();</script>"
+                "<script>closehorillaModal();"
+                "$('#draft-email-tab').click();"
+                "closeDeleteModeModal();</script>"
             )
 
         except Exception as e:
             messages.error(request, _("Error saving draft: ") + str(e))
             return HttpResponse(
-                "<script>closehorillaModal();htmx.trigger('#draft-email-tab','click');closeDeleteModeModal();</script>"
+                "<script>closehorillaModal();"
+                "htmx.trigger('#draft-email-tab','click');"
+                "closeDeleteModeModal();</script>"
             )
 
 
@@ -1313,6 +1611,9 @@ class DiscardDraftView(LoginRequiredMixin, View):
     """
 
     def delete(self, request, *args, **kwargs):
+        """
+        Discard draft mail
+        """
         try:
             model_name = request.GET.get("model_name")
             object_id = request.GET.get("object_id")
@@ -1333,13 +1634,17 @@ class DiscardDraftView(LoginRequiredMixin, View):
 
             messages.info(request, _("Draft discarded"))
             return HttpResponse(
-                "<script>closehorillaModal();$('#draft-email-tab').click();closeDeleteModeModal();</script>"
+                "<script>closehorillaModal();"
+                "$('#draft-email-tab').click();"
+                "closeDeleteModeModal();</script>"
             )
 
         except Exception as e:
             messages.error(request, _("Error discarding draft: ") + str(e))
             return HttpResponse(
-                "<script>closehorillaModal();htmx.trigger('#sent-email-tab','click');closeDeleteModeModal();</script>"
+                "<script>closehorillaModal();"
+                "htmx.trigger('#sent-email-tab','click');"
+                "closeDeleteModeModal();</script>"
             )
 
 
@@ -1351,8 +1656,15 @@ class DiscardDraftView(LoginRequiredMixin, View):
     name="dispatch",
 )
 class HorillaMailtDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """
+    Delete Horilla Mail view with post-delete redirection based on 'view' parameter
+    """
 
     model = HorillaMail
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.view_param = None
 
     def post(self, request, *args, **kwargs):
         view_from_get = request.GET.get("view")
@@ -1403,308 +1715,285 @@ class ScheduleMailView(LoginRequiredMixin, View):
     Schedule mail view - saves draft with scheduled send time
     """
 
+    def _validate_schedule_datetime(self, scheduled_at):
+        """Validate and parse scheduled datetime string."""
+        if not scheduled_at:
+            return None, {"schedule_datetime": _("Schedule time is required")}
+
+        try:
+            try:
+                schedule_at_naive = datetime.strptime(scheduled_at, "%Y-%m-%dT%H:%M")
+            except ValueError:
+                schedule_at_naive = datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M")
+
+            user_tz = timezone.get_current_timezone()
+            schedule_at = timezone.make_aware(schedule_at_naive, user_tz)
+
+            if schedule_at <= timezone.now():
+                return None, {
+                    "schedule_datetime": _("Scheduled time must be in the future")
+                }
+
+            return schedule_at, {}
+        except ValueError:
+            return None, {"schedule_datetime": _("Invalid date/time format")}
+
+    def _render_error_response(
+        self,
+        request,
+        errors,
+        model_name=None,
+        object_id=None,
+        pk=None,
+        is_reschedule=False,
+        scheduled_at="",
+    ):
+        """Render error response with form context."""
+        non_field_errors = {k: v for k, v in errors.items() if k != "schedule_datetime"}
+        context = {
+            "model_name": model_name,
+            "object_id": object_id,
+            "pk": pk,
+            "is_reschedule": is_reschedule,
+            "errors": errors,
+            "non_field_errors": non_field_errors,
+            "scheduled_at": scheduled_at or "",
+        }
+        render_html = render_to_string(
+            "schedule_mail_form.html", context, request=request
+        )
+        return HttpResponse(render_html)
+
+    def _handle_reschedule(self, request, pk, scheduled_at):
+        """Handle rescheduling of an existing mail."""
+        errors = {}
+
+        if not scheduled_at:
+            errors["schedule_datetime"] = _("Schedule time is required")
+            return self._render_error_response(
+                request, errors, pk=pk, is_reschedule=True, scheduled_at=scheduled_at
+            )
+
+        try:
+            draft_mail = HorillaMail.objects.get(pk=pk)
+        except HorillaMail.DoesNotExist:
+            errors["non_field_error"] = _(
+                "Scheduled mail not found or you don't have permission"
+            )
+            return self._render_error_response(
+                request, errors, pk=pk, is_reschedule=True, scheduled_at=scheduled_at
+            )
+
+        schedule_at, validation_errors = self._validate_schedule_datetime(scheduled_at)
+        if validation_errors:
+            return self._render_error_response(
+                request,
+                validation_errors,
+                pk=pk,
+                is_reschedule=True,
+                scheduled_at=scheduled_at,
+            )
+
+        draft_mail.scheduled_at = schedule_at
+        draft_mail.save(update_fields=["scheduled_at"])
+
+        messages.success(
+            request,
+            _("Mail rescheduled successfully for ")
+            + schedule_at.strftime("%Y-%m-%d %H:%M"),
+        )
+        return HttpResponse(
+            "<script>closeModal();$('#scheduled-email-tab').click();</script>"
+        )
+
+    def _validate_form_fields(
+        self, to_email, from_mail_id, scheduled_at, message_content
+    ):
+        """Validate form fields and return errors dict."""
+        errors = {}
+
+        if not to_email:
+            errors["to_email"] = _("To email is required")
+        if not from_mail_id:
+            errors["from_mail"] = _("From mail configuration is required")
+        if not scheduled_at:
+            errors["schedule_datetime"] = _("Schedule time is required")
+
+        # XSS validation is handled at model level via clean() method
+
+        if scheduled_at:
+            _schedule_at, validation_errors = self._validate_schedule_datetime(
+                scheduled_at
+            )
+            errors.update(validation_errors)
+
+        return errors
+
+    def _get_or_create_draft_mail(
+        self, request, pk, content_type, object_id, from_mail_config, company
+    ):
+        """Get existing draft mail or create a new one."""
+        draft_mail = None
+        if pk:
+            try:
+                draft_mail = HorillaMail.objects.get(
+                    pk=pk,
+                    mail_status="draft",
+                    created_by=request.user,
+                )
+            except HorillaMail.DoesNotExist:
+                pass
+
+        if not draft_mail:
+            draft_mail = HorillaMail.objects.create(
+                content_type=content_type,
+                object_id=object_id or 0,
+                mail_status="scheduled",
+                created_by=request.user,
+                sender=from_mail_config,
+                company=company,
+            )
+
+        return draft_mail
+
+    def _save_mail_attachments(
+        self, draft_mail, uploaded_files, inline_images, company
+    ):
+        """Save mail attachments and inline images."""
+        if not draft_mail.pk:
+            return
+
+        for f in uploaded_files:
+            attachment = HorillaMailAttachment(mail=draft_mail, file=f, company=company)
+            attachment.save()
+
+        for img_file, cid in inline_images:
+            attachment = HorillaMailAttachment(
+                mail=draft_mail,
+                file=img_file,
+                company=company,
+                is_inline=True,
+                content_id=cid,
+            )
+            attachment.save()
+
+    def _handle_new_schedule(self, request):
+        """Handle creation of a new scheduled mail."""
+        errors = {}
+
+        to_email = request.POST.get("to_email", "")
+        cc_email = request.POST.get("cc_email", "")
+        bcc_email = request.POST.get("bcc_email", "")
+        subject = request.POST.get("subject", "")
+        message_content = request.POST.get("message_content", "")
+        from_mail_id = request.POST.get("from_mail")
+        uploaded_files = request.FILES.getlist("attachments")
+        scheduled_at = request.POST.get("schedule_datetime")
+
+        model_name = request.GET.get("model_name")
+        object_id = request.GET.get("object_id")
+        pk = request.GET.get("pk")
+        is_reschedule = False
+
+        company = getattr(request, "active_company", None)
+        setattr(_thread_local, "from_mail_id", from_mail_id)
+
+        errors = self._validate_form_fields(
+            to_email, from_mail_id, scheduled_at, message_content
+        )
+
+        if errors:
+            return self._render_error_response(
+                request, errors, model_name, object_id, pk, is_reschedule, scheduled_at
+            )
+
+        try:
+            from_mail_config = HorillaMailConfiguration.objects.get(id=from_mail_id)
+        except HorillaMailConfiguration.DoesNotExist:
+            errors["from_mail"] = _("Invalid mail configuration selected")
+            return self._render_error_response(
+                request, errors, model_name, object_id, pk, is_reschedule, scheduled_at
+            )
+
+        content_type = None
+        if model_name and object_id:
+            try:
+                content_type = ContentType.objects.get(model=model_name.lower())
+            except ContentType.DoesNotExist:
+                errors["non_field_error"] = f"Invalid model name: {model_name}"
+                return self._render_error_response(
+                    request,
+                    errors,
+                    model_name,
+                    object_id,
+                    pk,
+                    is_reschedule,
+                    scheduled_at,
+                )
+
+        schedule_at, _unused = self._validate_schedule_datetime(scheduled_at)
+
+        draft_mail = self._get_or_create_draft_mail(
+            request, pk, content_type, object_id, from_mail_config, company
+        )
+
+        request_info = {
+            "host": request.get_host(),
+            "scheme": request.scheme,
+        }
+
+        cleaned_message_content, inline_images = extract_inline_images_with_cid(
+            message_content
+        )
+
+        draft_mail.sender = from_mail_config
+        draft_mail.to = to_email
+        draft_mail.cc = cc_email if cc_email else None
+        draft_mail.bcc = bcc_email if bcc_email else None
+        draft_mail.subject = subject if subject else None
+        draft_mail.body = cleaned_message_content if cleaned_message_content else None
+        draft_mail.mail_status = "scheduled"
+        draft_mail.scheduled_at = schedule_at
+        if draft_mail.additional_info is None:
+            draft_mail.additional_info = {}
+        draft_mail.additional_info["request_info"] = request_info
+        draft_mail.save()
+
+        self._save_mail_attachments(draft_mail, uploaded_files, inline_images, company)
+
+        messages.success(
+            request,
+            _("Mail scheduled successfully for ")
+            + schedule_at.strftime("%Y-%m-%d %H:%M"),
+        )
+        return HttpResponse(
+            "<script>closehorillaModal();$('#scheduled-email-tab').click();closeModal();</script>"
+        )
+
     def post(self, request, *args, **kwargs):
+        """Handle scheduling mail - new or reschedule existing."""
         pk = kwargs.get("pk") or request.GET.get("pk")
         scheduled_at = request.POST.get("schedule_datetime")
         is_reschedule = bool(kwargs.get("pk"))
 
         if is_reschedule:
-            errors = {}
-
-            if not scheduled_at:
-                errors["schedule_datetime"] = _("Schedule time is required")
-                context = {
-                    "pk": pk,
-                    "is_reschedule": is_reschedule,
-                    "errors": errors,
-                    "non_field_errors": {},
-                    "scheduled_at": scheduled_at or "",
-                }
-                html = render_to_string(
-                    "schedule_mail_form.html", context, request=request
-                )
-                return HttpResponse(html)
-
-            try:
-                draft_mail = HorillaMail.objects.get(pk=pk)
-            except HorillaMail.DoesNotExist:
-                errors["non_field_error"] = _(
-                    "Scheduled mail not found or you don't have permission"
-                )
-                context = {
-                    "pk": pk,
-                    "is_reschedule": is_reschedule,
-                    "errors": errors,
-                    "non_field_errors": errors,
-                    "scheduled_at": scheduled_at or "",
-                }
-                html = render_to_string(
-                    "schedule_mail_form.html", context, request=request
-                )
-                return HttpResponse(html)
-
-            # Parse and validate the new scheduled time
-            try:
-                try:
-                    schedule_at_naive = datetime.strptime(
-                        scheduled_at, "%Y-%m-%dT%H:%M"
-                    )
-                except ValueError:
-                    schedule_at_naive = datetime.strptime(
-                        scheduled_at, "%Y-%m-%d %H:%M"
-                    )
-
-                user_tz = django_timezone.get_current_timezone()
-                schedule_at = django_timezone.make_aware(schedule_at_naive, user_tz)
-
-                if schedule_at <= timezone.now():
-                    errors["schedule_datetime"] = _(
-                        "Scheduled time must be in the future"
-                    )
-                    context = {
-                        "pk": pk,
-                        "is_reschedule": is_reschedule,
-                        "errors": errors,
-                        "non_field_errors": {},
-                        "scheduled_at": scheduled_at or "",
-                    }
-                    html = render_to_string(
-                        "schedule_mail_form.html", context, request=request
-                    )
-                    return HttpResponse(html)
-            except ValueError:
-                errors["schedule_datetime"] = _("Invalid date/time format")
-                context = {
-                    "pk": pk,
-                    "is_reschedule": is_reschedule,
-                    "errors": errors,
-                    "non_field_errors": {},
-                    "scheduled_at": scheduled_at or "",
-                }
-                html = render_to_string(
-                    "schedule_mail_form.html", context, request=request
-                )
-                return HttpResponse(html)
-
-            # Update only the scheduled time
-            draft_mail.scheduled_at = schedule_at
-            draft_mail.save(update_fields=["scheduled_at"])
-
-            messages.success(
-                request,
-                _("Mail rescheduled successfully for ")
-                + schedule_at.strftime("%Y-%m-%d %H:%M"),
-            )
-            return HttpResponse(
-                "<script>closeModal();$('#scheduled-email-tab').click();</script>"
-            )
+            return self._handle_reschedule(request, pk, scheduled_at)
 
         try:
-            errors = {}
-
-            # Get form data
-            to_email = request.POST.get("to_email", "")
-            cc_email = request.POST.get("cc_email", "")
-            bcc_email = request.POST.get("bcc_email", "")
-            subject = request.POST.get("subject", "")
-            message_content = request.POST.get("message_content", "")
-            from_mail_id = request.POST.get("from_mail")
-            uploaded_files = request.FILES.getlist("attachments")
-
-            # Get schedule data
-            scheduled_at = request.POST.get("schedule_datetime")
-
-            model_name = request.GET.get("model_name")
-            object_id = request.GET.get("object_id")
-            pk = request.GET.get("pk")
-
-            company = getattr(request, "active_company", None)
-            setattr(_thread_local, "from_mail_id", from_mail_id)
-
-            # Validate required fields
-            if not to_email:
-                errors["to_email"] = _("To email is required")
-            if not from_mail_id:
-                errors["from_mail"] = _("From mail configuration is required")
-            if not scheduled_at:
-                errors["schedule_datetime"] = _("Schedule time is required")
-
-            # Validate XSS
-            if message_content and HorillaMail.has_xss(message_content):
-                errors["message_content"] = _(
-                    "Message body contains potentially dangerous content (XSS detected)."
-                )
-
-            # Validate date/time format
-            if scheduled_at:
-                try:
-                    try:
-                        schedule_at_naive = datetime.strptime(
-                            scheduled_at, "%Y-%m-%dT%H:%M"
-                        )
-                    except ValueError:
-                        schedule_at_naive = datetime.strptime(
-                            scheduled_at, "%Y-%m-%d %H:%M"
-                        )
-
-                    user_tz = django_timezone.get_current_timezone()
-                    schedule_at = django_timezone.make_aware(schedule_at_naive, user_tz)
-
-                    if schedule_at <= timezone.now():
-                        errors["schedule_datetime"] = _(
-                            "Scheduled time must be in the future"
-                        )
-                except ValueError:
-                    errors["schedule_datetime"] = _("Invalid date/time format")
-
-            if errors:
-                non_field_errors = {
-                    k: v for k, v in errors.items() if k != "schedule_datetime"
-                }
-                context = {
-                    "model_name": model_name,
-                    "object_id": object_id,
-                    "pk": pk,
-                    "is_reschedule": is_reschedule,
-                    "errors": errors,
-                    "non_field_errors": non_field_errors,
-                    "scheduled_at": scheduled_at or "",
-                }
-                html = render_to_string(
-                    "schedule_mail_form.html", context, request=request
-                )
-                return HttpResponse(html)
-
-            try:
-                from_mail_config = HorillaMailConfiguration.objects.get(id=from_mail_id)
-            except HorillaMailConfiguration.DoesNotExist:
-                errors["from_mail"] = _("Invalid mail configuration selected")
-                non_field_errors = {
-                    k: v for k, v in errors.items() if k != "schedule_datetime"
-                }
-                context = {
-                    "model_name": model_name,
-                    "object_id": object_id,
-                    "pk": pk,
-                    "is_reschedule": is_reschedule,
-                    "errors": errors,
-                    "non_field_errors": non_field_errors,
-                    "scheduled_at": scheduled_at or "",
-                }
-                html = render_to_string(
-                    "schedule_mail_form.html", context, request=request
-                )
-                return HttpResponse(html)
-
-            content_type = None
-            if model_name and object_id:
-                try:
-                    content_type = ContentType.objects.get(model=model_name.lower())
-                except ContentType.DoesNotExist:
-                    errors["non_field_error"] = f"Invalid model name: {model_name}"
-                    context = {
-                        "model_name": model_name,
-                        "object_id": object_id,
-                        "pk": pk,
-                        "is_reschedule": is_reschedule,
-                        "errors": errors,
-                        "scheduled_at": scheduled_at or "",
-                    }
-                    html = render_to_string(
-                        "schedule_mail_form.html", context, request=request
-                    )
-                    return HttpResponse(html)
-
-            # Find or create draft mail
-            draft_mail = None
-            if pk:
-                try:
-                    draft_mail = HorillaMail.objects.get(
-                        pk=pk,
-                        mail_status="draft",
-                        created_by=request.user,
-                    )
-                except HorillaMail.DoesNotExist:
-                    pass
-
-            if not draft_mail:
-                draft_mail = HorillaMail.objects.create(
-                    content_type=content_type,
-                    object_id=object_id or 0,
-                    mail_status="scheduled",
-                    created_by=request.user,
-                    sender=from_mail_config,
-                    company=company,
-                )
-
-            request_info = {
-                "host": request.get_host(),
-                "scheme": request.scheme,
-            }
-
-            # Extract inline images
-            cleaned_message_content, inline_images = extract_inline_images_with_cid(
-                message_content
-            )
-
-            # Update draft mail with scheduled status
-            draft_mail.sender = from_mail_config
-            draft_mail.to = to_email
-            draft_mail.cc = cc_email if cc_email else None
-            draft_mail.bcc = bcc_email if bcc_email else None
-            draft_mail.subject = subject if subject else None
-            draft_mail.body = (
-                cleaned_message_content if cleaned_message_content else None
-            )
-            draft_mail.mail_status = "scheduled"
-            draft_mail.scheduled_at = schedule_at
-            if draft_mail.additional_info is None:
-                draft_mail.additional_info = {}
-            draft_mail.additional_info["request_info"] = request_info
-            draft_mail.save()
-
-            # Save attachments
-            if draft_mail.pk:
-                for f in uploaded_files:
-                    attachment = HorillaMailAttachment(
-                        mail=draft_mail, file=f, company=company
-                    )
-                    attachment.save()
-
-                for img_file, cid in inline_images:
-                    attachment = HorillaMailAttachment(
-                        mail=draft_mail,
-                        file=img_file,
-                        company=company,
-                        is_inline=True,
-                        content_id=cid,
-                    )
-                    attachment.save()
-
-            messages.success(
-                request,
-                _("Mail scheduled successfully for ")
-                + schedule_at.strftime("%Y-%m-%d %H:%M"),
-            )
-            return HttpResponse(
-                "<script>closehorillaModal();$('#scheduled-email-tab').click();closeModal();</script>"
-            )
-
+            return self._handle_new_schedule(request)
         except Exception as e:
             import traceback
 
             logger.error(traceback.format_exc())
+            model_name = request.GET.get("model_name")
+            object_id = request.GET.get("object_id")
+            pk = request.GET.get("pk")
+            is_reschedule = False
+            scheduled_at = request.POST.get("schedule_datetime", "")
             errors = {"non_field_error": _("Error scheduling mail: ") + str(e)}
-            context = {
-                "model_name": model_name,
-                "object_id": object_id,
-                "pk": pk,
-                "is_reschedule": is_reschedule,
-                "errors": errors,
-                "scheduled_at": scheduled_at or "",
-            }
-            html = render_to_string("schedule_mail_form.html", context, request=request)
-            return HttpResponse(html)
+            return self._render_error_response(
+                request, errors, model_name, object_id, pk, is_reschedule, scheduled_at
+            )
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -1723,6 +2012,8 @@ class ScheduleMailModallView(LoginRequiredMixin, View):
     """
 
     def get(self, request, *args, **kwargs):
+        """
+        Render the schedule mail modal form"""
         model_name = request.GET.get("model_name")
         object_id = request.GET.get("object_id")
         pk = request.GET.get("pk") or kwargs.get("pk")
@@ -1730,7 +2021,7 @@ class ScheduleMailModallView(LoginRequiredMixin, View):
         mail = HorillaMail.objects.get(pk=pk)
         scheduled_at_formatted = ""
         if mail.scheduled_at:
-            user_tz = django_timezone.get_current_timezone()
+            user_tz = timezone.get_current_timezone()
             scheduled_at_local = mail.scheduled_at.astimezone(user_tz)
             scheduled_at_formatted = scheduled_at_local.strftime("%Y-%m-%dT%H:%M")
 
@@ -1742,5 +2033,7 @@ class ScheduleMailModallView(LoginRequiredMixin, View):
             "scheduled_at": scheduled_at_formatted,
         }
 
-        html = render_to_string("schedule_mail_form.html", context, request=request)
-        return HttpResponse(html)
+        render_html = render_to_string(
+            "schedule_mail_form.html", context, request=request
+        )
+        return HttpResponse(render_html)

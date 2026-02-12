@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from horilla_core.models import HorillaUser
+from horilla.auth.models import User
 from horilla_notifications.models import Notification
 
 
@@ -16,10 +16,10 @@ class NotificationAPITests(APITestCase):
     def setUp(self):
         """Set up test data"""
         # Create test users
-        self.user1 = HorillaUser.objects.create_user(
+        self.user1 = User.objects.create_user(
             username="testuser1", email="test1@example.com", password="password123"
         )
-        self.user2 = HorillaUser.objects.create_user(
+        self.user2 = User.objects.create_user(
             username="testuser2", email="test2@example.com", password="password123"
         )
 

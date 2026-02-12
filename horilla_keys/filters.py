@@ -1,17 +1,24 @@
 """
-Filters for the horilla_keys app
+Filters for the horilla_keys app.
 """
-
-import django_filters
 
 from horilla_generics.filters import HorillaFilterSet
 from horilla_keys.models import ShortcutKey
 
-# Define your horilla_keys filters here
-
 
 class ShortKeyFilter(HorillaFilterSet):
+    """
+    Filter set for ShortcutKey model.
+
+    Used to filter, search, and manage shortcut key records
+    across the application.
+    """
+
     class Meta:
+        """
+        Meta configuration for ShortKeyFilter.
+        """
+
         model = ShortcutKey
         fields = "__all__"
         exclude = ["additional_info"]
