@@ -16,13 +16,14 @@ import traceback
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
-from io import StringIO
+from io import BytesIO, StringIO
 
 # Third-party imports
 import pandas as pd
 
 # Django imports (third-party)
 from django.apps import apps
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -36,6 +37,8 @@ from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 
 # First-party (Horilla)
 from horilla.exceptions import HorillaHttp404
@@ -2700,3 +2703,252 @@ class DownloadImportedFileView(LoginRequiredMixin, View):
             return HttpResponse(
                 f"Error downloading imported file: {str(e)}", status=500
             )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.can_view_horilla_import"),
+    name="dispatch",
+)
+class DownloadTemplateModalView(LoginRequiredMixin, TemplateView):
+    """View to show field selection modal for template download"""
+
+    template_name = "import/download_template_modal.html"
+
+    def is_module_allowed(self, module_name, app_label):
+        """Check if the module is in the allowed import models list"""
+        try:
+            import_models = FEATURE_REGISTRY.get("import_models", [])
+            for model in import_models:
+                if model.__name__ == module_name and model._meta.app_label == app_label:
+                    return True
+            return False
+        except Exception as e:
+            logger.error("Error checking if module is allowed: %s", e)
+            return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        module = self.request.GET.get("module")
+
+        if not module:
+            context["error"] = _("Please select a module first")
+            return context
+
+        try:
+            app_label = self.get_app_label_for_model(module)
+            if not app_label:
+                context["error"] = _("Invalid module selected")
+                return context
+
+            # Validate that the module is in the allowed choices
+            if not self.is_module_allowed(module, app_label):
+                context["error"] = _("Selected module is not available for import")
+                return context
+
+            model_fields = self.get_model_fields(module, app_label)
+            context["fields"] = model_fields
+            context["module"] = module
+            context["app_label"] = app_label
+            # Initially all non-mandatory fields are selected
+            non_mandatory_fields = [f for f in model_fields if not f["required"]]
+            context["select_all"] = len(non_mandatory_fields) > 0
+            context["selected_fields"] = {
+                f["name"]
+                for f in model_fields
+                if f["required"] or context["select_all"]
+            }
+        except Exception as e:
+            logger.error("Error getting model fields for template: %s", e)
+            context["error"] = _("Error loading fields")
+
+        return context
+
+    def get_app_label_for_model(self, model_name):
+        """Get app label for a model name"""
+        for app_config in apps.get_app_configs():
+            try:
+                # Only check installed apps
+                if not app_config.models_module:
+                    continue
+                model = apps.get_model(app_config.label, model_name)
+                if model:
+                    return app_config.label
+            except LookupError:
+                continue
+        return None
+
+    def get_model_fields(self, module_name, app_label):
+        """Get fields from the selected model"""
+        try:
+            model = apps.get_model(app_label, module_name)
+            fields = []
+            excluded_fields = [
+                "id",
+                "created_at",
+                "updated_at",
+                "is_active",
+                "additional_info",
+                "company",
+                "created_by",
+                "updated_by",
+                "history",
+            ]
+            for field in model._meta.fields:
+                if field.name in excluded_fields:
+                    continue
+
+                field_info = {
+                    "name": field.name,
+                    "verbose_name": field.verbose_name.title(),
+                    "required": not field.null and not field.blank,
+                }
+                fields.append(field_info)
+            return fields
+        except Exception as e:
+            logger.error(
+                "Error in get_model_fields (app_label: %s, module: %s): %s",
+                app_label,
+                module_name,
+                e,
+            )
+            return []
+
+
+@method_decorator(
+    permission_required_or_denied("horilla_core.can_view_horilla_import"),
+    name="dispatch",
+)
+class DownloadTemplateView(LoginRequiredMixin, View):
+    """View to generate and download template file with selected fields"""
+
+    def is_module_allowed(self, module_name, app_label):
+        """Check if the module is in the allowed import models list"""
+        try:
+            import_models = FEATURE_REGISTRY.get("import_models", [])
+            for model in import_models:
+                if model.__name__ == module_name and model._meta.app_label == app_label:
+                    return True
+            return False
+        except Exception as e:
+            logger.error("Error checking if module is allowed: %s", e)
+            return False
+
+    def post(self, request, *args, **kwargs):
+        """Generate template file with selected fields"""
+        module = request.POST.get("module")
+        app_label = request.POST.get("app_label")
+        selected_fields = request.POST.getlist("selected_fields")
+        file_format = request.POST.get("file_format", "xlsx")
+
+        if not module or not app_label or not selected_fields:
+            response = HttpResponse("", status=400)
+            response["HX-Refresh"] = "true"
+            return response
+
+        try:
+            # Validate that the module is in the allowed choices
+            if not self.is_module_allowed(module, app_label):
+                messages.error(
+                    request, _("Selected module is not available for import")
+                )
+                response = HttpResponse("", status=400)
+                response["HX-Refresh"] = "true"
+                return response
+
+            # Check if app is installed before trying to get the model
+            try:
+                apps.get_app_config(app_label)
+            except Exception:
+                messages.error(
+                    request, _("Selected module is not available for import")
+                )
+                response = HttpResponse("", status=400)
+                response["HX-Refresh"] = "true"
+                return response
+
+            try:
+                model = apps.get_model(app_label, module)
+            except Exception:
+                messages.error(
+                    request, _("Selected module is not available for import")
+                )
+                response = HttpResponse("", status=400)
+                response["HX-Refresh"] = "true"
+                return response
+
+            if not model:
+                response = HttpResponse("", status=400)
+                response["HX-Refresh"] = "true"
+                return response
+
+            # Get field verbose names for headers
+            field_headers = []
+            for field_name in selected_fields:
+                try:
+                    field = model._meta.get_field(field_name)
+                    field_headers.append(field.verbose_name.title())
+                except:
+                    field_headers.append(field_name)
+
+            # Get model verbose name for filename (lowercase)
+            model_verbose_name = model._meta.verbose_name.lower().replace(" ", "_")
+
+            # Generate file
+            if file_format == "csv":
+                response = HttpResponse(content_type="text/csv")
+                response["Content-Disposition"] = (
+                    f'attachment; filename="{model_verbose_name}_template.csv"'
+                )
+                writer = csv.writer(response)
+                writer.writerow(field_headers)
+            else:
+                # Excel format with styling (like bulk export)
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Template"
+
+                # Add headers
+                ws.append([str(header) for header in field_headers])
+
+                # Style headers (same as bulk export)
+                header_font = Font(bold=True)
+                header_alignment = Alignment(horizontal="center")
+                header_fill = PatternFill(
+                    start_color="eafb5b", end_color="eafb5b", fill_type="solid"
+                )
+
+                for cell in ws[1]:  # First row (headers)
+                    cell.font = header_font
+                    cell.alignment = header_alignment
+                    cell.fill = header_fill
+
+                # Set column widths (same as bulk export)
+                for col in ws.columns:
+                    column_letter = col[0].column_letter
+                    ws.column_dimensions[column_letter].width = 25
+
+                # Set row height for header
+                ws.row_dimensions[1].height = 15
+
+                buffer = BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
+
+                response = HttpResponse(
+                    buffer.getvalue(),
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+                response["Content-Disposition"] = (
+                    f'attachment; filename="{model_verbose_name}_template.xlsx"'
+                )
+
+            return response
+
+        except Exception as e:
+            logger.error("Error generating template: %s", e)
+            tb = traceback.format_exc()
+            logger.error(tb)
+            response = HttpResponse("", status=500)
+            response["HX-Refresh"] = "true"
+            return response
