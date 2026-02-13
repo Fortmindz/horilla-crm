@@ -56,6 +56,7 @@ class IncomingMailServerNavbar(LoginRequiredMixin, HorillaNavView):
     filter_option = False
     reload_option = False
     one_view_only = True
+    border_enabled = False
 
     @cached_property
     def new_button(self):

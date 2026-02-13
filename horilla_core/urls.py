@@ -614,6 +614,16 @@ urlpatterns = [
         name="download_imported_file",
     ),
     path(
+        "download-template-modal/",
+        import_data.DownloadTemplateModalView.as_view(),
+        name="download_template_modal",
+    ),
+    path(
+        "download-template/",
+        import_data.DownloadTemplateView.as_view(),
+        name="download_template",
+    ),
+    path(
         "import-history-view/",
         import_data.ImportHistoryView.as_view(),
         name="import_history_view",
@@ -702,13 +712,28 @@ urlpatterns = [
     ),
     path(
         "super-user-tab/",
-        permission_views.SuperUserTab.as_view(),
+        permission_views.SuperUserView.as_view(),
         name="super_user_tab",
+    ),
+    path(
+        "super-user-nav-bar/",
+        permission_views.SuperUserNavbar.as_view(),
+        name="super_user_nav_bar",
+    ),
+    path(
+        "super-user-list/",
+        permission_views.SuperUserTab.as_view(),
+        name="super_user_list",
     ),
     path(
         "super-user-status/<int:pk>/",
         permission_views.ToggleSuperuserView.as_view(),
         name="super_user_status",
+    ),
+    path(
+        "add-super-users/",
+        permission_views.AddSuperUsersView.as_view(),
+        name="add_super_users",
     ),
     path(
         "search-role-models/<int:role_id>/",

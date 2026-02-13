@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load horilla_tags %}
 <div class="{% if border_enabled %} border-b border-b-primary-100 {% endif %} bg-white {% if nav_width %} px-5 fixed z-10 w-fill-available {% else %} flex justify-between items-center mb-2 w-full {% endif %}">
-  <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-between w-full {% if not nav_width %} pb-3 {% endif %}">
+  <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-between w-full {% if not nav_width %} pb-2 {% endif %}">
     <div class="flex items-center gap-4">
       {% if navbar_indication %}
         <button
@@ -20,7 +20,7 @@
             id="viewTypeSelect"
             class="js-example-basic-single headselect mt-0"
             name="view_type"
-            hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'view_type' %}{{ key }}={{ value }}&{% endif %}{%endfor %}"
+            hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'view_type' %}{% if not forloop.first %}&{% endif %}{{ key }}={{ value }}{% endif %}{%endfor %}"
             hx-target="#mainSession"
             hx-select="#mainSession"
             hx-select-oob="#navBar"
@@ -42,8 +42,8 @@
                 {% endif %}
               {% endfor %}
             {% endif %}
-            {% for saved_list in request.user.saved_filter_lists.all %}
-              {% if saved_list.model_name == model_name %}
+            {% for saved_list in available_saved_filter_lists|default:request.user.saved_filter_lists.all %}
+              {% if saved_list.model_name == model_name or available_saved_filter_lists %}
                 <option value="saved_list_{{ saved_list.id }}" {% if view_type == 'saved_list_'|add:saved_list.id|stringformat:"s" %}selected{% endif %}>
                   {{ saved_list.name }}
                 </option>
@@ -86,7 +86,7 @@
             placeholder="Search"
             class="text-color-600 px-2 py-1.5 pr-[40px] w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-[#d3d3d3] placeholder:text-xs text-sm [transition:.3s] focus:border-primary-600"
             value="{{ request.GET.search }}"
-            hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'apply_filter' and  key != 'remove_filter' and key != 'field' and key != 'operator' and key != 'value' and key != 'search' %}{{ key }}={{ value }}&{% endif %}{% endfor %}{% if request.GET.field %}&apply_filter=true{% endif %}"
+            hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'apply_filter' and  key != 'remove_filter' and key != 'field' and key != 'operator' and key != 'value' and key != 'search' %}{% if not forloop.first %}&{% endif %}{{ key }}={{ value }}{% endif %}{% endfor %}{% if request.GET.field %}&apply_filter=true{% endif %}"
             hx-trigger="keyup changed delay:500ms, search"
             hx-target="#mainSession"
             hx-select="#mainSession"

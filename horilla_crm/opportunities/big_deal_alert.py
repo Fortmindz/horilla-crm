@@ -56,6 +56,7 @@ class BigDealAlertNavbar(LoginRequiredMixin, HorillaNavView):
     nav_width = False
     gap_enabled = False
     search_option = False
+    border_enabled = False
 
     @cached_property
     def new_button(self):

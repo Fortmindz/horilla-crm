@@ -64,6 +64,7 @@ class MailServerNavbar(LoginRequiredMixin, HorillaNavView):
     one_view_only = True
     filter_option = False
     reload_option = False
+    border_enabled = False
 
     @cached_property
     def new_button(self):

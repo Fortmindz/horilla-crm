@@ -57,6 +57,7 @@ class RecycleBinNavbar(LoginRequiredMixin, HorillaNavView):
     gap_enabled = False
     url_name = "recycle_bin_list_view"
     search_option = False
+    border_enabled = False
 
 
 @method_decorator(htmx_required, name="dispatch")
