@@ -86,6 +86,7 @@ class CampaignNavbar(LoginRequiredMixin, HorillaNavView):
     filterset_class = CampaignFilter
     exclude_kanban_fields = "company"
     enable_actions = True
+    enable_quick_filters = True
 
     @cached_property
     def new_button(self):
@@ -120,6 +121,7 @@ class CampaignListView(LoginRequiredMixin, HorillaListView):
     filterset_class = CampaignFilter
     search_url = reverse_lazy("campaigns:campaign_list_view")
     main_url = reverse_lazy("campaigns:campaign_view")
+    enable_quick_filters = True
 
     columns = [
         "campaign_name",
