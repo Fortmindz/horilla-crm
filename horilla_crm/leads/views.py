@@ -98,6 +98,8 @@ class LeadNavbar(LoginRequiredMixin, HorillaNavView):
     model_app_label = "leads"
     exclude_kanban_fields = "lead_owner"
     enable_actions = True
+    enable_quick_filters = True
+    column_selector_exclude_fields = ["message_id", "is_convert"]
 
     @cached_property
     def custom_view_type(self):
@@ -131,15 +133,18 @@ class LeadListView(LoginRequiredMixin, HorillaListView):
     """
 
     model = Lead
-    view_id = "Lead_List"
+    view_id = "leads-list"
     filterset_class = LeadFilter
     search_url = reverse_lazy("leads:leads_list")
     main_url = reverse_lazy("leads:leads_view")
     max_visible_actions = 5
+    enable_quick_filters = True
     columns = [
-        "title",
         "first_name",
+        "last_name",
+        "title",
         "email",
+        "lead_status",
         "lead_source",
         "industry",
         "annual_revenue",
