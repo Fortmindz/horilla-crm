@@ -4,6 +4,7 @@ Views and utilities for managing groups and permissions in Horilla.
 
 # Standard library imports
 from functools import cached_property
+from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.apps import apps
@@ -28,8 +29,16 @@ from horilla.registry.permission_registry import PERMISSION_EXEMPT_MODELS
 # First-party / Horilla imports
 from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required, permission_required_or_denied
+from horilla_core.filters import UserFilter
+from horilla_core.forms import AddSuperUsersForm
 from horilla_core.models import FieldPermission, Role
-from horilla_generics.views import HorillaListView, HorillaTabView
+from horilla_generics.views import (
+    HorillaListView,
+    HorillaNavView,
+    HorillaSingleFormView,
+    HorillaTabView,
+    HorillaView,
+)
 
 
 class PermissionUtils:
@@ -1636,6 +1645,69 @@ class BulkUpdateUserAllPermissionsView(LoginRequiredMixin, View):
     ),
     name="dispatch",
 )
+class SuperUserView(LoginRequiredMixin, HorillaView):
+    """
+    Template view for customer role page
+    """
+
+    template_name = "permissions/super_user_view.html"
+    nav_url = reverse_lazy("horilla_core:super_user_nav_bar")
+    list_url = reverse_lazy("horilla_core:super_user_list")
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "auth.view_permission",
+            "auth.view_group",
+            "auth.change_permission",
+            "auth.change_group",
+        ]
+    ),
+    name="dispatch",
+)
+class SuperUserNavbar(LoginRequiredMixin, HorillaNavView):
+    """
+    Navbar fro customer role
+    """
+
+    # nav_title = _("Super Users")
+    search_url = reverse_lazy("horilla_core:super_user_list")
+    main_url = reverse_lazy("horilla_core:super_user_tab")
+    one_view_only = True
+    all_view_types = False
+    filter_option = False
+    reload_option = False
+    nav_width = False
+    gap_enabled = False
+    search_option = False
+    border_enabled = False
+
+    @cached_property
+    def new_button(self):
+        """Button for adding super users"""
+        return {
+            "title": _("Add Super Users"),
+            "url": reverse_lazy("horilla_core:add_super_users"),
+            "target": "#modalBox",
+            "onclick": "openModal()",
+            "attrs": {"id": "add-super-users"},
+        }
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "auth.view_permission",
+            "auth.view_group",
+            "auth.change_permission",
+            "auth.change_group",
+        ]
+    ),
+    name="dispatch",
+)
 class SuperUserTab(LoginRequiredMixin, HorillaListView):
     """
     List view of the super user tab
@@ -1646,11 +1718,9 @@ class SuperUserTab(LoginRequiredMixin, HorillaListView):
     list_column_visibility = False
     bulk_select_option = False
 
-    columns = [
-        (_("First Name"), "get_avatar_with_name"),
-        "role",
-        (_("Super User Status"), "super_user_status_col"),
-    ]
+    columns = [(_("First Name"), "get_avatar_with_name"), "role"]
+
+    action_method = "super_user_action_col"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1659,6 +1729,32 @@ class SuperUserTab(LoginRequiredMixin, HorillaListView):
         )
         queryset = queryset.filter(is_superuser=True, company=company)
         return queryset
+
+    @cached_property
+    def col_attrs(self):
+        """
+        Get the column attributes for the list view.
+        """
+        query_params = self.request.GET.dict()
+        query_params = {}
+        if "section" in self.request.GET:
+            query_params["section"] = self.request.GET.get("section")
+        query_string = urlencode(query_params)
+        attrs = {
+            "hx-get": f"{{get_detail_view_url}}?{query_string}",
+            "hx-target": "#permission-view",
+            "hx-swap": "innerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#users-view",
+            "permission": f"{User._meta.app_label}.view_{User._meta.model_name}",
+        }
+        return [
+            {
+                "get_avatar_with_name": {
+                    **attrs,
+                }
+            }
+        ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -1696,3 +1792,49 @@ class ToggleSuperuserView(LoginRequiredMixin, View):
             )
 
         return HttpResponse("<script>htmx.trigger('#reloadButton','click')</script>")
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "auth.view_permission",
+            "auth.view_group",
+            "auth.change_permission",
+            "auth.change_group",
+        ]
+    ),
+    name="dispatch",
+)
+class AddSuperUsersView(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    View to add multiple users as superusers using single form view
+    """
+
+    model = User
+    form_class = AddSuperUsersForm
+    form_title = _("Add Super Users")
+    full_width_fields = ["users"]
+    modal_height = False
+    form_url = reverse_lazy("horilla_core:add_super_users")
+    save_and_new = False
+    view_id = "add-super-users"
+
+    def get_form_kwargs(self):
+        """Add request to form kwargs for company filtering"""
+        kwargs = super().get_form_kwargs()
+        kwargs["request"] = self.request
+        return kwargs
+
+    def form_valid(self, form):
+        """Handle valid form submission to add users as superusers"""
+        users = form.save(commit=True)
+        messages.success(
+            self.request,
+            _("Successfully added {count} user(s) as superuser(s).").format(
+                count=len(users)
+            ),
+        )
+        return HttpResponse(
+            "<script>htmx.trigger('#reloadButton','click');closeModal();</script>"
+        )

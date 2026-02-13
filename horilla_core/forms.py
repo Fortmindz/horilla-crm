@@ -979,6 +979,7 @@ class CompanyMultistepFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
             "currency",
             "time_format",
             "date_format",
+            "date_time_format",
             "activate_multiple_currencies",
         ],
     }
@@ -1069,6 +1070,7 @@ class CompanyFormClassSingle(HorillaModelForm):
             "currency",
             "time_format",
             "date_format",
+            "date_time_format",
             "hq",
             "activate_multiple_currencies",
         ]
@@ -1179,6 +1181,110 @@ class AddUsersToRoleForm(forms.Form):
         if commit:
             for user in users:
                 user.role = role
+                user.save()
+        return users
+
+
+class AddSuperUsersForm(forms.Form):
+    """Form to add users as superusers."""
+
+    users = forms.ModelMultipleChoiceField(
+        queryset=User.objects.all(),
+        label=_("Users"),
+        help_text=_("Select one or more users to grant superuser privileges."),
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "select2-pagination w-full",
+                "data-url": reverse_lazy(
+                    "horilla_generics:model_select2",
+                    kwargs={
+                        "app_label": "horilla_core",
+                        "model_name": str(User.__name__),
+                    },
+                ),
+                "data-placeholder": "Select users",
+                "multiple": "multiple",
+                "data-field-name": "users",
+                "id": "id_users",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.full_width_fields = kwargs.pop("full_width_fields", [])
+        self.dynamic_create_fields = kwargs.pop("dynamic_create_fields", [])
+        self.hidden_fields = kwargs.pop("hidden_fields", [])
+        self.condition_fields = kwargs.pop("condition_fields", [])
+        self.condition_model = kwargs.pop("condition_model", None)
+        self.condition_field_choices = kwargs.pop("condition_field_choices", {})
+        self.request = kwargs.pop("request", None)
+        self.condition_hx_include = kwargs.pop("condition_hx_include", "")
+        self.field_permissions = kwargs.pop("field_permissions", {})
+        self.save_and_new = kwargs.pop("save_and_new", "")
+        self.duplicate_mode = kwargs.pop("duplicate_mode", False)
+        super().__init__(*args, **kwargs)
+
+        # Filter users to only show non-superusers from the same company
+        company = (
+            getattr(self.request, "active_company", None) if self.request else None
+        ) or (
+            self.request.user.company
+            if self.request and self.request.user.is_authenticated
+            else None
+        )
+
+        if company:
+            self.fields["users"].queryset = User.objects.filter(
+                is_superuser=False, company=company
+            )
+        else:
+            self.fields["users"].queryset = User.objects.filter(is_superuser=False)
+
+        # Update the select2 URL to include is_superuser=false parameter
+        base_url = str(
+            reverse_lazy(
+                "horilla_generics:model_select2",
+                kwargs={
+                    "app_label": "horilla_core",
+                    "model_name": str(User.__name__),
+                },
+            )
+        )
+        self.fields["users"].widget.attrs["data-url"] = f"{base_url}?is_superuser=false"
+
+        for field_name in self.hidden_fields:
+            if field_name in self.fields:
+                self.fields[field_name].widget = forms.HiddenInput()
+                self.fields[field_name].widget.attrs.update({"class": "hidden-input"})
+
+    def clean(self):
+        cleaned_data = super().clean()
+        users = cleaned_data.get("users")
+
+        if users:
+            # Check if any selected users are already superusers
+            already_superusers = users.filter(is_superuser=True)
+            if already_superusers.exists():
+                user_names = ", ".join(
+                    [
+                        user.get_full_name() or user.username
+                        for user in already_superusers
+                    ]
+                )
+                raise forms.ValidationError(
+                    _("The following user(s) are already superusers: {users}").format(
+                        users=user_names
+                    )
+                )
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        """Add superuser status to the selected users."""
+        users = self.cleaned_data["users"]
+        if commit:
+            for user in users:
+                user.is_superuser = True
                 user.save()
         return users
 

@@ -173,6 +173,13 @@ class Company(models.Model):
         help_text=_("Select your preferred date format."),
         verbose_name=_("Date Format"),
     )
+    date_time_format = models.CharField(
+        max_length=100,
+        choices=DATETIME_FORMAT_CHOICES,
+        default="%Y-%m-%d %H:%M:%S",
+        help_text=_("Select your preferred date time format."),
+        verbose_name=_("Date Time Format"),
+    )
     activate_multiple_currencies = models.BooleanField(
         default=False, verbose_name=_("Activate Multiple Currencies")
     )
@@ -1029,6 +1036,13 @@ class HorillaUser(AbstractUser):
         abstract = False
         unique_together = ["company", "username", "role"]
 
+    AbstractUser._meta.get_field("username").verbose_name = _("Username")
+    AbstractUser._meta.get_field("first_name").verbose_name = _("First Name")
+    AbstractUser._meta.get_field("last_name").verbose_name = _("Last Name")
+    AbstractUser._meta.get_field("email").verbose_name = _("Email")
+    AbstractUser._meta.get_field("is_superuser").verbose_name = _("Administrator")
+    AbstractUser._meta.get_field("is_active").verbose_name = _("Active")
+
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
@@ -1124,11 +1138,11 @@ class HorillaUser(AbstractUser):
 
         super().save(*args, **kwargs)
 
-    def super_user_status_col(self):
-        """Returns the HTML for the super_user_status column in the list view."""
+    def super_user_action_col(self):
+        """Returns the HTML for the super_user_action column in the list view with remove icon."""
         superuser_count = self.__class__.objects.filter(is_superuser=True).count()
         html = render_template(
-            path="permissions/super_user_status_col.html",
+            path="permissions/super_user_action_col.html",
             context={"instance": self, "superuser_count": superuser_count},
         )
         return mark_safe(html)
@@ -1504,6 +1518,10 @@ class SavedFilterList(models.Model):
     name = models.CharField(max_length=100)
     model_name = models.CharField(max_length=100)
     filter_params = models.JSONField()
+    is_public = models.BooleanField(
+        default=False,
+        help_text="When set, this filter is available to all users in this list/position.",
+    )
     created_at = models.DateTimeField(default=timezone.now)
     all_objects = models.Manager()
 
@@ -1515,6 +1533,7 @@ class SavedFilterList(models.Model):
         unique_together = ["user", "name", "model_name"]
         indexes = [
             models.Index(fields=["user", "model_name"]),
+            models.Index(fields=["model_name", "is_public"]),
         ]
 
     def __str__(self):
@@ -3515,3 +3534,23 @@ class FieldPermission(models.Model):
             raise ValidationError("Either user or role must be set")
         if self.user and self.role:
             raise ValidationError("Cannot set both user and role")
+
+
+class QuickFilter(models.Model):
+    """Store user's quick filter preferences for list views"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="quick_filters"
+    )
+    app_label = models.CharField(max_length=100)
+    model_name = models.CharField(max_length=100)
+    field_name = models.CharField(max_length=100)
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "app_label", "model_name", "field_name")
+        ordering = ["display_order", "created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.model_name} - {self.field_name}"
