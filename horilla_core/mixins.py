@@ -296,6 +296,52 @@ class FiscalYearCalendarMixin:
         }
 
 
+def get_allowed_users_queryset_for_model(user, model):
+    """
+    Return the allowed User queryset for owner-style fields on the given model,
+    based on add/add_own permissions and role hierarchy (same logic as OwnerQuerysetMixin).
+
+    - Superuser or add_<model> permission: all active users.
+    - add_own_<model> permission: current user + users in subordinate roles.
+    - Otherwise: only the current user.
+
+    Used by OwnerQuerysetMixin and by bulk update/filter views so owner dropdowns
+    show the same options as create/edit forms.
+    """
+    if not user:
+        return User.objects.none()
+
+    app_label = model._meta.app_label
+    model_name = model._meta.model_name
+    change_perm = f"{app_label}.change_{model_name}"
+    change_own_perm = f"{app_label}.change_own_{model_name}"
+
+    if user.is_superuser or user.has_perm(change_perm):
+        return User.objects.filter(is_active=True)
+
+    if user.has_perm(change_own_perm):
+        user_role = getattr(user, "role", None)
+        if user_role:
+
+            def get_subordinate_roles(role):
+                sub_roles = role.subroles.all()
+                all_sub_roles = list(sub_roles)
+                for sub_role in sub_roles:
+                    all_sub_roles.extend(get_subordinate_roles(sub_role))
+                return all_sub_roles
+
+            subordinate_roles = get_subordinate_roles(user_role)
+            subordinate_users = User.objects.filter(
+                role__in=subordinate_roles
+            ).distinct()
+            return User.objects.filter(
+                id__in=[user.id] + list(subordinate_users.values_list("id", flat=True))
+            ).filter(is_active=True)
+        return User.objects.filter(id=user.id).filter(is_active=True)
+
+    return User.objects.filter(id=user.id).filter(is_active=True)
+
+
 class OwnerQuerysetMixin:
     """
     Mixin to dynamically filter any ForeignKey or ManyToManyField
@@ -321,13 +367,25 @@ class OwnerQuerysetMixin:
 
         app_label = model._meta.app_label
         model_name = model._meta.model_name
-        add_perm = f"{app_label}.add_{model_name}"
-        add_own_perm = f"{app_label}.add_own_{model_name}"
 
-        if user.is_superuser or user.has_perm(add_perm):
+        # Use change/change_own when editing (instance with pk), add/add_own when creating
+        instance = (
+            instance_from_kwargs
+            or getattr(self, "instance", None)
+            or getattr(self, "instance_obj", None)
+        )
+        is_edit = instance and hasattr(instance, "pk") and instance.pk
+        if is_edit:
+            action_perm = f"{app_label}.change_{model_name}"
+            action_own_perm = f"{app_label}.change_own_{model_name}"
+        else:
+            action_perm = f"{app_label}.add_{model_name}"
+            action_own_perm = f"{app_label}.add_own_{model_name}"
+
+        if user.is_superuser or user.has_perm(action_perm):
             allowed_users = User.objects.all()
 
-        elif user.has_perm(add_own_perm):
+        elif user.has_perm(action_own_perm):
             user_role = getattr(user, "role", None)
 
             if user_role:
@@ -341,8 +399,6 @@ class OwnerQuerysetMixin:
                     return all_sub_roles
 
                 subordinate_roles = get_subordinate_roles(user_role)
-                # all_roles = [user_role] + subordinate_roles
-
                 subordinate_users = User.objects.filter(
                     role__in=subordinate_roles
                 ).distinct()
@@ -362,13 +418,6 @@ class OwnerQuerysetMixin:
         # Priority: 1. Instance's company (when editing), 2. Active company, 3. User's company
         company = None
 
-        # Try to get instance from multiple sources
-        instance = (
-            instance_from_kwargs
-            or getattr(self, "instance", None)
-            or getattr(self, "instance_obj", None)
-        )
-
         # If editing an existing object, use the object's company
         if (
             instance
@@ -384,19 +433,17 @@ class OwnerQuerysetMixin:
                 company = request.user.company
 
         for field_name, field in self.fields.items():
-            model_field = self._meta.model._meta.get_field(field_name)
+            try:
+                model_field = self._meta.model._meta.get_field(field_name)
+            except Exception:
+                continue  # Skip non-model fields
 
             if model_field.is_relation and model_field.related_model == User:
                 field.queryset = allowed_users
             elif model_field.is_relation and hasattr(
                 model_field.related_model, "company"
             ):
-                # Filter foreign key fields by company if the related model has a company field
-                # When editing: use the object's company
-                # When creating: use the active company
-                # This ensures forms show objects from the correct company
                 if company:
-                    # Get the current queryset or create a new one
                     if hasattr(field, "queryset") and field.queryset is not None:
                         queryset = field.queryset.filter(company=company)
                     else:
