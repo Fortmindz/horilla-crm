@@ -1,6 +1,7 @@
 """Models for Horilla Mail App"""
 
 import mimetypes
+import re
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -237,6 +238,8 @@ class HorillaMail(HorillaCoreModel):
     def render_subject(self, context=None):
         """
         Render the subject template with the given context.
+        Sanitizes output to remove newlines/carriage returns (RFC 5322 prohibits
+        these in email header values).
         """
 
         if not context:
@@ -251,7 +254,9 @@ class HorillaMail(HorillaCoreModel):
         template_str = (self.subject or "").strip()
         if template_str:
             template_str = "{% load horilla_tags %}\n" + template_str
-        return django_engine.from_string(template_str).render(context)
+        rendered = django_engine.from_string(template_str).render(context)
+        # Remove newlines/carriage returns - RFC 5322 forbids them in headers
+        return re.sub(r"\s+", " ", rendered).strip()
 
     def render_body(self, context=None):
         """
