@@ -621,6 +621,7 @@ class Role(HorillaCoreModel):
         null=True,
         blank=True,
         related_name="subroles",
+        verbose_name="Parent Role",
     )
     description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
     permissions = models.ManyToManyField(
@@ -637,6 +638,18 @@ class Role(HorillaCoreModel):
 
     def __str__(self):
         return str(self.role_name)
+
+    def get_delete_url(self):
+        """
+        This method to get delete url
+        """
+        return reverse_lazy("horilla_core:delete_role", kwargs={"pk": self.pk})
+
+    def get_edit_url(self):
+        """
+        This method to get edit url
+        """
+        return reverse_lazy("horilla_core:edit_roles_view", kwargs={"pk": self.pk})
 
 
 class MultipleCurrency(HorillaCoreModel):
@@ -1250,8 +1263,14 @@ class HorillaUserProfile(models.Model):
 @permission_exempt_model
 class KanbanGroupBy(models.Model):
     """
-    Kanban Group By model to store user preferences for grouping in Kanban views.
+    Model to store user preferences for grouping in Kanban and Group By views.
+    view_type separates settings: 'kanban' for kanban board, 'group_by' for group-by list.
     """
+
+    VIEW_TYPE_CHOICES = [
+        ("kanban", _("Kanban")),
+        ("group_by", _("Group By")),
+    ]
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1264,6 +1283,12 @@ class KanbanGroupBy(models.Model):
         help_text=_("Name of the model (e.g., 'User') to group by."),
     )
     app_label = models.CharField(max_length=100)
+    view_type = models.CharField(
+        max_length=20,
+        choices=VIEW_TYPE_CHOICES,
+        default="kanban",
+        help_text=_("Whether this setting is for Kanban view or Group By view."),
+    )
     field_name = models.CharField(
         max_length=100,
         help_text=_(
@@ -1272,13 +1297,17 @@ class KanbanGroupBy(models.Model):
     )
     all_objects = models.Manager()
 
-    def get_model_groupby_fields(self, exclude_fields=None, include_fields=None):
+    def get_model_groupby_fields(
+        self, exclude_fields=None, include_fields=None, user=None
+    ):
         """
         Retrieve valid fields for grouping in the selected model.
+        When user is provided, excludes fields with 'hidden' (don't show) permission.
         """
-
         if exclude_fields is None:
             exclude_fields = []
+        # Always exclude country from kanban/group_by choices across all models
+        exclude_fields = list(exclude_fields) + ["country"]
 
         try:
             model = apps.get_model(app_label=self.app_label, model_name=self.model_name)
@@ -1299,6 +1328,13 @@ class KanbanGroupBy(models.Model):
                 ):
                     choices.append((field.name, field.verbose_name or field.name))
 
+            if user and choices:
+                from horilla_core.utils import filter_hidden_fields
+
+                field_names = [c[0] for c in choices]
+                allowed = filter_hidden_fields(user, model, field_names)
+                choices = [c for c in choices if c[0] in allowed]
+
             return choices
         except (LookupError, ValueError) as e:
             logger.error(
@@ -1312,8 +1348,11 @@ class KanbanGroupBy(models.Model):
     def clean(self):
         """
         Validate that the field_name is a valid ChoiceField or ForeignKey in the selected model.
+        Respects field-level permissions when user is available from request.
         """
-        choices = self.get_model_groupby_fields()
+        request = getattr(_thread_local, "request", None)
+        user = getattr(request, "user", None) if request else None
+        choices = self.get_model_groupby_fields(user=user)
         if not self.field_name:
             return
 
@@ -1330,7 +1369,10 @@ class KanbanGroupBy(models.Model):
         self.clean()
         request = getattr(_thread_local, "request")
         existing = KanbanGroupBy.all_objects.filter(
-            model_name=self.model_name, app_label=self.app_label, user=request.user
+            model_name=self.model_name,
+            app_label=self.app_label,
+            user=request.user,
+            view_type=self.view_type,
         )
 
         # Delete them before saving this one
@@ -1347,7 +1389,7 @@ class KanbanGroupBy(models.Model):
         Meta options for the KanbanGroupBy model.
         """
 
-        unique_together = ("model_name", "field_name", "app_label", "user")
+        unique_together = ("model_name", "app_label", "user", "view_type")
 
 
 @permission_exempt_model
@@ -1394,6 +1436,33 @@ class ListColumnVisibility(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.app_label}.{self.model_name}"
+
+
+@permission_exempt_model
+class DetailFieldVisibility(models.Model):
+    """
+    Model to store user preferences for detail view fields.
+    Supports two sections: header_fields (summary) and details_fields (Details tab).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        verbose_name=_("User"),
+        related_name="detail_field_visibility",
+    )
+    model_name = models.CharField(max_length=100)
+    app_label = models.CharField(max_length=100)
+    url_name = models.CharField(max_length=100, default="")
+    header_fields = models.JSONField(default=list)  # [[verbose_name, field_name], ...]
+    details_fields = models.JSONField(default=list)  # [[verbose_name, field_name], ...]
+    all_objects = models.Manager()
+
+    class Meta:
+        unique_together = ("user", "app_label", "model_name", "url_name")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.app_label}.{self.model_name} detail"
 
 
 class RecentlyViewedManager(models.Manager):
@@ -3445,6 +3514,7 @@ class ExportSchedule(HorillaCoreModel):
 
     def frequency_display(self):
         """Return formatted frequency and date."""
+
         if self.frequency == "daily":
             text = _("Every day")
 
@@ -3464,12 +3534,19 @@ class ExportSchedule(HorillaCoreModel):
             text = ""
 
         if self.start_date:
-            date_text = f"{_('From')}: {self.start_date.strftime('%d %b %Y')}"
             if self.end_date:
-                date_text += f" {_('to')} {self.end_date.strftime('%d %b %Y')}"
-            text = f"{text}<br><span class='text-xs text-gray-500'>{date_text}</span>"
-
-        return format_html(text)
+                return format_html(
+                    "{}<br><span class='text-xs text-gray-500'>From: {} to {}</span>",
+                    text,
+                    self.start_date.strftime("%d %b %Y"),
+                    self.end_date.strftime("%d %b %Y"),
+                )
+            return format_html(
+                "{}<br><span class='text-xs text-gray-500'>From: {}</span>",
+                text,
+                self.start_date.strftime("%d %b %Y"),
+            )
+        return format_html("{}", text)
 
 
 class FieldPermission(models.Model):

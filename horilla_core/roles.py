@@ -20,8 +20,12 @@ from horilla.auth.models import User
 
 # First-party / Horilla imports
 from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import htmx_required, permission_required_or_denied
-from horilla_core.filters import UserFilter
+from horilla_core.decorators import (
+    htmx_required,
+    permission_required,
+    permission_required_or_denied,
+)
+from horilla_core.filters import RoleFilter, UserFilter
 from horilla_core.forms import AddUsersToRoleForm
 from horilla_core.models import Role
 from horilla_generics.views import (
@@ -354,3 +358,224 @@ class RoleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         return HttpResponse(
             "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
         )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(permission_required("horilla_core.view_role"), name="dispatch")
+class RoleNavbar(LoginRequiredMixin, HorillaNavView):
+    """
+    Navbar for team role. Default layout is kanban (hierarchy view).
+    """
+
+    nav_title = Role._meta.verbose_name_plural
+    search_url = reverse_lazy("horilla_core:role_list_view")
+    main_url = reverse_lazy("horilla_core:roles_view")
+    kanban_url = reverse_lazy("horilla_core:roles_hierarchy_view")
+    default_layout = "kanban"
+    filterset_class = RoleFilter
+    all_view_types = False
+    reload_option = False
+    nav_width = False
+    gap_enabled = False
+    url_name = "role_list_view"
+    border_enabled = False
+
+    def get_context_data(self, **kwargs):
+        """Show search option only when in list view, not in hierarchy view."""
+        context = super().get_context_data(**kwargs)
+        effective = context.get("effective_layout", "list")
+        context["search_option"] = effective == "list"
+        context["filter_option"] = effective == "list"
+        return context
+
+    @cached_property
+    def new_button(self):
+        """
+        Get the configuration for the "New" button in the navbar.
+        """
+        if self.request.user.has_perm("horilla_core.add_role"):
+            return {
+                "title": _("Add Role"),
+                "url": f"""{ reverse_lazy('horilla_core:create_roles_view')}?new=true""",
+                "attrs": {"id": "role-create"},
+            }
+        return None
+
+
+class RolesHierarchyView(LoginRequiredMixin, TemplateView):
+    """
+    TemplateView for role settings page.
+    """
+
+    template_name = "role/role.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        show_all_companies = self.request.session.get("show_all_companies", False)
+
+        def build_role_tree(roles_queryset, parent_role=None, company=None):
+            """Recursively build role hierarchy for a specific company"""
+            # Filter children by parent_role and ensure they belong to the same company
+            if parent_role is None:
+                # Root level: get roles with no parent_role, filtered by company
+                if company is not None:
+                    children = roles_queryset.filter(
+                        parent_role__isnull=True, company=company
+                    )
+                else:
+                    children = roles_queryset.filter(
+                        parent_role__isnull=True, company__isnull=True
+                    )
+            else:
+                # Child level: get roles with this parent_role
+                # Ensure parent_role belongs to the same company to prevent cross-company connections
+                if company is not None:
+                    # Only include if parent_role belongs to the same company
+                    if parent_role.company == company:
+                        children = roles_queryset.filter(
+                            parent_role=parent_role, company=company
+                        )
+                    else:
+                        children = (
+                            roles_queryset.none()
+                        )  # Don't connect across companies
+                else:
+                    # For roles without company, ensure parent_role also has no company
+                    if parent_role.company is None:
+                        children = roles_queryset.filter(
+                            parent_role=parent_role, company__isnull=True
+                        )
+                    else:
+                        children = (
+                            roles_queryset.none()
+                        )  # Don't connect across company boundaries
+
+            role_tree = []
+
+            for role in children:
+                user_count = role.users.count()
+                role_dict = {
+                    "id": role.id,
+                    "name": role.role_name,
+                    "description": getattr(role, "description", ""),
+                    "user_count": user_count,
+                    "children": build_role_tree(roles_queryset, role, company),
+                }
+                role_tree.append(role_dict)
+
+            return role_tree
+
+        if show_all_companies:
+            # Group roles by company when "all company" is activated
+            all_roles = Role.all_objects.all()
+            companies_with_roles = {}
+
+            # Group roles by company
+            for role in all_roles:
+                company = role.company
+                if company:
+                    if company not in companies_with_roles:
+                        companies_with_roles[company] = []
+                    companies_with_roles[company].append(role)
+
+            # Build company-grouped structure
+            companies_data = []
+            for company, company_roles in companies_with_roles.items():
+                # Build role tree for this company's roles only
+                company_roles_queryset = Role.all_objects.filter(company=company)
+                roles_tree = build_role_tree(company_roles_queryset, company=company)
+
+                companies_data.append(
+                    {
+                        "company": company,
+                        "company_id": company.id,
+                        "company_name": company.name,
+                        "roles": roles_tree,
+                        "roles_count": len(company_roles),
+                    }
+                )
+
+            # Also include roles without company
+            roles_without_company = all_roles.filter(company__isnull=True)
+            if roles_without_company.exists():
+                roles_without_company_queryset = Role.all_objects.filter(
+                    company__isnull=True
+                )
+                roles_tree = build_role_tree(
+                    roles_without_company_queryset, company=None
+                )
+                companies_data.append(
+                    {
+                        "company": None,
+                        "company_id": None,
+                        "company_name": "No Company",
+                        "roles": roles_tree,
+                        "roles_count": roles_without_company.count(),
+                    }
+                )
+
+            context["companies_data"] = companies_data
+            context["show_all_companies"] = True
+            context["roles_count"] = all_roles.count()
+        else:
+            # Original behavior: filter by active company
+            roles = Role.objects.all()
+            # Get the company from the filtered queryset (should be active company)
+            company = getattr(self.request, "active_company", None)
+            if not company and hasattr(self.request.user, "company"):
+                company = self.request.user.company
+            roles_data = build_role_tree(roles, company=company)
+            context["roles_data"] = roles_data
+            context["show_all_companies"] = False
+            context["roles_count"] = roles.count()
+
+        return context
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_teamrole"), name="dispatch"
+)
+class RoleListView(LoginRequiredMixin, HorillaListView):
+    """
+    List view of team role
+    """
+
+    model = Role
+    view_id = "role_list"
+    filterset_class = RoleFilter
+    search_url = reverse_lazy("horilla_core:role_list_view")
+    main_url = reverse_lazy("horilla_core:roles_view")
+    table_width = False
+    bulk_select_option = False
+
+    columns = ["role_name", "parent_role"]
+
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.change_role",
+            "attrs": """
+                hx-get="{get_edit_url}?new=true"
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                onclick="openModal()"
+                """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permission": "horilla_core.delete_role",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]

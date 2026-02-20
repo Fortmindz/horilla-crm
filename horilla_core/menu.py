@@ -169,7 +169,7 @@ class BaseSettings:
             "url": reverse_lazy("horilla_core:roles_view"),
             "hx-target": "#settings-content",
             "hx-push-url": "true",
-            "hx-select": "#role-container",
+            "hx-select": "#role-view",
             "hx-select-oob": "#settings-sidebar",
             "perm": "horilla_core.view_role",
         },

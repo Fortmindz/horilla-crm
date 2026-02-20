@@ -241,6 +241,11 @@ urlpatterns = [
         name="user_kanban_view",
     ),
     path(
+        "user-group-by-view/",
+        user_views.UserGroupByView.as_view(),
+        name="user_group_by_view",
+    ),
+    path(
         "user-create-form/", user_views.UserFormView.as_view(), name="user_create_form"
     ),
     path(
@@ -305,6 +310,13 @@ urlpatterns = [
     ),
     # role urls
     path("roles-view/", views.RolesView.as_view(), name="roles_view"),
+    path("roles-nav-bar/", roles_views.RoleNavbar.as_view(), name="roles_nav_bar"),
+    path(
+        "roles-hierarchy-view/",
+        roles_views.RolesHierarchyView.as_view(),
+        name="roles_hierarchy_view",
+    ),
+    path("roles-list-view/", roles_views.RoleListView.as_view(), name="role_list_view"),
     path("create-roles-view/", roles_views.AddRole.as_view(), name="create_roles_view"),
     path(
         "edit-roles-view/<int:pk>/",
@@ -341,7 +353,6 @@ urlpatterns = [
         roles_views.RoleUsersNavView.as_view(),
         name="view_user_in_role_nav_view",
     ),
-    # path('edit-roles-view/<int:pk>/',roles_views.AddRole.as_view(),name="edit_roles_view"),
     # branches urls
     path("branches-view/", branches_views.BranchesView.as_view(), name="branches_view"),
     path(

@@ -61,6 +61,7 @@ from horilla_generics.views import (
     HorillaSingleDeleteView,
     HorillaSingleFormView,
     HorillaTabView,
+    HorillaView,
 )
 from horilla_mail.models import HorillaMailConfiguration
 
@@ -819,8 +820,7 @@ class HolidayDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         """
 
         return HttpResponse(
-            "<script>$('#reloadButton').click();closeDeleteModeModal();closeDetailModal();</script>"
-            # "<script>$('#reloadButton').click();closeDeleteModeModal();$('#tab-holidays-view').click();</script>"
+            "<script>$('#reloadHolidayButton').click();closeDeleteModeModal();closeDetailModal();</script>"
         )
 
 
@@ -1198,7 +1198,7 @@ class BusinessHourDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         Get the response after deleting a business hour.
         """
         return HttpResponse(
-            "<script>$('#reloadButton').click();closeDeleteModeModal();closeDetailModal();</script>"
+            "<script>$('#reloadBusinessHourButton').click();closeDeleteModeModal();closeDetailModal();</script>"
         )
 
 
@@ -1291,134 +1291,15 @@ class GetCountrySubdivisionsView(LoginRequiredMixin, View):
         return HttpResponse(options)
 
 
-class RolesView(LoginRequiredMixin, TemplateView):
+class RolesView(LoginRequiredMixin, HorillaView):
     """
-    TemplateView for role settings page.
+    Template view for team role page
     """
 
-    template_name = "role/role.html"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        show_all_companies = self.request.session.get("show_all_companies", False)
-
-        def build_role_tree(roles_queryset, parent_role=None, company=None):
-            """Recursively build role hierarchy for a specific company"""
-            # Filter children by parent_role and ensure they belong to the same company
-            if parent_role is None:
-                # Root level: get roles with no parent_role, filtered by company
-                if company is not None:
-                    children = roles_queryset.filter(
-                        parent_role__isnull=True, company=company
-                    )
-                else:
-                    children = roles_queryset.filter(
-                        parent_role__isnull=True, company__isnull=True
-                    )
-            else:
-                # Child level: get roles with this parent_role
-                # Ensure parent_role belongs to the same company to prevent cross-company connections
-                if company is not None:
-                    # Only include if parent_role belongs to the same company
-                    if parent_role.company == company:
-                        children = roles_queryset.filter(
-                            parent_role=parent_role, company=company
-                        )
-                    else:
-                        children = (
-                            roles_queryset.none()
-                        )  # Don't connect across companies
-                else:
-                    # For roles without company, ensure parent_role also has no company
-                    if parent_role.company is None:
-                        children = roles_queryset.filter(
-                            parent_role=parent_role, company__isnull=True
-                        )
-                    else:
-                        children = (
-                            roles_queryset.none()
-                        )  # Don't connect across company boundaries
-
-            role_tree = []
-
-            for role in children:
-                user_count = role.users.count()
-                role_dict = {
-                    "id": role.id,
-                    "name": role.role_name,
-                    "description": getattr(role, "description", ""),
-                    "user_count": user_count,
-                    "children": build_role_tree(roles_queryset, role, company),
-                }
-                role_tree.append(role_dict)
-
-            return role_tree
-
-        if show_all_companies:
-            # Group roles by company when "all company" is activated
-            all_roles = Role.all_objects.all()
-            companies_with_roles = {}
-
-            # Group roles by company
-            for role in all_roles:
-                company = role.company
-                if company:
-                    if company not in companies_with_roles:
-                        companies_with_roles[company] = []
-                    companies_with_roles[company].append(role)
-
-            # Build company-grouped structure
-            companies_data = []
-            for company, company_roles in companies_with_roles.items():
-                # Build role tree for this company's roles only
-                company_roles_queryset = Role.all_objects.filter(company=company)
-                roles_tree = build_role_tree(company_roles_queryset, company=company)
-
-                companies_data.append(
-                    {
-                        "company": company,
-                        "company_id": company.id,
-                        "company_name": company.name,
-                        "roles": roles_tree,
-                        "roles_count": len(company_roles),
-                    }
-                )
-
-            # Also include roles without company
-            roles_without_company = all_roles.filter(company__isnull=True)
-            if roles_without_company.exists():
-                roles_without_company_queryset = Role.all_objects.filter(
-                    company__isnull=True
-                )
-                roles_tree = build_role_tree(
-                    roles_without_company_queryset, company=None
-                )
-                companies_data.append(
-                    {
-                        "company": None,
-                        "company_id": None,
-                        "company_name": "No Company",
-                        "roles": roles_tree,
-                        "roles_count": roles_without_company.count(),
-                    }
-                )
-
-            context["companies_data"] = companies_data
-            context["show_all_companies"] = True
-            context["roles_count"] = all_roles.count()
-        else:
-            # Original behavior: filter by active company
-            roles = Role.objects.all()
-            # Get the company from the filtered queryset (should be active company)
-            company = getattr(self.request, "active_company", None)
-            if not company and hasattr(self.request.user, "company"):
-                company = self.request.user.company
-            roles_data = build_role_tree(roles, company=company)
-            context["roles_data"] = roles_data
-            context["show_all_companies"] = False
-            context["roles_count"] = roles.count()
-
-        return context
+    template_name = "role/role_view.html"
+    nav_url = reverse_lazy("horilla_core:roles_nav_bar")
+    list_url = reverse_lazy("horilla_core:role_list_view")
+    kanban_url = reverse_lazy("horilla_core:roles_hierarchy_view")
 
 
 class FaviconRedirectView(RedirectView):
