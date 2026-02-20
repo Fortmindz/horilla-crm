@@ -36,6 +36,7 @@ from django.views.generic.edit import FormView
 
 # First-party / Horilla imports
 from horilla.exceptions import HorillaHttp404
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required
 from horilla_core.forms import FiscalYearForm
 from horilla_core.mixins import FiscalYearCalendarMixin
@@ -497,7 +498,7 @@ class FiscalYearCalendarView(LoginRequiredMixin, DetailView, FiscalYearCalendarM
     def get(self, request, *args, **kwargs):
         pk = self.kwargs.get("pk")
         try:
-            FiscalYear.objects.get(pk=pk)
+            get_object_or_404(FiscalYear, pk=pk)
         except Exception as e:
             messages.error(self.request, str(e))
             return HttpResponse(
