@@ -1,5 +1,9 @@
 {% load static i18n horilla_tags %}
 
+<button id="reloadHolidayButton" hidden
+    hx-get="{% url 'horilla_core:holiday_view' %}?{{ request.GET.urlencode }}"
+    hx-target="#inner-tab-holidays-view-content"
+    hx-swap="innerHTML">reload</button>
 <div class="flex flex-wrap justify-between items-center h-14">
     <h3 class="text-md font-semibold">{% trans 'Holidays' %}</h3>
     {% has_perm "horilla_core.add_holiday" as can_add_holiday %}
