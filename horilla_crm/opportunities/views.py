@@ -39,6 +39,7 @@ from horilla_generics.views import (
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
+    HorillaGroupByView,
     HorillaHistorySectionView,
     HorillaKanbanView,
     HorillaListView,
@@ -59,6 +60,7 @@ class OpportunityView(LoginRequiredMixin, HorillaView):
     nav_url = reverse_lazy("opportunities:opportunities_nav")
     list_url = reverse_lazy("opportunities:opportunities_list")
     kanban_url = reverse_lazy("opportunities:opportunities_kanban")
+    group_by_url = reverse_lazy("opportunities:opportunities_group_by")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -76,6 +78,7 @@ class OpportunityNavbar(LoginRequiredMixin, HorillaNavView):
     main_url = reverse_lazy("opportunities:opportunities_view")
     filterset_class = OpportunityFilter
     kanban_url = reverse_lazy("opportunities:opportunities_kanban")
+    group_by_url = reverse_lazy("opportunities:opportunities_group_by")
     model_name = "Opportunity"
     model_app_label = "opportunities"
     exclude_kanban_fields = "owner"
@@ -291,6 +294,62 @@ class OpportunityKanbanView(LoginRequiredMixin, HorillaKanbanView):
         "close_date",
         "expected_revenue",
     ]
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class OpportunityGroupByView(LoginRequiredMixin, HorillaGroupByView):
+    """
+    Opportunity Group By view
+    """
+
+    model = Opportunity
+    view_id = "opportunity-group-by"
+    filterset_class = OpportunityFilter
+    search_url = reverse_lazy("opportunities:opportunities_list")
+    main_url = reverse_lazy("opportunities:opportunities_view")
+    enable_quick_filters = True
+    group_by_field = "stage"
+
+    columns = [
+        "name",
+        "amount",
+        "close_date",
+        "stage",
+        "opportunity_type",
+        "primary_campaign_source",
+    ]
+    actions = OpportunityListView.actions
+
+    @cached_property
+    def col_attrs(self):
+        """Return column attributes for opportunity group by view."""
+        query_params = {}
+        if "section" in self.request.GET:
+            query_params["section"] = self.request.GET.get("section")
+        query_string = urlencode(query_params)
+        attrs = {
+            "hx-get": f"{{get_detail_url}}?{query_string}",
+            "hx-target": "#mainContent",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "true",
+            "hx-select": "#mainContent",
+            "permission": "opportunities.view_opportunity",
+            "own_permission": "opportunities.view_own_opportunity",
+            "owner_field": "owner",
+        }
+        return [
+            {
+                "name": {
+                    **attrs,
+                }
+            }
+        ]
 
 
 @method_decorator(htmx_required, name="dispatch")

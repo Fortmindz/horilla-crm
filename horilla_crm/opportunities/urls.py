@@ -29,6 +29,11 @@ urlpatterns = [
         name="opportunities_kanban",
     ),
     path(
+        "opportunities-group-by/",
+        views.OpportunityGroupByView.as_view(),
+        name="opportunities_group_by",
+    ),
+    path(
         "opportunity-create/",
         views.OpportunityMultiStepFormView.as_view(),
         name="opportunity_create",
