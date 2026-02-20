@@ -25,6 +25,11 @@ urlpatterns = [
         views.CampaignKanbanView.as_view(),
         name="campaign_kanban_view",
     ),
+    path(
+        "campaign-group-by/",
+        views.CampaignGroupByView.as_view(),
+        name="campaign_group_by",
+    ),
     path("campaign-create/", views.CampaignFormView.as_view(), name="campaign_create"),
     path(
         "campaign-single-create/",
@@ -125,6 +130,11 @@ urlpatterns = [
         "delete-campaign-contact-member/<int:pk>/",
         views.CampaignContactMemberDeleteView.as_view(),
         name="delete_campaign_contact_member",
+    ),
+    path(
+        "campaign-hierarchy/",
+        views.CampaignHierarchyView.as_view(),
+        name="campaign_hierarchy",
     ),
     path(
         "create-child-campaign/",

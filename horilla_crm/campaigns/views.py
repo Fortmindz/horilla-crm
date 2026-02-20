@@ -40,6 +40,7 @@ from horilla_generics.views import (
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
+    HorillaGroupByView,
     HorillaHistorySectionView,
     HorillaKanbanView,
     HorillaListView,
@@ -64,6 +65,7 @@ class CampaignView(LoginRequiredMixin, HorillaView):
     nav_url = reverse_lazy("campaigns:campaign_nav_view")
     list_url = reverse_lazy("campaigns:campaign_list_view")
     kanban_url = reverse_lazy("campaigns:campaign_kanban_view")
+    group_by_url = reverse_lazy("campaigns:campaign_group_by")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -80,6 +82,7 @@ class CampaignNavbar(LoginRequiredMixin, HorillaNavView):
     search_url = reverse_lazy("campaigns:campaign_list_view")
     main_url = reverse_lazy("campaigns:campaign_view")
     kanban_url = reverse_lazy("campaigns:campaign_kanban_view")
+    group_by_url = reverse_lazy("campaigns:campaign_group_by")
     model_str = "campaigns.Campaign"
     model_name = "Campaign"
     model_app_label = "campaigns"
@@ -308,6 +311,61 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
             "own_permission": "campaigns.view_own_campaign",
             "owner_field": "campaign_owner",
         }
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignGroupByView(LoginRequiredMixin, HorillaGroupByView):
+    """
+    Campaign Group By view
+    """
+
+    model = Campaign
+    view_id = "campaign-group-by"
+    filterset_class = CampaignFilter
+    search_url = reverse_lazy("campaigns:campaign_list_view")
+    main_url = reverse_lazy("campaigns:campaign_view")
+    enable_quick_filters = True
+    group_by_field = "status"
+
+    columns = [
+        "campaign_name",
+        "campaign_type",
+        "campaign_owner",
+        "status",
+        "expected_revenue",
+        "budget_cost",
+    ]
+    actions = CampaignListView.actions
+
+    @cached_property
+    def col_attrs(self):
+        """
+        Function to return attributes for columns in the group by view
+        """
+        query_params = {}
+        if "section" in self.request.GET:
+            query_params["section"] = self.request.GET.get("section")
+        query_string = urlencode(query_params)
+        return [
+            {
+                "campaign_name": {
+                    "hx-get": f"{{get_detail_view_url}}?{query_string}",
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
+                    "permission": "campaigns.view_campaign",
+                    "own_permission": "campaigns.view_own_campaign",
+                    "owner_field": "campaign_owner",
+                }
+            }
+        ]
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -592,7 +650,7 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
                 ),
             ],
             "can_add": self.request.user.has_perm("campaigns.add_campaignmember"),
-            "add_url": reverse_lazy("campaigns:add_to_campaign"),
+            "add_url": reverse_lazy("campaigns:add_campaign_members"),
             "actions": member_actions,
         }
         if (
@@ -663,6 +721,20 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
             ],
             "can_add": self.request.user.has_perm("campaigns.add_campaign"),
             "add_url": reverse_lazy("campaigns:create_child_campaign"),
+            "custom_buttons": [
+                {
+                    "label": _("View Hierarchy"),
+                    "url": reverse_lazy("campaigns:campaign_hierarchy"),
+                    "attrs": """
+                                        hx-target="#modalBox"
+                                        hx-swap="innerHTML"
+                                        onclick="openModal()"
+                                        hx-indicator="#modalBox"
+                                    """,
+                    "icon": "fa-solid fa-sitemap",
+                    "class": "text-xs px-4 py-1.5 bg-white border border-primary-600 text-primary-600 rounded-md transition duration-300",
+                },
+            ],
         }
 
         child_campaigns_config["col_attrs"] = [
@@ -742,6 +814,37 @@ class CampaignRelatedListsTab(LoginRequiredMixin, HorillaRelatedListSectionView)
         }
 
     excluded_related_lists = ["contacts"]
+
+
+def _build_campaign_tree(campaign):
+    """Build tree of campaign and descendants for <details> hierarchy."""
+    return {
+        "campaign": campaign,
+        "children": [_build_campaign_tree(c) for c in campaign.child_campaigns.all()],
+    }
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignHierarchyView(LoginRequiredMixin, View):
+    """Modal view showing campaign hierarchy with expand/collapse (no JS)."""
+
+    def get(self, request, *args, **kwargs):
+        campaign_id = request.GET.get("id")
+        if not campaign_id:
+            return render(request, "error/403.html", {"modal": True})
+        campaign = get_object_or_404(Campaign, pk=campaign_id)
+        root = _build_campaign_tree(campaign)
+        return render(
+            request,
+            "campaigns/campaign_hierarchy_modal.html",
+            {"root": root},
+        )
 
 
 @method_decorator(htmx_required, name="dispatch")
