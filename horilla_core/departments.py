@@ -50,7 +50,6 @@ class DepartmentNavbar(LoginRequiredMixin, HorillaNavView):
     filterset_class = DepartmentFilter
     one_view_only = True
     all_view_types = False
-    filter_option = False
     reload_option = False
     model_name = "Department"
     model_app_label = "horilla_core"
