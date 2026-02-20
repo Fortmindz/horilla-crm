@@ -4,6 +4,7 @@ Signals for the horilla_keys app
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.urls import reverse_lazy
 
 from horilla.auth.models import User
 from horilla_keys.models import ShortcutKey
@@ -28,12 +29,6 @@ def create_all_default_shortcuts(sender, instance, created, **kwargs):
         {"page": "/shortkeys/short-key-view/", "key": "K", "command": "alt"},
         {"page": "/user-view/", "key": "U", "command": "alt"},
         {"page": "/branches-view/", "key": "B", "command": "alt"},
-        {
-            "page": "/horilla_dashboard/dashboard-list-view/",
-            "key": "D",
-            "command": "alt",
-        },
-        {"page": "/reports/reports-list-view/", "key": "R", "command": "alt"},
     ]
 
     shortcuts = [
