@@ -1630,4 +1630,273 @@ document.addEventListener('DOMContentLoaded', function () {
             wrapper.classList.remove('active');
         }
     });
+
+    // Filter field lists (Available / Visible) in Add column to list and Add column to details
+    document.body.addEventListener('input', function (e) {
+        var input = e.target;
+        if (!input.matches || !input.matches('.field-list-search')) return;
+        var listId = input.getAttribute('data-filter-list');
+        if (!listId) return;
+        var ul = document.getElementById(listId);
+        if (!ul) return;
+        var query = (input.value || '').trim().toLowerCase();
+        var items = ul.querySelectorAll('li');
+        items.forEach(function (li) {
+            var text = (li.textContent || '').toLowerCase();
+            li.style.display = query === '' || text.indexOf(query) !== -1 ? '' : 'none';
+        });
+    });
+
+    // Add column to list: client-side move/reorder (no request until Save)
+    function syncColumnSelectFromVisible(form) {
+        var visibleList = document.getElementById('visibleFields');
+        var select = form && form.querySelector('select[name="visible_fields"]');
+        if (!visibleList || !select) return;
+        var items = visibleList.querySelectorAll('li[data-field-name]');
+        var order = [];
+        items.forEach(function (li) {
+            order.push({ value: li.getAttribute('data-field-name'), text: li.getAttribute('data-verbose-name') });
+        });
+        select.innerHTML = '';
+        order.forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.value;
+            opt.selected = true;
+            opt.textContent = o.text;
+            select.appendChild(opt);
+        });
+    }
+    function columnLiAsAvailable(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var linkClass = form.getAttribute('data-available-link-class') || 'field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'add');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.appendChild(a);
+    }
+    function columnLiAsVisible(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var linkClass = form.getAttribute('data-visible-link-class') || 'field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem]';
+        var wrap = document.createElement('div');
+        wrap.className = 'flex justify-between items-center relative';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'remove');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        var btnWrap = document.createElement('div');
+        btnWrap.className = 'flex absolute right-0 h-full';
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.setAttribute('data-action', 'move_up');
+        up.className = 'field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300';
+        up.innerHTML = '<i class="fa-solid fa-angle-up"></i>';
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.setAttribute('data-action', 'move_down');
+        down.className = 'field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]';
+        down.innerHTML = '<i class="fa-solid fa-angle-down"></i>';
+        btnWrap.appendChild(up);
+        btnWrap.appendChild(down);
+        wrap.appendChild(a);
+        wrap.appendChild(btnWrap);
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.appendChild(wrap);
+    }
+    document.body.addEventListener('click', function (e) {
+        var form = e.target.closest('#fieldSelectorForm');
+        var trigger = e.target.closest('.field-list-move');
+        if (!form || !trigger) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var action = trigger.getAttribute('data-action');
+        var li = trigger.closest('li[data-field-name]');
+        if (!li) return;
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var availableList = document.getElementById('availableFields');
+        var visibleList = document.getElementById('visibleFields');
+        var select = form.querySelector('select[name="visible_fields"]');
+        if (!availableList || !visibleList || !select) return;
+        if (action === 'add') {
+            columnLiAsVisible(li, form);
+            visibleList.appendChild(li);
+            var opt = document.createElement('option');
+            opt.value = fieldName;
+            opt.selected = true;
+            opt.textContent = verboseName;
+            select.appendChild(opt);
+        } else if (action === 'remove') {
+            columnLiAsAvailable(li, form);
+            availableList.appendChild(li);
+            var opts = select.querySelectorAll('option');
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i].value === fieldName) { opts[i].remove(); break; }
+            }
+        } else if (action === 'move_up') {
+            var prev = li.previousElementSibling;
+            if (prev) {
+                visibleList.insertBefore(li, prev);
+            } else {
+                visibleList.appendChild(li);
+            }
+            syncColumnSelectFromVisible(form);
+        } else if (action === 'move_down') {
+            var next = li.nextElementSibling;
+            if (next) {
+                visibleList.insertBefore(next, li);
+            } else {
+                visibleList.insertBefore(li, visibleList.firstChild);
+            }
+            syncColumnSelectFromVisible(form);
+        }
+    });
+
+    // Detail field selector: client-side move/reorder (no request until Save)
+    function syncDetailHiddenInputs(form, section) {
+        var visibleListId = section === 'header' ? 'headerVisibleFields' : 'detailsVisibleFields';
+        var containerId = section === 'header' ? 'header-fields-inputs' : 'details-fields-inputs';
+        var visibleList = document.getElementById(visibleListId);
+        var container = document.getElementById(containerId);
+        if (!visibleList || !container || !form) return;
+        var items = visibleList.querySelectorAll('li[data-field-name]');
+        var name = section === 'header' ? 'header_fields' : 'details_fields';
+        container.innerHTML = '';
+        items.forEach(function (item) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = item.getAttribute('data-field-name');
+            container.appendChild(input);
+        });
+    }
+    function syncDetailAvailablePlaceholder(availableList) {
+        if (!availableList) return;
+        var hasRealFields = availableList.querySelectorAll('li[data-field-name]').length > 0;
+        var placeholder = availableList.querySelector('li:not([data-field-name])');
+        var emptyText = availableList.getAttribute('data-empty-text') || 'All fields added';
+        if (hasRealFields && placeholder) {
+            placeholder.remove();
+        } else if (!hasRealFields && !placeholder) {
+            var li = document.createElement('li');
+            li.className = 'text-[.8rem] text-[#999] px-[10px] py-[8px]';
+            li.textContent = emptyText;
+            availableList.appendChild(li);
+        }
+    }
+    function detailFieldLiAsAvailable(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var section = li.getAttribute('data-section');
+        var linkClass = form.getAttribute('data-available-link-class') || 'detail-field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'add');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.setAttribute('data-section', section);
+        li.appendChild(a);
+    }
+    function detailFieldLiAsVisible(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var section = li.getAttribute('data-section');
+        var linkClass = form.getAttribute('data-visible-link-class') || 'detail-field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem]';
+        var wrap = document.createElement('div');
+        wrap.className = 'flex justify-between items-center relative';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'remove');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        var btnWrap = document.createElement('div');
+        btnWrap.className = 'flex absolute right-0 h-full';
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.setAttribute('data-action', 'move_up');
+        up.className = 'detail-field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300';
+        up.innerHTML = '<i class="fa-solid fa-angle-up"></i>';
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.setAttribute('data-action', 'move_down');
+        down.className = 'detail-field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]';
+        down.innerHTML = '<i class="fa-solid fa-angle-down"></i>';
+        btnWrap.appendChild(up);
+        btnWrap.appendChild(down);
+        wrap.appendChild(a);
+        wrap.appendChild(btnWrap);
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.setAttribute('data-section', section);
+        li.appendChild(wrap);
+    }
+    document.body.addEventListener('click', function (e) {
+        var form = e.target.closest('#detailFieldSelectorForm');
+        var trigger = e.target.closest('.detail-field-list-move');
+        if (!form || !trigger) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var action = trigger.getAttribute('data-action');
+        var li = trigger.closest('li[data-section][data-field-name]');
+        if (!li) return;
+        var section = li.getAttribute('data-section');
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var availableList = document.getElementById(section === 'header' ? 'headerAvailableFields' : 'detailsAvailableFields');
+        var visibleList = document.getElementById(section === 'header' ? 'headerVisibleFields' : 'detailsVisibleFields');
+        if (!availableList || !visibleList) return;
+        if (action === 'add') {
+            detailFieldLiAsVisible(li, form);
+            visibleList.appendChild(li);
+            syncDetailAvailablePlaceholder(availableList);
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'remove') {
+            detailFieldLiAsAvailable(li, form);
+            availableList.appendChild(li);
+            syncDetailAvailablePlaceholder(availableList);
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'move_up') {
+            var prev = li.previousElementSibling;
+            if (prev && prev.matches('li[data-field-name]')) {
+                visibleList.insertBefore(li, prev);
+            } else {
+                visibleList.appendChild(li);
+            }
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'move_down') {
+            var next = li.nextElementSibling;
+            if (next && next.matches('li[data-field-name]')) {
+                visibleList.insertBefore(next, li);
+            } else {
+                visibleList.insertBefore(li, visibleList.firstChild);
+            }
+            syncDetailHiddenInputs(form, section);
+        }
+    });
+
+    // Sync hidden inputs right before form submit so removed/moved fields are persisted
+    document.body.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (form && form.id === 'detailFieldSelectorForm') {
+            syncDetailHiddenInputs(form, 'header');
+            syncDetailHiddenInputs(form, 'details');
+        }
+    }, true);
 });
