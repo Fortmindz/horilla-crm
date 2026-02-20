@@ -12,7 +12,7 @@
             "updated_by": 1,
             "name": "New",
             "order": 1,
-            "color": "#f39022",
+            "color": null,
             "is_final": false,
             "probability": "10.00"
         }
@@ -30,7 +30,7 @@
             "updated_by": 1,
             "name": "Contacted",
             "order": 2,
-            "color": "#f39022",
+            "color": null,
             "is_final": false,
             "probability": "30.00"
         }
@@ -48,7 +48,7 @@
             "updated_by": 1,
             "name": "Qualified",
             "order": 3,
-            "color": "#f39022",
+            "color": null,
             "is_final": false,
             "probability": "60.00"
         }
@@ -66,7 +66,7 @@
             "updated_by": 1,
             "name": "Proposal",
             "order": 4,
-            "color": "#f39022",
+            "color": null,
             "is_final": false,
             "probability": "80.00"
         }
@@ -84,7 +84,7 @@
             "updated_by": 1,
             "name": "Lost",
             "order": 5,
-            "color": "#f39022",
+            "color": null,
             "is_final": false,
             "probability": "00.00"
         }
@@ -102,7 +102,7 @@
             "updated_by": 1,
             "name": "Convert",
             "order": 6,
-            "color": "#f39022",
+            "color": null,
             "is_final": true,
             "probability": "100.00"
         }
