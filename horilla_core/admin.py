@@ -21,6 +21,7 @@ from .models import (
     CustomerRole,
     DatedConversionRate,
     Department,
+    DetailFieldVisibility,
     ExportSchedule,
     FieldPermission,
     FiscalYear,
@@ -70,6 +71,7 @@ admin.site.register(ImportHistory)
 admin.site.register(HorillaAttachment)
 admin.site.register(ExportSchedule)
 admin.site.register(FieldPermission)
+admin.site.register(DetailFieldVisibility)
 
 
 @admin.register(User)

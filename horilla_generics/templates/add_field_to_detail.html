@@ -1,0 +1,168 @@
+{% load static %}
+{% load i18n %}
+{% load horilla_tags %}
+<style>
+  .field-list-search::-webkit-search-cancel-button { filter: brightness(0); }
+  .field-list-search::-ms-clear { color: #000; }
+</style>
+<form id="detailFieldSelectorForm" method="post" action="{% url 'horilla_generics:save_detail_fields' %}" hx-post="{% url 'horilla_generics:save_detail_fields' %}" hx-target="body" hx-swap="beforeend" class="bg-white w-full max-w-[90vw] md:min-w-[1100px] rounded-lg shadow-lg p-0 transition-all duration-300 opacity-100 scale-100 overflow-hidden flex flex-col max-h-[90vh]"
+  data-available-link-class="detail-field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 relative after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:right-[8px] after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left"
+  data-visible-link-class="detail-field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:left-[8px] after:-rotate-180 after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem]">
+  {% csrf_token %}
+  <input type="hidden" name="app_label" value="{{ app_label }}">
+  <input type="hidden" name="model_name" value="{{ model_name }}">
+  <input type="hidden" name="url_name" value="{{ url_name }}">
+  <div id="header-fields-inputs">
+    {% for verbose_name, field_name in header_fields %}
+    <input type="hidden" name="header_fields" value="{{ field_name }}">
+    {% endfor %}
+  </div>
+  <div id="details-fields-inputs">
+    {% for verbose_name, field_name in details_fields %}
+    <input type="hidden" name="details_fields" value="{{ field_name }}">
+    {% endfor %}
+  </div>
+  <div class="relative p-4 w-full overflow-y-auto flex-1 min-h-0">
+    <div class="relative bg-white rounded-lg shadow-sm">
+      <div class="p-5 pt-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-md font-semibold">{% trans 'Change Detail View Fields' %}</h2>
+          <button type="button" onclick="closeContentModal();" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer">
+            <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}" />
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+        <!-- Header Portion Fields - Left column -->
+        <div>
+          <h3 class="text-sm font-semibold text-center pb-3">{% trans 'Header Portion Fields' %}</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-[300px] md:h-auto overflow-hidden overflow-y-auto">
+            <div>
+              <h2 class="text-sm font-semibold text-center pb-3">{% trans 'Available Fields' %}</h2>
+              <div class="border-[1px] border-[solid] border-[#e5e5e5] rounded-[10px] h-[300px] overflow-hidden flex flex-col">
+                <div class="flex-shrink-0 p-4 pb-2">
+                  <input type="search" placeholder="{% trans 'Search fields...' %}" class="field-list-search w-full text-sm py-2 px-3 border border-[#e5e5e5] rounded-[5px] focus:outline-none focus:border-primary-600" data-filter-list="headerAvailableFields" autocomplete="off">
+                </div>
+                <ul class="flex-1 overflow-y-auto p-4 pt-2" id="headerAvailableFields" data-empty-text="{% trans 'All fields added' %}">
+                {% for verbose_name, field_name in header_available %}
+                <li data-field-name="{{ field_name }}" data-verbose-name="{% trans verbose_name %}" data-section="header">
+                  <a href="#" role="button" data-action="add" class="detail-field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 relative after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:right-[8px] after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left">
+                    {% trans verbose_name %}
+                  </a>
+                </li>
+                {% empty %}
+                <li class="text-[.8rem] text-[#999] px-[10px] py-[8px]">{% trans 'All fields added' %}</li>
+                {% endfor %}
+                </ul>
+              </div>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold text-center pb-3">{% trans 'Visible Fields' %}</h2>
+              <div class="border-[1px] border-[solid] border-[#e5e5e5] rounded-[10px] h-[300px] overflow-hidden flex flex-col">
+                <div class="flex-shrink-0 p-4 pb-2">
+                  <input type="search" placeholder="{% trans 'Search fields...' %}" class="field-list-search w-full text-sm py-2 px-3 border border-[#e5e5e5] rounded-[5px] focus:outline-none focus:border-primary-600" data-filter-list="headerVisibleFields" autocomplete="off">
+                </div>
+                <ul class="flex gap-2 flex-col flex-1 overflow-y-auto p-4 pt-2" id="headerVisibleFields">
+                {% for verbose_name, field_name in header_fields %}
+                <li data-field-name="{{ field_name }}" data-verbose-name="{% trans verbose_name %}" data-section="header">
+                  <div class="flex justify-between items-center relative">
+                    <a href="#" role="button" data-action="remove" class="detail-field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:left-[8px] after:-rotate-180 after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem]">
+                      {% trans verbose_name %}
+                    </a>
+                    <div class="flex absolute right-0 h-full">
+                      <button type="button" data-action="move_up" class="detail-field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300">
+                        <i class="fa-solid fa-angle-up"></i>
+                      </button>
+                      <button type="button" data-action="move_down" class="detail-field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]">
+                        <i class="fa-solid fa-angle-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                </li>
+                {% empty %}
+                <li class="text-[.8rem] text-[#999] px-[10px] py-[8px]">{% trans 'No fields' %}</li>
+                {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Details Tab Fields - Right column -->
+        <div>
+          <h3 class="text-sm font-semibold text-center pb-3">{% trans 'Details Tab Fields' %}</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-[300px] md:h-auto overflow-hidden overflow-y-auto">
+            <div>
+              <h2 class="text-sm font-semibold text-center pb-3">{% trans 'Available Fields' %}</h2>
+              <div class="border-[1px] border-[solid] border-[#e5e5e5] rounded-[10px] h-[300px] overflow-hidden flex flex-col">
+                <div class="flex-shrink-0 p-4 pb-2">
+                  <input type="search" placeholder="{% trans 'Search fields...' %}" class="field-list-search w-full text-sm py-2 px-3 border border-[#e5e5e5] rounded-[5px] focus:outline-none focus:border-primary-600" data-filter-list="detailsAvailableFields" autocomplete="off">
+                </div>
+                <ul class="flex-1 overflow-y-auto p-4 pt-2" id="detailsAvailableFields" data-empty-text="{% trans 'All fields added' %}">
+                {% for verbose_name, field_name in details_available %}
+                <li data-field-name="{{ field_name }}" data-verbose-name="{% trans verbose_name %}" data-section="details">
+                  <a href="#" role="button" data-action="add" class="detail-field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 relative after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:right-[8px] after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left">
+                    {% trans verbose_name %}
+                  </a>
+                </li>
+                {% empty %}
+                <li class="text-[.8rem] text-[#999] px-[10px] py-[8px]">{% trans 'All fields added' %}</li>
+                {% endfor %}
+                </ul>
+              </div>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold text-center pb-3">{% trans 'Visible Fields' %}</h2>
+              <div class="border-[1px] border-[solid] border-[#e5e5e5] rounded-[10px] h-[300px] overflow-hidden flex flex-col">
+                <div class="flex-shrink-0 p-4 pb-2">
+                  <input type="search" placeholder="{% trans 'Search fields...' %}" class="field-list-search w-full text-sm py-2 px-3 border border-[#e5e5e5] rounded-[5px] focus:outline-none focus:border-primary-600" data-filter-list="detailsVisibleFields" autocomplete="off">
+                </div>
+                <ul class="flex gap-2 flex-col flex-1 overflow-y-auto p-4 pt-2" id="detailsVisibleFields">
+                {% for verbose_name, field_name in details_fields %}
+                <li data-field-name="{{ field_name }}" data-verbose-name="{% trans verbose_name %}" data-section="details">
+                  <div class="flex justify-between items-center relative">
+                    <a href="#" role="button" data-action="remove" class="detail-field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 after:[content:''] after:absolute after:bg-[url({% static 'assets/icons/right-arrow.svg' %})] after:left-[8px] after:-rotate-180 after:top-[0] after:bottom-[0] after:m-auto after:bg-no-repeat after:bg-contain after:bg-center after:w-[10px] after:h-[10px] px-[10px] py-[8px] w-full flex text-[#333] border-[1px] border-[solid] border-[#dddddd] rounded-[5px] text-[.8rem]">
+                      {% trans verbose_name %}
+                    </a>
+                    <div class="flex absolute right-0 h-full">
+                      <button type="button" data-action="move_up" class="detail-field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300">
+                        <i class="fa-solid fa-angle-up"></i>
+                      </button>
+                      <button type="button" data-action="move_down" class="detail-field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]">
+                        <i class="fa-solid fa-angle-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                </li>
+                {% empty %}
+                <li class="text-[.8rem] text-[#999] px-[10px] py-[8px]">{% trans 'No fields' %}</li>
+                {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 p-5">
+        {% if has_custom_visibility %}
+        <button type="button"
+                hx-post="{% url 'horilla_generics:reset_detail_fields' %}"
+                hx-vals='{"app_label": "{{ app_label }}", "model_name": "{{ model_name }}", "url_name": "{{ url_name }}"}'
+                hx-target="#modalBox"
+                hx-swap="innerHTML"
+                hx-on::after-request="closeContentModal();$('#reloadButton').click();"
+                class="text-sm px-4 py-2 rounded-md hover:bg-gray-700 transition duration-300 text-primary-600 border border-primary-600"
+        >
+          {% trans "Reset to Default" %}
+        </button>
+        {% endif %}
+        <button type="submit"
+                class="text-sm px-4 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white]"
+        >
+          {% trans "Save" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
