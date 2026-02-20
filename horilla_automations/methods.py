@@ -5,7 +5,7 @@ Methods for executing automations
 # Standard library imports
 import logging
 import threading
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 # Third-party imports (Django)
 from django.contrib.contenttypes.models import ContentType
@@ -19,9 +19,45 @@ from horilla_automations.models import HorillaAutomation
 from horilla_mail.models import HorillaMail, HorillaMailConfiguration
 from horilla_mail.services import HorillaMailManager
 from horilla_notifications.methods import create_notification
+from horilla_utils.methods import get_section_info_for_model
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
+
+
+def _get_model_list_view_url(model_class):
+    """
+    Resolve the list/view URL for a model by finding a settings menu item
+    whose permission matches the model's view permission (e.g. department -> department_view).
+    Returns a path string or None if not found.
+    """
+    try:
+        app_label = model_class._meta.app_label
+        model_name = model_class._meta.model_name
+        view_perm = f"{app_label}.view_{model_name}"
+        from horilla.menu.settings_menu import settings_registry
+
+        for cls in settings_registry:
+            items = getattr(cls(), "items", [])
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                perm = item.get("perm")
+                if perm != view_perm:
+                    continue
+                url = item.get("url")
+                if url is None:
+                    continue
+                path = str(url).strip()
+                if path and path != "#":
+                    if not path.startswith("/"):
+                        parsed = urlparse(path)
+                        path = parsed.path or path
+                    return path
+        return None
+    except Exception as e:
+        logger.debug("_get_model_list_view_url(%s): %s", model_class.__name__, e)
+        return None
 
 
 def evaluate_condition(condition, instance):
@@ -593,18 +629,59 @@ def send_automation_notification(automation, instance, recipients, context, user
             )
 
         instance_url = None
-        if hasattr(instance, "get_detail_url"):
-            try:
-                url = instance.get_detail_url()
-                if url:
-                    instance_url = str(url)
-                    if instance_url and not instance_url.startswith("/"):
-                        parsed = urlparse(instance_url)
-                        instance_url = parsed.path or instance_url
-            except Exception as e:
-                logger.debug(f"Could not get detail_url: {str(e)}")
+        for attr in dir(instance):
+            if attr.startswith("get_detail_"):
+                method = getattr(instance, attr)
+                if callable(method):
+                    try:
+                        url = method()
+                        if url and str(url).strip() and str(url) != "#":
+                            instance_url = str(url).strip()
+                            if not instance_url.startswith("/"):
+                                parsed = urlparse(instance_url)
+                                instance_url = parsed.path or instance_url
+                            break
+                    except Exception as e:
+                        logger.debug(f"get_detail_* {attr}: {str(e)}")
+                        continue
 
-        # If still no URL, try to construct a generic detail view URL
+        # If no detail URL, use the model's list/view URL with filter so the instance is focused
+        if not instance_url:
+            try:
+                model_class = instance.__class__
+                # Prefer settings menu entry (e.g. Department -> department_view) so we get
+                # the correct list view even when there is no section in sub_section_menu
+                instance_url = _get_model_list_view_url(model_class)
+                if not instance_url:
+                    section_info = get_section_info_for_model(model_class)
+                    base_url = (section_info.get("url") or "").strip()
+                    if base_url and base_url != "#":
+                        section = section_info.get("section") or ""
+                        if not base_url.startswith("/"):
+                            parsed = urlparse(base_url)
+                            base_url = parsed.path or base_url
+                        instance_url = (
+                            f"{base_url}?{urlencode({'section': section})}"
+                            if section
+                            else base_url
+                        )
+                # Append filter so the list view shows this instance (id=exact)
+                if instance_url and getattr(instance, "pk", None) is not None:
+                    filter_params = {
+                        "apply_filter": "true",
+                        "layout": "list",
+                        "field": "id",
+                        "operator": "exact",
+                        "value": str(instance.pk),
+                    }
+                    sep = "&" if "?" in instance_url else "?"
+                    instance_url = f"{instance_url}{sep}{urlencode(filter_params)}"
+            except Exception as e:
+                logger.debug(
+                    "Could not get list/section URL for %s: %s",
+                    instance.__class__.__name__,
+                    str(e),
+                )
 
         created_count = 0
         try:
