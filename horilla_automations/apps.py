@@ -13,6 +13,8 @@ class HorillaAutomationsConfig(AppConfig):
     name = "horilla_automations"
     verbose_name = _("Automations")
 
+    automation_files = ["load_automation/automation.json"]
+
     def ready(self):
         """Run app initialization logic (executed after Django setup).
         Used to auto-register URLs and connect signals if required.

@@ -11,6 +11,10 @@ class HorillaMailConfig(AppConfig):
     name = "horilla_mail"
     verbose_name = _("Mail System")
 
+    template_files = [
+        "load_template/template.json",
+    ]
+
     def get_api_paths(self):
         """
         Return API path configurations for this app.

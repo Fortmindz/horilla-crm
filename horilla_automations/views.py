@@ -68,12 +68,12 @@ class HorillaAutomationNavbar(LoginRequiredMixin, HorillaNavView):
     model_app_label = "horilla_automations"
     filterset_class = HorillaAutomationFilter
     nav_width = False
-    gap_enabled = False
     all_view_types = False
     filter_option = False
     reload_option = False
     one_view_only = True
     border_enabled = False
+    enable_actions = True
 
     @cached_property
     def new_button(self):
@@ -83,6 +83,24 @@ class HorillaAutomationNavbar(LoginRequiredMixin, HorillaNavView):
                 "url": f"""{reverse_lazy('horilla_automations:automation_create_view')}?new=true""",
                 "attrs": {"id": "automation-create"},
             }
+        return None
+
+    @cached_property
+    def actions(self):
+        """Actions for mail automation"""
+        if self.request.user.has_perm("horilla_automations.add_horillaautomation"):
+            return [
+                {
+                    "action": _("Load Automation"),
+                    "attrs": f"""
+                            id="automation-load"
+                            hx-get="{reverse_lazy('horilla_automations:load_automation')}"
+                            hx-on:click="openModal();"
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            """,
+                },
+            ]
         return None
 
 
@@ -110,6 +128,16 @@ class HorillaAutomationListView(LoginRequiredMixin, HorillaListView):
     list_column_visibility = False
 
     columns = ["title", "trigger", "model", "mail_template", "delivery_channel"]
+
+    def no_record_add_button(self):
+        """Return configuration for the 'no records' Load Automation button when permitted."""
+        if self.request.user.has_perm("horilla_automations.add_horillaautomation"):
+            return {
+                "url": f"""{reverse_lazy('horilla_automations:load_automation')}?new=true""",
+                "attrs": 'id="automation-load"',
+                "title": _("Load Automation"),
+            }
+        return None
 
     actions = [
         {
@@ -235,6 +263,7 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
                 "updated_by",
                 "company",
                 "additional_info",
+                "password",
             ]:
                 continue
 
@@ -253,11 +282,17 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
         )
         select_html += f' hx-target="#id_value_{row_id}_container"'
         select_html += ' hx-swap="innerHTML"'
-        select_html += (
-            f" hx-include=\"[name='{field_name}'],#id_value_{row_id},[name='model']\""
+        condition_model_str = (
+            f"{AutomationCondition._meta.app_label}."
+            f"{AutomationCondition._meta.model_name}"
         )
         select_html += (
-            f' hx-vals=\'{{"model_name": "{model_name}", "row_id": "{row_id}"}}\''
+            f" hx-include=\"[name='{field_name}'],[name='operator_{row_id}'],"
+            f"#id_value_{row_id},[name='model']\""
+        )
+        select_html += (
+            f' hx-vals=\'{{"model_name": "{model_name}", "row_id": "{row_id}", '
+            f'"condition_model": "{condition_model_str}"}}\''
         )
         select_html += ' hx-trigger="change,load"'
         select_html += ">"

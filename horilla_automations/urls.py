@@ -5,6 +5,7 @@ URLs for the horilla_automations app
 from django.urls import path
 
 from . import views
+from .load_automation import CreateSelectedAutomationsView, LoadAutomationModalView
 
 app_name = "horilla_automations"
 
@@ -53,5 +54,15 @@ urlpatterns = [
         "automation-delete-view/<int:pk>/",
         views.HorillaAutomationDeleteView.as_view(),
         name="automation_delete_view",
+    ),
+    path(
+        "load-automation/",
+        LoadAutomationModalView.as_view(),
+        name="load_automation",
+    ),
+    path(
+        "create-selected-automations/",
+        CreateSelectedAutomationsView.as_view(),
+        name="create_selected_automations",
     ),
 ]
