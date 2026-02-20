@@ -104,7 +104,7 @@
         {% if reload_option %}
           <div class="flex items-center">
             <button onclick="htmx.trigger('#reloadButton', 'click')"
-              class="hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
+              class="bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
               <img src="{% static 'assets/icons/l5.svg' %}" alt="{% trans 'Reload' %}" width="17" />
             </button>
           </div>
@@ -112,81 +112,106 @@
         {% if filter_option %}
           <div
             id="filterToggleWrapper"
-            class="{% if "apply_filter" in request.GET.urlencode or request.GET.search %}bg-[#f3f4f6]{% endif %} hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer"
+            class="bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer"
             hx-on:click="
-              const filterPanel = document.getElementById('filterpanel');
-              const filterContainer = document.getElementById('filtercontainer');
-              const wrapper = document.getElementById('filterToggleWrapper');
+            const filterPanel = document.getElementById('filterpanel');
+            const filterContainer = document.getElementById('filtercontainer');
+            const wrapper = document.getElementById('filterToggleWrapper');
 
-              if (filterPanel.classList.contains('hidden')) {
-                // Open filter panel
-                filterPanel.classList.remove('hidden');
-                filterContainer.classList.remove('hidden');
-                void filterPanel.offsetHeight; // reflow
-                filterPanel.classList.add('visible');
-                filterContainer.classList.add('visible');
+            if (filterPanel.classList.contains('hidden')) {
+              // Open filter panel
+              filterPanel.classList.remove('hidden');
+              filterContainer.classList.remove('hidden');
+              void filterPanel.offsetHeight; // reflow
+              filterPanel.classList.add('visible');
+              filterContainer.classList.add('visible');
 
-                // Add background
-                wrapper.classList.add('bg-[#f3f4f6]');
-              } else {
-                // Close filter panel
-                filterPanel.classList.remove('visible');
-                filterContainer.classList.remove('visible');
-                setTimeout(() => {
-                  filterPanel.classList.add('hidden');
-                }, 300);
-
-                // Remove background
-                wrapper.classList.remove('bg-[#f3f4f6]');
-              }
-            ">
+            } else {
+              // Close filter panel
+              filterPanel.classList.remove('visible');
+              filterContainer.classList.remove('visible');
+              setTimeout(() => {
+                filterPanel.classList.add('hidden');
+              }, 300);
+            }
+          ">
             <button class="filtermenu">
               <img src="{% static 'assets/icons/l4.svg' %}" alt="{% trans 'Filter' %}" width="14" />
             </button>
           </div>
         {% endif %}
-
-
-        {% if not show_list_only %}
-          {% if not one_view_only  %}
-            <div class="hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
-              <button id="tableBtn"
-                hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'list' and key != 'kanban' and  key != 'remove_filter' %}{{ key }}={{ value }}&{% endif %}{%endfor %}list=true&kanban=false"
-                hx-target="#mainSession"
-                hx-select="#mainSession"
-                hx-swap="outerHTML"
-                hx-select-oob="#navBar"
-                hx-include="[name='search']"
-                hx-push-url="true">
-                <img
-                  src="{% static 'assets/icons/l3.svg' %}"
-                  alt="{% trans 'List' %}"
-                  width="17"
-                />
-              </button>
+        {% if not show_list_only and not one_view_only %}
+          <div class="bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
+            <button id="layoutDropdownButton"
+              type="button"
+              data-dropdown-toggle="layoutDropdown"
+              class="w-full h-full flex items-center justify-center gap-0.5"
+              aria-expanded="false"
+              aria-haspopup="true">
+              {% if effective_layout == 'kanban' %}
+                <img src="{% static 'assets/icons/l2.svg' %}" alt="{% trans 'Layout' %}" width="14" />
+              {% elif effective_layout == 'group_by' %}
+                <img src="{% static 'assets/icons/group-by.svg' %}" alt="{% trans 'Layout' %}" width="14" />
+              {% else %}
+                <img src="{% static 'assets/icons/l3.svg' %}" alt="{% trans 'Layout' %}" width="14" />
+              {% endif %}
+            </button>
+            <div id="layoutDropdown"
+              class="z-10 hidden bg-white rounded-lg [box-shadow:0px_0px_20px_0px_rgb(0_0_0_/_5%)] min-w-[160px] py-1">
+              <ul class="text-sm" aria-labelledby="layoutDropdownButton">
+                <li>
+                  <button type="button"
+                    class="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-gray-50 hover:text-primary-600 transition duration-300 text-sm {% if effective_layout != 'kanban' and effective_layout != 'group_by' %}text-primary-600 bg-primary-50{% endif %}"
+                    hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'layout' and key != 'remove_filter' %}{{ key }}={{ value }}&{% endif %}{% endfor %}layout=list"
+                    hx-target="#mainSession"
+                    hx-select="#mainSession"
+                    hx-swap="outerHTML"
+                    hx-select-oob="#navBar"
+                    hx-include="[name='search']"
+                    hx-push-url="true">
+                    <img src="{% static 'assets/icons/l3.svg' %}" alt="" width="16" />
+                    {% trans "List" %}
+                  </button>
+                </li>
+                {% if kanban_url %}
+                <li>
+                  <button type="button" id="kanbanBtn"
+                    class="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-gray-50 hover:text-primary-600 transition duration-300 text-sm {% if effective_layout == 'kanban' %}text-primary-600 bg-primary-50{% endif %}"
+                    hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'layout' and key != 'remove_filter' %}{{ key }}={{ value }}&{% endif %}{% endfor %}layout=kanban"
+                    hx-target="#mainSession"
+                    hx-select="#mainSession"
+                    hx-swap="outerHTML"
+                    hx-select-oob="#navBar"
+                    hx-include="[name='search']"
+                    hx-push-url="true">
+                    <img src="{% static 'assets/icons/l2.svg' %}" alt="" width="16" />
+                    {% trans "Kanban" %}
+                  </button>
+                </li>
+                {% endif %}
+                {% if group_by_url %}
+                <li>
+                  <button type="button" id="groupByBtn"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 hover:text-primary-600 transition duration-300 text-sm {% if effective_layout == 'group_by' %}text-primary-600 bg-primary-50{% endif %}"
+                    hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'layout' and key != 'remove_filter' %}{{ key }}={{ value }}&{% endif %}{% endfor %}layout=group_by"
+                    hx-target="#mainSession"
+                    hx-select="#mainSession"
+                    hx-swap="outerHTML"
+                    hx-select-oob="#navBar"
+                    hx-include="[name='search']"
+                    hx-push-url="true">
+                    <img src="{% static 'assets/icons/group-by.svg' %}" alt="" width="16" />
+                    {% trans "Group By" %}
+                  </button>
+                </li>
+                {% endif %}
+              </ul>
             </div>
-            {% if kanban_url %}
-              <div class="hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
-                <button  id="kanbanBtn"
-                  hx-get="{{ kanban_view_url }}?{% for key, value in request.GET.items %}{% if key != 'list' and key != 'kanban' and  key != 'remove_filter' %}{{ key }}={{ value }}&{% endif %}{%endfor%}kanban=true"
-                  hx-target="#mainSession"
-                  hx-select="#mainSession"
-                  hx-swap="outerHTML"
-                  hx-select-oob="#navBar"
-                  hx-include="[name='search']"
-                  hx-push-url="true">
-                  <img
-                    src="{% static 'assets/icons/l2.svg' %}"
-                    alt="{% trans 'Kanban' %}"
-                    width="17"
-                  />
-                </button>
-              </div>
-            {% endif %}
-
-          {% endif %}
+          </div>
+        {% endif %}
+        {% if not show_list_only %}
           {% if actions and enable_actions %}
-            <div class="hover:bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
+            <div class="bg-[#f3f4f6] w-6 h-6 md:w-10 md:h-10 flex items-center justify-center rounded transition duration-300 cursor-pointer">
               <button
                 id="dropdownDefaultButton"
                 data-dropdown-toggle="dropdown"

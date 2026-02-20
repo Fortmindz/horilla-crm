@@ -30,27 +30,211 @@ from django.template.loader import render_to_string
 from django.utils import timezone, translation
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_str
+from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import FormView
 
 from horilla.exceptions import HorillaHttp404
+from horilla.utils.choices import FIELD_TYPE_MAP
 
 # First-party (Horilla)
 from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.decorators import htmx_required
 from horilla_core.models import (
+    DetailFieldVisibility,
     HorillaContentType,
     KanbanGroupBy,
     ListColumnVisibility,
     PinnedView,
 )
 from horilla_core.utils import filter_hidden_fields
-from horilla_generics.views import HorillaKanbanView
+from horilla_generics.methods import get_dynamic_form_for_model
+from horilla_generics.views import (
+    HorillaDetailView,
+    HorillaGroupByView,
+    HorillaKanbanView,
+)
 
 # Local imports
 from .forms import ColumnSelectionForm, KanbanGroupByForm, SaveFilterListForm
 
 logger = logging.getLogger(__name__)
+
+# Condition form: operator values (from horilla.utils.choices) allowed per field type.
+# Mirrors filter operator logic so conditions use operators matching the field type.
+CONDITION_OPERATORS_BY_FIELD_TYPE = {
+    "boolean": ["equals", "not_equals"],
+    "text": [
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "starts_with",
+        "ends_with",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "number": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "float": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "decimal": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "date": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "less_than",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "datetime": [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "less_than",
+        "is_empty",
+        "is_not_empty",
+    ],
+    "foreignkey": ["equals", "not_equals", "is_empty", "is_not_empty"],
+    "choice": ["equals", "not_equals", "is_empty", "is_not_empty"],
+    "other": ["equals", "not_equals", "contains", "is_empty", "is_not_empty"],
+}
+
+
+def _ensure_json_serializable(fields_list):
+    """Convert all values to plain str for JSON serialization (avoids lazy __proxy__)."""
+    return [[str(v), str(n)] for v, n in fields_list]
+
+
+def get_detail_field_defaults_no_request(model):
+    """
+    Get default header_fields and details_fields without request (for signals).
+    When request is None, section view resolution may fall back to model fields.
+    """
+    return _get_detail_field_defaults(model, None)
+
+
+def _get_detail_field_defaults(model, request):
+    """Get default header_fields and details_fields for a model's detail view."""
+    default_header = []
+    default_details = []
+
+    detail_view_class = HorillaDetailView._view_registry.get(model)
+    if detail_view_class:
+        # Use view's effective excluded fields (base_excluded_fields + excluded_fields)
+        base = getattr(detail_view_class, "base_excluded_fields", None)
+        extra = getattr(detail_view_class, "excluded_fields", [])
+        if base is not None:
+            excluded = set(base) | set(extra or [])
+        else:
+            excluded = (
+                set(extra)
+                if extra
+                else {
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "history",
+                    "is_active",
+                    "additional_info",
+                }
+            )
+        # Automatically exclude pipeline_field from header and details
+        pf = getattr(detail_view_class, "pipeline_field", None)
+        if pf:
+            excluded = excluded | {str(pf)}
+        body = getattr(detail_view_class, "body", [])
+        try:
+            default_header = [
+                [force_str(model._meta.get_field(f).verbose_name), str(f)]
+                for f in body
+                if f not in excluded
+            ]
+        except Exception:
+            default_header = []
+        details_url = getattr(detail_view_class, "details_section_url_name", None)
+        if not details_url and request:
+            details_url = request.GET.get("details_section_url") or None
+        if details_url:
+            try:
+                from django.urls import resolve, reverse
+
+                resolved = resolve(reverse(details_url, kwargs={"pk": 1}))
+                section_view = getattr(resolved.func, "view_class", None)
+                if section_view:
+                    view_inst = section_view()
+                    view_inst.request = request
+                    view_inst.model = model
+                    raw_details = view_inst.get_default_body()
+                    default_details = _ensure_json_serializable(raw_details)
+                    # Automatically exclude pipeline_field (section view may not have it in GET)
+                    if pf and default_details:
+                        default_details = [
+                            f
+                            for f in default_details
+                            if (
+                                f[1]
+                                if isinstance(f, (list, tuple)) and len(f) >= 2
+                                else f
+                            )
+                            != str(pf)
+                        ]
+                else:
+                    raise ValueError("No section view")
+            except Exception:
+                default_details = [
+                    [force_str(f.verbose_name), str(f.name)]
+                    for f in model._meta.get_fields()
+                    if isinstance(f, Field)
+                    and f.name not in excluded
+                    and hasattr(f, "verbose_name")
+                ]
+        else:
+            # Use detail view's effective excluded (already base + child excluded_fields); pipeline_field already in excluded
+            default_details = [
+                [force_str(f.verbose_name), str(f.name)]
+                for f in model._meta.get_fields()
+                if isinstance(f, Field)
+                and f.name not in excluded
+                and hasattr(f, "verbose_name")
+            ]
+    else:
+        # No registered detail view; use HorillaDetailView base_excluded_fields
+        excluded = set(HorillaDetailView.base_excluded_fields)
+        default_header = default_details = [
+            [force_str(f.verbose_name), str(f.name)]
+            for f in model._meta.get_fields()
+            if isinstance(f, Field)
+            and f.name not in excluded
+            and hasattr(f, "verbose_name")
+        ]
+    default_header = _ensure_json_serializable(default_header)
+    return default_header, default_details
 
 
 def get_default_columns_from_view(url_name, app_label, model_name, request):
@@ -58,7 +242,7 @@ def get_default_columns_from_view(url_name, app_label, model_name, request):
     Get default columns from the view class based on URL name.
 
     Args:
-        url_name: The URL name (e.g., 'leads:leads_list' or 'leads_list')
+        url_name: The URL name
         app_label: The app label
         model_name: The model name
         request: The request object (for getting URL resolver)
@@ -176,18 +360,43 @@ class HorillaKanbanGroupByView(FormView):
         else:
             include_fields = None
 
+        view_type = self.request.GET.get("view_type") or self.request.POST.get(
+            "view_type"
+        )
         if model_name and app_label:
             kwargs["instance"] = KanbanGroupBy(
-                model_name=model_name, app_label=app_label, user=self.request.user
+                model_name=model_name,
+                app_label=app_label,
+                user=self.request.user,
+                view_type=view_type,
             )
         kwargs["exclude_fields"] = exclude_fields
         kwargs["include_fields"] = include_fields
+        kwargs["initial"] = kwargs.get("initial") or {}
+        kwargs["initial"]["view_type"] = view_type
         return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        view_type = self.request.GET.get("view_type") or self.request.POST.get(
+            "view_type"
+        )
+        context["group_by_view_type"] = view_type
+        context["settings_title"] = (
+            _("Group By Settings") if view_type == "group_by" else _("Kanban Settings")
+        )
+        return context
 
     def form_valid(self, form):
         form.instance.user = self.request.user  # set the user server-side
+        form.instance.view_type = form.cleaned_data.get("view_type")
         form.save()
-        return HttpResponse("<script>closeModal();$('#kanbanBtn').click();</script>")
+        view_type = form.instance.view_type
+        if view_type == "group_by":
+            script = "<script>closeModal();$('#groupByBtn').click();</script>"
+        else:
+            script = "<script>closeModal();$('#kanbanBtn').click();</script>"
+        return HttpResponse(script)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -457,9 +666,21 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
 
             has_added_fields = bool(current_set - default_set)
             has_removed_default_fields = bool(default_set - current_set)
+            # Same fields but different order counts as custom (so "Reset to Default" shows)
+            default_list = (
+                list(view_default_field_names) if view_default_field_names else []
+            )
+            has_order_changed = (
+                default_set == current_set
+                and len(current_field_names) == len(default_list)
+                and current_field_names != default_list
+            )
 
             has_custom_visibility = (
-                has_removed_fields or has_added_fields or has_removed_default_fields
+                has_removed_fields
+                or has_added_fields
+                or has_removed_default_fields
+                or has_order_changed
             )
 
         context["has_custom_visibility"] = has_custom_visibility
@@ -753,287 +974,268 @@ class ResetColumnToDefaultView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class MoveFieldView(LoginRequiredMixin, View):
-    """View for reordering columns/fields in list views."""
+class DetailFieldSelectorView(LoginRequiredMixin, View):
+    """View for selecting header and details fields in detail views."""
 
-    template_name = "add_column_to_list.html"
+    template_name = "add_field_to_detail.html"
 
-    def post(self, request, *args, **kwargs):
-        """
-        Handle requests to move a column/field in a list's column order.
-
-        Expects query parameters indicating model, field, and action and returns
-        an updated column selection UI or appropriate error responses.
-        """
+    def get(self, request, *args, **kwargs):
         app_label = request.GET.get("app_label")
         model_name = request.GET.get("model_name")
         url_name = request.GET.get("url_name")
-        field = request.GET.get("field")
-        action = request.GET.get("action")
-        path_context = (
-            urlparse(request.META.get("HTTP_REFERER", ""))
-            .path.strip("/")
-            .replace("/", "_")
-        )
-        path_context = re.sub(r"_\d+$", "", path_context)
-        user = request.user
-
+        model_name = model_name.strip('"') if model_name else model_name
+        if model_name and "." in model_name:
+            model_name = model_name.split(".")[-1]
+        if not app_label or not model_name or not url_name:
+            return HttpResponse(
+                "<div id='error-message'>Missing app_label, model_name or url_name</div>",
+                status=400,
+            )
         try:
             model = apps.get_model(app_label=app_label, model_name=model_name)
-            instance = model()
-            model_fields = [
-                [
-                    force_str(f.verbose_name or f.name.title()),
-                    (
-                        f.name
-                        if not getattr(f, "choices", None)
-                        else f"get_{f.name}_display"
-                    ),
-                ]
-                for f in model._meta.get_fields()
-                if isinstance(f, Field) and f.name not in ["history"]
-            ]
-            all_fields = (
-                getattr(instance, "columns", model_fields)
-                if hasattr(instance, "columns")
-                else model_fields
-            )
-
-            # Filter out hidden fields based on field permissions
-            if all_fields:
-                field_names = [
-                    f[1]
-                    for f in all_fields
-                    if isinstance(f, (list, tuple)) and len(f) >= 2
-                ]
-                visible_field_names_from_perms = filter_hidden_fields(
-                    user, model, field_names
-                )
-                all_fields = [
-                    f
-                    for f in all_fields
-                    if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else None)
-                    in visible_field_names_from_perms
-                ]
-
-            all_field_names = {item[1] for item in all_fields}
-            visibility = ListColumnVisibility.all_objects.filter(
-                user=user,
-                app_label=app_label,
-                model_name=model_name,
-                context=path_context,
-                url_name=url_name,
-            ).first()
-            custom_fields = []
-            if visibility:
-                visible_fields_from_db = visibility.visible_fields
-                # Filter visible_fields from DB to exclude hidden fields
-                if visible_fields_from_db:
-                    visible_field_names_list = [
-                        f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
-                        for f in visible_fields_from_db
-                    ]
-                    visible_field_names_from_perms = filter_hidden_fields(
-                        user, model, visible_field_names_list
-                    )
-                    visible_fields_from_db = [
-                        f
-                        for f in visible_fields_from_db
-                        if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f)
-                        in visible_field_names_from_perms
-                    ]
-
-                for display_name, field_name in visible_fields_from_db:
-                    if field_name not in all_field_names and field_name not in [
-                        f[1]
-                        for f in model_fields
-                        if isinstance(f, (list, tuple)) and len(f) >= 2
-                    ]:
-                        custom_fields.append([display_name, field_name])
-            all_fields = all_fields + custom_fields
-            session_key = (
-                f"visible_fields_{app_label}_{model_name}_{path_context}_{url_name}"
-            )
-            visible_field_names = request.session.get(session_key, [])
-
-            verbose_name_map = {f[1]: f[0] for f in all_fields}
-            model_field_names = {
-                f.name for f in model._meta.get_fields() if isinstance(f, Field)
-            }
-
-            removed_custom_field_lists = (
-                visibility.removed_custom_fields if visibility else []
-            )
-
-            # Filter out hidden fields from removed_custom_field_lists
-            if removed_custom_field_lists:
-                removed_field_names = [
-                    f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
-                    for f in removed_custom_field_lists
-                ]
-                visible_removed_field_names = filter_hidden_fields(
-                    user, model, removed_field_names
-                )
-                removed_custom_field_lists = [
-                    f
-                    for f in removed_custom_field_lists
-                    if (f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f)
-                    in visible_removed_field_names
-                ]
-
-            # Store original display name before modifying removed_custom_field_lists
-            field_display_name = None
-            if action == "add":
-                # Find the display name in removed_custom_field_lists before removing it
-                for removed_field in removed_custom_field_lists:
-                    if removed_field[1] == field:
-                        field_display_name = removed_field[0]
-                        break
-
-            if action == "add" and field not in visible_field_names:
-                visible_field_names.append(field)
-                # Remove from removed_custom_fields if present
-                removed_custom_field_lists = [
-                    f for f in removed_custom_field_lists if f[1] != field
-                ]
-            elif action == "remove" and field in visible_field_names:
-                visible_field_names.remove(field)
-                if (
-                    field not in model_field_names
-                    and not field.startswith("get_")
-                    and not any(f[1] == field for f in removed_custom_field_lists)
-                ):
-                    removed_custom_field_lists.append(
-                        [
-                            force_str(
-                                verbose_name_map.get(
-                                    field, field.replace("_", " ").title()
-                                )
-                            ),
-                            field,
-                        ]
-                    )
-            elif action == "move_up" and field in visible_field_names:
-                index = visible_field_names.index(field)
-                if index > 0:
-                    visible_field_names[index], visible_field_names[index - 1] = (
-                        visible_field_names[index - 1],
-                        visible_field_names[index],
-                    )
-            elif action == "move_down" and field in visible_field_names:
-                index = visible_field_names.index(field)
-                if index < len(visible_field_names) - 1:
-                    visible_field_names[index], visible_field_names[index + 1] = (
-                        visible_field_names[index + 1],
-                        visible_field_names[index],
-                    )
-
-            request.session[session_key] = visible_field_names
-            request.session.modified = True
-
-            # Create an enhanced verbose_name_map that includes the stored display name
-            enhanced_verbose_name_map = verbose_name_map.copy()
-            if field_display_name and action == "add":
-                enhanced_verbose_name_map[field] = field_display_name
-
-            # Filter visible_field_names to exclude hidden fields
-            if visible_field_names:
-                visible_field_names = filter_hidden_fields(
-                    user, model, visible_field_names
-                )
-
-            visible_fields = [
-                [enhanced_verbose_name_map.get(f, f.replace("_", " ").title()), f]
-                for f in visible_field_names
-            ]
-
-            form_data = QueryDict(mutable=True)
-            form_data.setlist("visible_fields", visible_field_names)
-
-            form = ColumnSelectionForm(
-                model=model,
-                app_label=app_label,
-                model_name=model_name,
-                path_context=path_context,
-                user=user,
-                data=form_data,
-                url_name=url_name,
-            )
-
-            related_field_parents = set()
-            for _, field_name in visible_fields + removed_custom_field_lists:
-                if "__" in field_name:
-                    parent_field = field_name.split("__")[0]
-                    related_field_parents.add(parent_field)
-            exclude_fields = request.GET.get("exclude")
-            exclude_fields_list = exclude_fields.split(",") if exclude_fields else []
-            view_default_field_names = get_default_columns_from_view(
-                url_name, app_label, model_name, request
-            )
-
-            if view_default_field_names is None:
-                view_default_field_names = []
-                for f in all_fields:
-                    if isinstance(f, (list, tuple)) and len(f) >= 2:
-                        view_default_field_names.append(f[1])
-
-            has_removed_fields = bool(removed_custom_field_lists)
-            default_set = set(view_default_field_names)
-            current_set = set(visible_field_names)
-
-            has_added_fields = bool(current_set - default_set)
-            has_removed_default_fields = bool(default_set - current_set)
-
-            has_custom_visibility = (
-                has_removed_fields or has_added_fields or has_removed_default_fields
-            )
-
-            if not form.is_valid():
-                context = {
-                    "form": form,
-                    "app_label": app_label,
-                    "model_name": model_name,
-                    "visible_fields": visible_fields,
-                    "url_name": url_name,
-                    "exclude_fields": exclude_fields,
-                    "has_custom_visibility": has_custom_visibility,
-                    "available_fields": [
-                        [verbose_name, field_name]
-                        for verbose_name, field_name in {
-                            f[1]: f for f in all_fields + removed_custom_field_lists
-                        }.values()
-                        if field_name not in visible_field_names
-                        and field_name not in related_field_parents
-                        and field_name not in exclude_fields_list
-                    ],
-                    "error": "Invalid field selection. Please try again.",
-                }
-                return render(request, self.template_name, context)
-
-            context = {
-                "form": form,
-                "app_label": app_label,
-                "model_name": model_name,
-                "visible_fields": visible_fields,
-                "exclude_fields": exclude_fields,
-                "url_name": url_name,
-                "has_custom_visibility": has_custom_visibility,
-                "available_fields": [
-                    [verbose_name, field_name]
-                    for verbose_name, field_name in {
-                        f[1]: f for f in all_fields + removed_custom_field_lists
-                    }.values()  # Deduplicate based on field_name
-                    if field_name not in visible_field_names
-                    and field_name not in related_field_parents
-                    and field_name not in exclude_fields_list
-                ],
-            }
-            return render(request, self.template_name, context)
-
         except LookupError:
             return HttpResponse(
                 "<div id='error-message'>Invalid model</div>", status=400
             )
+
+        instance = model()
+        base_excluded = {
+            "id",
+            "created_at",
+            "updated_at",
+            "history",
+            "is_active",
+            "additional_info",
+            "created_by",
+            "updated_by",
+        }
+        header_excluded = set(base_excluded)
+        details_excluded = set(base_excluded)
+
+        detail_view_class = HorillaDetailView._view_registry.get(model)
+        if detail_view_class:
+            header_excluded.update(getattr(detail_view_class, "excluded_fields", []))
+            pf = getattr(detail_view_class, "pipeline_field", None)
+            if pf:
+                pf_str = str(pf)
+                header_excluded.add(pf_str)
+                details_excluded.add(pf_str)
+            details_url = getattr(detail_view_class, "details_section_url_name", None)
+            if not details_url:
+                details_url = request.GET.get("details_section_url") or None
+            details_excluded_override = getattr(
+                detail_view_class, "details_excluded_fields", None
+            )
+            if details_url:
+                try:
+                    from django.urls import resolve, reverse
+
+                    resolved = resolve(reverse(details_url, kwargs={"pk": 1}))
+                    section_view = getattr(resolved.func, "view_class", None)
+                    if section_view:
+                        view_inst = section_view()
+                        view_inst.request = request
+                        view_inst.model = model
+                        details_excluded.update(
+                            view_inst.get_excluded_fields()
+                            if hasattr(view_inst, "get_excluded_fields")
+                            else getattr(view_inst, "excluded_fields", [])
+                        )
+                except Exception:
+                    details_excluded.update(header_excluded)
+            elif details_excluded_override is not None:
+                details_excluded.update(details_excluded_override)
+            else:
+                details_excluded.update(
+                    getattr(detail_view_class, "excluded_fields", [])
+                )
+
+        all_model_fields = [
+            [force_str(f.verbose_name or f.name.title()), f.name]
+            for f in model._meta.get_fields()
+            if isinstance(f, Field)
+            and f.name not in ["history"]
+            and f.name not in base_excluded
+        ]
+        field_names = [f[1] for f in all_model_fields]
+        visible = filter_hidden_fields(request.user, model, field_names)
+        all_model_fields = [f for f in all_model_fields if f[1] in visible]
+
+        default_header, default_details = _get_detail_field_defaults(model, request)
+
+        visibility = DetailFieldVisibility.all_objects.filter(
+            user=request.user,
+            app_label=app_label,
+            model_name=model_name,
+            url_name=url_name,
+        ).first()
+        header_fields = (
+            visibility.header_fields
+            if visibility and visibility.header_fields
+            else default_header
+        )
+        details_fields = (
+            visibility.details_fields
+            if visibility and visibility.details_fields
+            else default_details
+        )
+
+        def resolve_verbose_names(fields_list):
+            """Resolve verbose_name from model for current request language."""
+            result = []
+            for f in fields_list:
+                fn = f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else f
+                try:
+                    mf = model._meta.get_field(str(fn))
+                    result.append([mf.verbose_name, str(fn)])
+                except Exception:
+                    result.append(
+                        [f[0] if isinstance(f, (list, tuple)) else str(fn), str(fn)]
+                    )
+            return result
+
+        header_fields = resolve_verbose_names(header_fields)
+        details_fields = resolve_verbose_names(details_fields)
+        # Never show excluded fields in Visible lists (e.g. section view excluded_fields)
+        header_fields = [f for f in header_fields if f[1] not in header_excluded]
+        details_fields = [f for f in details_fields if f[1] not in details_excluded]
+        # Filter out hidden fields based on field permissions (don't show in Visible lists)
+        header_field_names_list = [f[1] for f in header_fields]
+        details_field_names_list = [f[1] for f in details_fields]
+        visible_header_names = filter_hidden_fields(
+            request.user, model, header_field_names_list
+        )
+        visible_details_names = filter_hidden_fields(
+            request.user, model, details_field_names_list
+        )
+        header_fields = [f for f in header_fields if f[1] in visible_header_names]
+        details_fields = [f for f in details_fields if f[1] in visible_details_names]
+        header_field_names = {f[1] for f in header_fields}
+        details_field_names = {f[1] for f in details_fields}
+        header_available = []
+        details_available = []
+        for _, fn in all_model_fields:
+            try:
+                vn = model._meta.get_field(fn).verbose_name
+                if fn not in header_field_names and fn not in header_excluded:
+                    header_available.append([vn, fn])
+                if fn not in details_field_names and fn not in details_excluded:
+                    details_available.append([vn, fn])
+            except Exception:
+                pass
+
+        # Only show "Reset to Default" when the saved config actually differs from default.
+        # If the user saved without making changes, visibility exists but matches default.
+        has_custom = False
+        if visibility and (visibility.header_fields or visibility.details_fields):
+
+            def _field_names(fields):
+                return [
+                    f[1] if isinstance(f, (list, tuple)) and len(f) >= 2 else str(f)
+                    for f in (fields or [])
+                ]
+
+            saved_header_names = _field_names(visibility.header_fields)
+            saved_details_names = _field_names(visibility.details_fields)
+            default_header_names = _field_names(default_header)
+            default_details_names = _field_names(default_details)
+            has_custom = (
+                saved_header_names != default_header_names
+                or saved_details_names != default_details_names
+            )
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "app_label": app_label,
+                "model_name": model_name,
+                "url_name": url_name,
+                "header_fields": header_fields,
+                "header_available": header_available,
+                "details_fields": details_fields,
+                "details_available": details_available,
+                "has_custom_visibility": has_custom,
+            },
+        )
+
+
+@method_decorator(htmx_required, name="dispatch")
+class ResetDetailFieldsView(LoginRequiredMixin, View):
+    """Reset detail view fields to default."""
+
+    def post(self, request, *args, **kwargs):
+        app_label = request.POST.get("app_label")
+        model_name = request.POST.get("model_name")
+        url_name = request.POST.get("url_name")
+        if model_name and "." in model_name:
+            model_name = model_name.split(".")[-1]
+        if app_label and model_name and url_name:
+            DetailFieldVisibility.all_objects.filter(
+                user=request.user,
+                app_label=app_label,
+                model_name=model_name,
+                url_name=url_name,
+            ).delete()
+        return HttpResponse(
+            "<script>closeContentModal();$('#reloadButton').click();</script>"
+        )
+
+
+@method_decorator(htmx_required, name="dispatch")
+class SaveDetailFieldsView(LoginRequiredMixin, View):
+    """Save header and details field order in one request (no per-move requests)."""
+
+    def post(self, request, *args, **kwargs):
+        app_label = request.POST.get("app_label")
+        model_name = request.POST.get("model_name")
+        url_name = request.POST.get("url_name")
+        header_field_names = request.POST.getlist("header_fields")
+        details_field_names = request.POST.getlist("details_fields")
+        if model_name and "." in model_name:
+            model_name = model_name.split(".")[-1]
+        if not app_label or not model_name or not url_name:
+            return HttpResponse(status=400)
+        try:
+            model = apps.get_model(app_label=app_label, model_name=model_name)
+        except LookupError:
+            return HttpResponse(status=400)
+        header_field_names = filter_hidden_fields(
+            request.user, model, header_field_names
+        )
+        details_field_names = filter_hidden_fields(
+            request.user, model, details_field_names
+        )
+        all_model_fields = {
+            f.name: force_str(f.verbose_name or f.name.title())
+            for f in model._meta.get_fields()
+            if isinstance(f, Field) and f.name not in ["history"]
+        }
+        header_fields = [
+            [all_model_fields.get(fn, fn.replace("_", " ").title()), fn]
+            for fn in header_field_names
+        ]
+        details_fields = [
+            [all_model_fields.get(fn, fn.replace("_", " ").title()), fn]
+            for fn in details_field_names
+        ]
+        default_header, default_details = _get_detail_field_defaults(model, request)
+        visibility, _ = DetailFieldVisibility.all_objects.get_or_create(
+            user=request.user,
+            app_label=app_label,
+            model_name=model_name,
+            url_name=url_name,
+            defaults={
+                "header_fields": default_header,
+                "details_fields": default_details,
+            },
+        )
+        visibility.header_fields = _ensure_json_serializable(header_fields)
+        visibility.details_fields = _ensure_json_serializable(details_fields)
+        visibility.save()
+        return HttpResponse(
+            "<script>closeContentModal();$('#reloadButton').click();</script>"
+        )
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -1712,6 +1914,35 @@ class KanbanLoadMoreView(LoginRequiredMixin, View):
             return HttpResponse("<script>$('#reloadButton').click();")
 
 
+class GroupByLoadMoreView(LoginRequiredMixin, View):
+    """
+    Handle AJAX request to load more items for a specific group in the group-by view.
+    """
+
+    def get(self, request, app_label, model_name, *args, **kwargs):
+        """
+        Handle GET request to load more items for a specific group.
+        """
+        try:
+            model = apps.get_model(
+                app_label=app_label.split(".")[-1], model_name=model_name
+            )
+            view_class = HorillaGroupByView._view_registry.get(model)
+            if not view_class:
+                messages.error(request, f"View class {model_name} not found")
+                return HttpResponse("<script>$('#reloadButton').click();")
+
+            view = view_class()
+            view.request = request
+            view.model = model
+            view.kwargs = kwargs
+
+            return view.load_more_items(request)
+        except Exception as e:
+            messages.error(request, f"Load More failed: {str(e)}")
+            return HttpResponse("<script>$('#reloadButton').click();")
+
+
 class HorillaSelect2DataView(LoginRequiredMixin, View):
     """View for providing JSON data to Select2 AJAX dropdowns with search and pagination."""
 
@@ -1772,7 +2003,22 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
         form_class = self._get_form_class_from_request(request)
         if form_class and field_name:
             try:
-                form = form_class(request=request)
+                form_kwargs = {"request": request}
+                # Pass instance when object_id is provided (edit mode) so OwnerQuerysetMixin
+                # uses change/change_own instead of add/add_own
+                object_id = request.GET.get("object_id")
+                if (
+                    object_id
+                    and hasattr(form_class, "_meta")
+                    and hasattr(form_class._meta, "model")
+                ):
+                    parent_model = form_class._meta.model
+                    try:
+                        instance = parent_model.objects.get(pk=object_id)
+                        form_kwargs["instance"] = instance
+                    except (parent_model.DoesNotExist, ValueError):
+                        pass
+                form = form_class(**form_kwargs)
                 if field_name in form.fields:
                     queryset = form.fields[field_name].queryset
             except Exception as e:
@@ -1907,14 +2153,28 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
 
     def _get_form_class_from_request(self, request):
         """
-        Optional: resolve which form is being used.
-        You can pass it via request.GET or hardcode a mapping per model.
+        Resolve which form is being used from form_class query param.
+        DynamicForm is created inside get_form_class() and is not importable;
+        when form_path contains DynamicForm, resolve via get_dynamic_form_for_model
+        using parent_model  - works for any model, no per-model code.
         """
         form_path = request.GET.get("form_class")
         if not form_path:
             return None
-
         if "DynamicForm" in form_path:
+            parent_model_path = request.GET.get("parent_model", "").strip()
+            if parent_model_path and "." in parent_model_path:
+                try:
+
+                    p_app, p_model = parent_model_path.rsplit(".", 1)
+                    parent_model = apps.get_model(app_label=p_app, model_name=p_model)
+                    return get_dynamic_form_for_model(parent_model)
+                except (LookupError, ValueError) as e:
+                    logger.debug(
+                        "[Select2] Could not resolve DynamicForm for parent_model %s: %s",
+                        parent_model_path,
+                        e,
+                    )
             return None
         try:
             module_path, class_name = form_path.rsplit(".", 1)
@@ -1950,19 +2210,141 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
         Accepts query parameters to determine the row and field and returns the
         rendered widget HTML to be injected by HTMX.
         """
-        row_id = request.GET.get("row_id")
+        row_id = request.GET.get("row_id", "")
         field_name = request.GET.get(f"field_{row_id}", request.GET.get("field", ""))
         model_name = request.GET.get("model_name", "")
+        condition_model_str = request.GET.get("condition_model", "")
 
         # Try to get existing value from the request
         existing_value = request.GET.get(f"value_{row_id}", "")
+        existing_operator = request.GET.get(f"operator_{row_id}", "")
 
         # Get the model field to determine appropriate widget
         widget_html = self._get_value_widget_html(
             field_name, model_name, row_id, existing_value
         )
 
+        # For single-form condition fields: update operator dropdown by field type
+        # (same operator matching as filter: boolean=equals/not_equals, text=contains/etc.)
+        operator_oob = self._get_operator_oob_html(
+            row_id, field_name, model_name, condition_model_str, existing_operator
+        )
+        if operator_oob:
+            widget_html = widget_html + operator_oob
+
         return HttpResponse(widget_html)
+
+    def _get_field_type_for_condition(self, model_field):
+        """Return field type string for operator matching (same logic as filter)."""
+        field_class_name = model_field.__class__.__name__
+        if field_class_name == "ForeignKey":
+            return "foreignkey"
+        if hasattr(model_field, "choices") and model_field.choices:
+            return "choice"
+        if field_class_name == "DateTimeField":
+            return "datetime"
+        if field_class_name == "DateField":
+            return "date"
+        if field_class_name in ("BooleanField", "NullBooleanField"):
+            return "boolean"
+        return FIELD_TYPE_MAP.get(field_class_name, "other")
+
+    def _get_operator_oob_html(
+        self, row_id, field_name, model_name, condition_model_str, existing_operator
+    ):
+        """
+        Return OOB (out-of-band) HTML to swap the operator dropdown in single-form
+        condition fields. Operators are filtered by field type (same logic as filter).
+        """
+        if not condition_model_str or not row_id:
+            return ""
+
+        try:
+            # Resolve target model and get selected field
+            target_model = None
+            for app_config in apps.get_app_configs():
+                try:
+                    target_model = apps.get_model(
+                        app_label=app_config.label, model_name=model_name
+                    )
+                    break
+                except LookupError:
+                    continue
+            if not target_model or not field_name:
+                return ""
+
+            try:
+                model_field = target_model._meta.get_field(field_name)
+            except Exception:
+                return ""
+
+            field_type = self._get_field_type_for_condition(model_field)
+            allowed_operators = set(
+                CONDITION_OPERATORS_BY_FIELD_TYPE.get(
+                    field_type, CONDITION_OPERATORS_BY_FIELD_TYPE["other"]
+                )
+            )
+
+            # Resolve condition model and get full operator choices
+            condition_model = None
+            parts = condition_model_str.split(".")
+            model_name_part = parts[-1] if parts else ""
+            app_label_part = (
+                ".".join(parts[:-1]) if len(parts) > 1 else (parts[0] if parts else "")
+            )
+            try:
+                condition_model = apps.get_model(app_label_part, model_name_part)
+            except LookupError:
+                pass
+            if not condition_model:
+                for app_config in apps.get_app_configs():
+                    try:
+                        candidate = apps.get_model(
+                            app_label=app_config.label,
+                            model_name=model_name_part,
+                        )
+                        if (
+                            candidate
+                            and f"{candidate._meta.app_label}.{candidate._meta.model_name}"
+                            == condition_model_str
+                        ):
+                            condition_model = candidate
+                            break
+                    except LookupError:
+                        continue
+            if not condition_model:
+                return ""
+            try:
+                op_field = condition_model._meta.get_field("operator")
+                full_choices = list(getattr(op_field, "choices", []) or [])
+            except Exception:
+                return ""
+
+            # Restrict to operators allowed for this field type (like filter)
+            operator_choices = [("", "---------")] + [
+                (v, label) for v, label in full_choices if v in allowed_operators
+            ]
+
+            options = []
+            for val, label in operator_choices:
+                selected = (
+                    ' selected="selected"' if str(val) == str(existing_operator) else ""
+                )
+                options.append(
+                    f'<option value="{force_str(val)}"{selected}>{force_str(label)}</option>'
+                )
+            options_html = "".join(options)
+            safe_row_id = force_str(row_id).replace('"', "&quot;")
+            return (
+                f'<div id="id_operator_{safe_row_id}_container" hx-swap-oob="true">'
+                f'<select name="operator_{safe_row_id}" id="id_operator_{safe_row_id}" '
+                f'class="js-example-basic-single headselect" '
+                f'data-placeholder="Select Operator">'
+                f"{options_html}</select></div>"
+            )
+        except Exception as e:
+            logger.debug("GetFieldValueWidgetView operator OOB: %s", e)
+            return ""
 
     def _get_value_widget_html(self, field_name, model_name, row_id, existing_value=""):
         """Generate appropriate widget HTML based on selected field"""
@@ -2065,7 +2447,7 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
         return f"""
         <select name="value_{row_id}"
                 id="id_value_{row_id}"
-                class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
+                class="js-example-basic-single headselect">
             <option value="">---------</option>
             <option value="True" {true_selected}>True</option>
             <option value="False" {false_selected}>False</option>

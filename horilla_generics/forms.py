@@ -39,16 +39,17 @@ logger = logging.getLogger(__name__)
 
 # Define your horilla_generics forms here
 class KanbanGroupByForm(forms.ModelForm):
-    """Form for configuring kanban board group-by settings."""
+    """Form for configuring group-by settings for Kanban or Group By view."""
 
     class Meta:
         """Meta options for KanbanGroupByForm."""
 
         model = KanbanGroupBy
-        fields = ["model_name", "field_name", "app_label"]
+        fields = ["model_name", "field_name", "app_label", "view_type"]
         widgets = {
             "model_name": forms.HiddenInput(),
             "app_label": forms.HiddenInput(),
+            "view_type": forms.HiddenInput(),
             "field_name": forms.Select(),
         }
 
@@ -72,12 +73,21 @@ class KanbanGroupByForm(forms.ModelForm):
 
         if model_name and app_label:
             temp_instance = KanbanGroupBy(model_name=model_name, app_label=app_label)
+            user = getattr(self.request, "user", None) if self.request else None
             self.fields["field_name"].choices = temp_instance.get_model_groupby_fields(
                 exclude_fields=exclude_fields,
                 include_fields=include_fields,
+                user=user,
             )
         else:
             self.fields["field_name"].choices = []
+
+        view_type = (
+            self.data.get("view_type")
+            or self.initial.get("view_type")
+            or getattr(self.instance, "view_type", "kanban")
+        )
+        self.fields["view_type"].initial = view_type
 
     def clean(self):
         cleaned_data = super().clean()
@@ -86,11 +96,13 @@ class KanbanGroupByForm(forms.ModelForm):
         field_name = cleaned_data.get("field_name")
 
         # Only validate if field_name is filled
+        view_type = cleaned_data.get("view_type") or "kanban"
         if model_name and field_name:
             temp_instance = KanbanGroupBy(
                 model_name=model_name,
                 field_name=field_name,
                 app_label=app_label,
+                view_type=view_type,
                 user=self.request.user,
             )
             try:
@@ -950,24 +962,29 @@ class HorillaMultiStepForm(forms.ModelForm):
                     "Error loading initial choices for %s: %s", field_name, str(e)
                 )
 
+        attrs = {
+            "class": "select2-pagination w-full text-sm",
+            "data-url": reverse_lazy(
+                f"horilla_generics:model_select2",
+                kwargs={"app_label": app_label, "model_name": model_name},
+            ),
+            "data-placeholder": _("Select %(field)s")
+            % {"field": model_field.verbose_name.title()},
+            "multiple": "multiple",
+            "data-initial": (
+                ",".join(map(str, initial_value)) if initial_value else ""
+            ),
+            "data-field-name": field_name,
+            "id": f"id_{field_name}",
+            "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
+        }
+        if self.__class__.__name__ == "DynamicForm":
+            attrs["data-parent-model"] = (
+                f"{self._meta.model._meta.app_label}.{self._meta.model._meta.model_name}"
+            )
         field.widget = forms.SelectMultiple(
             choices=initial_choices,
-            attrs={
-                "class": "select2-pagination w-full text-sm",
-                "data-url": reverse_lazy(
-                    f"horilla_generics:model_select2",
-                    kwargs={"app_label": app_label, "model_name": model_name},
-                ),
-                "data-placeholder": _("Select %(field)s")
-                % {"field": model_field.verbose_name.title()},
-                "multiple": "multiple",
-                "data-initial": (
-                    ",".join(map(str, initial_value)) if initial_value else ""
-                ),
-                "data-field-name": field_name,
-                "id": f"id_{field_name}",
-                "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
-            },
+            attrs=attrs,
         )
         field.widget._pagination_configured = True
 
@@ -1023,22 +1040,30 @@ class HorillaMultiStepForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             object_id = self.instance.pk
 
+        attrs = {
+            "class": "select2-pagination w-full",
+            "data-url": reverse_lazy(
+                f"horilla_generics:model_select2",
+                kwargs={"app_label": app_label, "model_name": model_name},
+            ),
+            "data-placeholder": _("Select %(field)s")
+            % {"field": model_field.verbose_name.title()},
+            "data-initial": str(initial_value) if initial_value is not None else "",
+            "data-field-name": field_name,  # Add unique identifier
+            "id": f"id_{field_name}",
+            "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
+        }
+        if object_id:
+            attrs["data-object-id"] = str(object_id)
+        # For DynamicForm: pass parent model so Select2 can resolve form via
+        # get_dynamic_form_for_model (form is not importable). Works for any model.
+        if self.__class__.__name__ == "DynamicForm":
+            attrs["data-parent-model"] = (
+                f"{self._meta.model._meta.app_label}.{self._meta.model._meta.model_name}"
+            )
         field.widget = forms.Select(
             choices=[("", "---------")] + initial_choices,  # Set initial choices
-            attrs={
-                "class": "select2-pagination w-full",
-                "data-url": reverse_lazy(
-                    f"horilla_generics:model_select2",
-                    kwargs={"app_label": app_label, "model_name": model_name},
-                ),
-                "data-placeholder": _("Select %(field)s")
-                % {"field": model_field.verbose_name.title()},
-                "data-initial": str(initial_value) if initial_value is not None else "",
-                "data-field-name": field_name,  # Add unique identifier
-                "id": f"id_{field_name}",
-                "data-form-class": f"{self.__module__}.{self.__class__.__name__}",
-                **({"data-object-id": str(object_id)} if object_id else {}),
-            },
+            attrs=attrs,
         )
         field.widget._pagination_configured = True
 
@@ -1534,8 +1559,10 @@ class HorillaModelForm(forms.ModelForm):
                                     "class": "text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md mt-1 focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600",
                                     **existing_attrs,
                                     **readonly_attrs,  # Ensure readonly is preserved
-                                }
+                                },
+                                format="%Y-%m-%d",
                             )
+                            field.input_formats = ["%Y-%m-%d"]
 
                     elif isinstance(model_field, models.TimeField):
                         if not isinstance(field.widget, forms.HiddenInput):
@@ -1693,6 +1720,10 @@ class HorillaModelForm(forms.ModelForm):
                                 ),
                                 **existing_attrs,
                             }
+                            if self.__class__.__name__ == "DynamicForm":
+                                widget_attrs["data-parent-model"] = (
+                                    f"{self._meta.model._meta.app_label}.{self._meta.model._meta.model_name}"
+                                )
 
                             # Add disabled attribute if field is readonly
                             if should_disable:
@@ -1822,6 +1853,10 @@ class HorillaModelForm(forms.ModelForm):
                                 ),
                                 **existing_attrs,
                             }
+                            if self.__class__.__name__ == "DynamicForm":
+                                widget_attrs["data-parent-model"] = (
+                                    f"{self._meta.model._meta.app_label}.{self._meta.model._meta.model_name}"
+                                )
 
                             # Add disabled attribute if field is readonly
                             if should_disable:
@@ -2035,6 +2070,11 @@ class HorillaModelForm(forms.ModelForm):
                         f'"model_name": "{model_name}"',
                         f'"row_id": "{row_id}"',
                     ]
+                    condition_model = getattr(self, "condition_model", None)
+                    if condition_model:
+                        hx_vals_parts.append(
+                            f'"condition_model": "{condition_model._meta.app_label}.{condition_model._meta.model_name}"'
+                        )
                     if existing_field:
                         hx_vals_parts.append(
                             f'"field_{row_id}": "{escape(str(existing_field))}"'
@@ -2046,7 +2086,7 @@ class HorillaModelForm(forms.ModelForm):
                         )
                     hx_vals = "{" + ", ".join(hx_vals_parts) + "}"
 
-                    hx_include = f'[name="field_{row_id}"]'
+                    hx_include = f'[name="field_{row_id}"],[name="operator_{row_id}"]'
                     if (
                         hasattr(self, "condition_hx_include")
                         and self.condition_hx_include

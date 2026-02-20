@@ -34,6 +34,11 @@ urlpatterns = [
         name="kanban_load_more",
     ),
     path(
+        "group-by-load-more/<str:app_label>/<str:model_name>/",
+        view.GroupByLoadMoreView.as_view(),
+        name="group_by_load_more",
+    ),
+    path(
         "create-kanban-group/",
         view.HorillaKanbanGroupByView.as_view(),
         name="create_kanban_group",
@@ -48,7 +53,21 @@ urlpatterns = [
         view.ResetColumnToDefaultView.as_view(),
         name="reset_columns_to_default",
     ),
-    path("move-field/", view.MoveFieldView.as_view(), name="move_field"),
+    path(
+        "detail-field-selector/",
+        view.DetailFieldSelectorView.as_view(),
+        name="detail_field_selector",
+    ),
+    path(
+        "save-detail-fields/",
+        view.SaveDetailFieldsView.as_view(),
+        name="save_detail_fields",
+    ),
+    path(
+        "reset-detail-fields/",
+        view.ResetDetailFieldsView.as_view(),
+        name="reset_detail_fields",
+    ),
     path(
         "save-filter-list/", view.SaveFilterListView.as_view(), name="save_filter_list"
     ),

@@ -44,6 +44,7 @@ from horilla_generics.views import (
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
+    HorillaGroupByView,
     HorillaHistorySectionView,
     HorillaKanbanView,
     HorillaListView,
@@ -66,12 +67,16 @@ class LeadView(LoginRequiredMixin, HorillaView):
     nav_url = reverse_lazy("leads:leads_nav")
     list_url = reverse_lazy("leads:leads_list")
     kanban_url = reverse_lazy("leads:leads_kanban")
+    group_by_url = reverse_lazy("leads:leads_group_by")
 
     def dispatch(self, request, *args, **kwargs):
         view_type = request.GET.get("view_type")
-        if view_type == "converted_lead" and request.GET.get("kanban") == "true":
+        if view_type == "converted_lead" and request.GET.get("layout") in (
+            "kanban",
+            "group_by",
+        ):
             get_params = request.GET.copy()
-            del get_params["kanban"]
+            get_params.pop("layout", None)
             query_string = get_params.urlencode()
             redirect_url = request.path
             if query_string:
@@ -94,6 +99,7 @@ class LeadNavbar(LoginRequiredMixin, HorillaNavView):
     main_url = reverse_lazy("leads:leads_view")
     filterset_class = LeadFilter
     kanban_url = reverse_lazy("leads:leads_kanban")
+    group_by_url = reverse_lazy("leads:leads_group_by")
     model_name = "Lead"
     model_app_label = "leads"
     exclude_kanban_fields = "lead_owner"
@@ -140,9 +146,9 @@ class LeadListView(LoginRequiredMixin, HorillaListView):
     max_visible_actions = 5
     enable_quick_filters = True
     columns = [
+        "title",
         "first_name",
         "last_name",
-        "title",
         "email",
         "lead_status",
         "lead_source",
@@ -309,7 +315,8 @@ class LeadKanbanView(LoginRequiredMixin, HorillaKanbanView):
     filterset_class = LeadFilter
     search_url = reverse_lazy("leads:leads_list")
     main_url = reverse_lazy("leads:leads_view")
-    group_by_field = "industry"
+    group_by_field = "lead_status"
+    exclude_kanban_fields = "lead_owner"
     columns = [
         "title",
         "first_name",
@@ -379,6 +386,104 @@ class LeadKanbanView(LoginRequiredMixin, HorillaKanbanView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(["leads.view_lead", "leads.view_own_lead"]),
+    name="dispatch",
+)
+class LeadGroupByView(LoginRequiredMixin, HorillaGroupByView):
+    """
+    Lead Group By view
+    """
+
+    model = Lead
+    view_id = "leads-group-by"
+    filterset_class = LeadFilter
+    search_url = reverse_lazy("leads:leads_list")
+    enable_quick_filters = True
+    main_url = reverse_lazy("leads:leads_view")
+    group_by_field = "lead_status"
+    exclude_kanban_fields = "lead_owner"
+    max_visible_actions = 5
+
+    columns = [
+        "first_name",
+        "last_name",
+        "title",
+        "email",
+        "lead_status",
+        "lead_source",
+        "industry",
+        "annual_revenue",
+    ]
+    actions = LeadListView.actions
+
+    @cached_property
+    def col_attrs(self):
+        """Column attributes for lead"""
+        query_params = {}
+        if "section" in self.request.GET:
+            query_params["section"] = self.request.GET.get("section")
+        query_string = urlencode(query_params)
+        return [
+            {
+                "title": {
+                    "hx-get": f"{{get_detail_url}}?{query_string}",
+                    "hx-target": "#mainContent",
+                    "hx-swap": "outerHTML",
+                    "hx-push-url": "true",
+                    "hx-select": "#mainContent",
+                    "permission": "leads.view_lead",
+                    "own_permission": "leads.view_own_lead",
+                    "owner_field": "lead_owner",
+                }
+            }
+        ]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        group_by = self.get_group_by_field()
+
+        if group_by == "lead_status" and "grouped_items" in context:
+            filtered_grouped_items = {}
+            for key, group_data in context["grouped_items"].items():
+                is_final_stage = False
+                if key is not None:
+                    try:
+                        lead_status = LeadStatus.objects.get(pk=key)
+                        is_final_stage = lead_status.is_final
+                    except LeadStatus.DoesNotExist:
+                        pass
+
+                if not is_final_stage:
+                    filtered_grouped_items[key] = group_data
+
+            context["grouped_items"] = filtered_grouped_items
+
+        return context
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        view_type = self.request.GET.get("view_type") or self.get_default_view_type()
+        if view_type == "converted_lead":
+            queryset = queryset.filter(is_convert=True)
+            self.actions = None
+        else:
+            queryset = queryset.filter(is_convert=False)
+        return queryset
+
+    def no_record_add_button(self):
+        """No record add button for lead"""
+        if self.request.user.has_perm("leads.add_lead") or self.request.user.has_perm(
+            "leads.add_own_lead"
+        ):
+            return {
+                "url": f"""{reverse_lazy('leads:leads_create')}?new=true""",
+                "attrs": {"id": "lead-create"},
+            }
+        return None
+
+
+@method_decorator(htmx_required, name="dispatch")
 class LeadFormView(LoginRequiredMixin, HorillaMultiStepFormView):
     """Lead Create/Update View"""
 
@@ -439,14 +544,7 @@ class LeadDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailView)
         "industry",
         "lead_owner",
     ]
-    excluded_fields = [
-        "id",
-        "created_at",
-        "additional_info",
-        "updated_at",
-        "history",
-        "is_active",
-    ]
+    excluded_fields = ["is_convert", "message_id"]
     pipeline_field = "lead_status"
     tab_url = reverse_lazy("leads:lead_detail_view_tabs")
 
@@ -489,14 +587,6 @@ class LeadsDetailTab(LoginRequiredMixin, HorillaDetailSectionView):
         self.excluded_fields.append("lead_owner")
         self.excluded_fields.append("message_id")
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        obj = self.get_object()
-        if obj.is_convert:
-            self.edit_field = False
-            context["edit_field"] = self.edit_field
-        return context
-
 
 @method_decorator(
     permission_required_or_denied(["leads.view_lead", "leads.view_own_lead"]),
@@ -522,6 +612,7 @@ class LeadsDetailViewTabView(LoginRequiredMixin, HorillaDetailTabView):
         if self.object_id:
             obj = Lead.objects.get(pk=self.object_id)
             if obj.is_convert:
+                self.tab_class = "h-[calc(_100vh_-_390px_)] overflow-hidden"
                 self.urls = {
                     "details": "leads:leads_details_tab",
                     "history": "leads:leads_history_tab_view",
