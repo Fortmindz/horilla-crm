@@ -7,6 +7,7 @@ for example creating default shortcut keys for newly created users.
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.urls import reverse_lazy
 
 from horilla.auth.models import User
 from horilla_keys.models import ShortcutKey
@@ -22,7 +23,11 @@ def create_calendar_shortcuts(sender, instance, created, **kwargs):
     set of `ShortcutKey` entries exist for the user (creates them if missing).
     """
     predefined = [
-        {"page": "/horilla_calendar/calendar-view/", "key": "I", "command": "alt"},
+        {
+            "page": str(reverse_lazy("horilla_calendar:calendar_view")),
+            "key": "I",
+            "command": "alt",
+        },
     ]
 
     for item in predefined:
