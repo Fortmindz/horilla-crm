@@ -250,6 +250,11 @@ class Report(HorillaCoreModel):
             # Skip reverse relations and excluded field types
             if hasattr(field, "related_model") and field.related_model:
                 continue
+            # Skip id/pk and non-editable fields in report detail
+            if field.name in ("id", "pk"):
+                continue
+            if not getattr(field, "editable", True):
+                continue
 
             field_type = field.__class__.__name__
             if field_type in excluded_field_types:

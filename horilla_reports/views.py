@@ -2562,6 +2562,10 @@ class ReportUpdateView(LoginRequiredMixin, DetailView):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
@@ -2823,6 +2827,10 @@ class AddFilterFieldView(LoginRequiredMixin, View):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
@@ -2949,6 +2957,10 @@ class UpdateFilterOperatorView(View):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
@@ -3057,6 +3069,10 @@ class UpdateFilterValueView(LoginRequiredMixin, View):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
@@ -3200,6 +3216,10 @@ class RemoveFilterView(LoginRequiredMixin, View):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
@@ -3592,6 +3612,10 @@ class SearchAvailableFieldsView(LoginRequiredMixin, DetailView):
         available_fields = []
         for field in model_class._meta.get_fields():
             if not field.many_to_many and not field.one_to_many:
+                if field.name in ("id", "pk"):
+                    continue
+                if not getattr(field, "editable", True):
+                    continue
                 available_fields.append(
                     {
                         "name": field.name,
