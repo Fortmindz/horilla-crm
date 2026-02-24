@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:12+0000\n"
+"POT-Creation-Date: 2026-02-21 08:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,17 +26,16 @@ msgid "CRM"
 msgstr "إدارة علاقات العملاء"
 
 msgid "CRM module for managing leads, contacts, and opportunities."
-msgstr ""
-"وحدة إدارة علاقات العملاء لإدارة العملاء المحتملين وجهات الاتصال والفرص."
+msgstr "وحدة إدارة علاقات العملاء لإدارة العملاء المحتملين وجهات الاتصال والفرص."
 
 msgid "Horilla CRM"
-msgstr ""
+msgstr "هوريلا لإدارة علاقات العملاء"
 
 msgid "Welcome to Horilla CRM"
-msgstr ""
+msgstr "مرحبًا بك في هوريلا لإدارة علاقات العملاء"
 
 msgid "Please sign up to access Horilla CRM"
-msgstr ""
+msgstr "يرجى التسجيل للوصول إلى هوريلا لإدارة علاقات العملاء"
 
 msgid "Is Final Stage"
 msgstr "هل هي المرحلة النهائية"
@@ -61,6 +60,9 @@ msgstr "ترتيب الحالة"
 
 msgid "Status Color"
 msgstr "لون الحالة"
+
+msgid "Leave blank for default (primary theme colour)."
+msgstr "اتركه فارغًا للون الافتراضي (اللون الأساسي للسمة)."
 
 msgid "Probability"
 msgstr "احتمالية"
@@ -178,9 +180,6 @@ msgstr "المتطلبات"
 
 msgid "Lead Score"
 msgstr "درجة العميل المتوقع"
-
-msgid "Annual Revenue 3x"
-msgstr "الإيرادات السنوية مضروبة في 3"
 
 msgid "Incoming Mail"
 msgstr "البريد الوارد"
@@ -337,7 +336,8 @@ msgstr "تم النقر"
 msgid "Bounced"
 msgstr "تم الارتداد"
 
-msgid "Add column to list"
+
+msgid "Add Column to List"
 msgstr "إضافة عمود إلى القائمة"
 
 msgid "Is Active"
@@ -382,22 +382,21 @@ msgstr "يرجى اختيار حساب أولاً"
 msgid "Select an account to see available opportunities"
 msgstr "اختر حسابًا لرؤية الفرص المتاحة"
 
-#, fuzzy
-#| msgid "Success Message"
+
 msgid "Success"
-msgstr "رسالة النجاح"
+msgstr "نجاح"
 
 msgid "Your lead has been converted"
 msgstr "تم تحويل العميل المتوقع الخاص بك"
 
 msgid "Comapny"
-msgstr ""
+msgstr "الشركة"
 
 msgid "User"
-msgstr ""
+msgstr "مستخدم"
 
 msgid "crown"
-msgstr ""
+msgstr "تاج"
 
 msgid "Go to Leads"
 msgstr "الذهاب إلى العملاء المتوقعين"
@@ -406,7 +405,7 @@ msgid "Manage Custom Stages"
 msgstr "إدارة المراحل المخصصة"
 
 msgid "Drag"
-msgstr ""
+msgstr "سحب"
 
 msgid "Add Stage"
 msgstr "إضافة مرحلة"
@@ -528,7 +527,7 @@ msgid "Save"
 msgstr "حفظ"
 
 msgid "Loading..."
-msgstr ""
+msgstr "جارٍ التحميل..."
 
 msgid "Page Not Found"
 msgstr "الصفحة غير موجودة"
@@ -550,12 +549,3 @@ msgstr "الموقع"
 
 msgid "Change Owner"
 msgstr "تغيير المالك"
-
-#~ msgid "Export"
-#~ msgstr "تصدير"
-
-#~ msgid "Move"
-#~ msgstr "نقل"
-
-#~ msgid "Favourite"
-#~ msgstr "مفضل"

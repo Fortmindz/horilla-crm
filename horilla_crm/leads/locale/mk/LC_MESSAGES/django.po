@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:12+0000\n"
+"POT-Creation-Date: 2026-02-21 08:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -58,6 +58,9 @@ msgid "Status Order"
 msgstr ""
 
 msgid "Status Color"
+msgstr ""
+
+msgid "Leave blank for default (primary theme colour)."
 msgstr ""
 
 msgid "Probability"
@@ -175,9 +178,6 @@ msgid "Requirements"
 msgstr ""
 
 msgid "Lead Score"
-msgstr ""
-
-msgid "Annual Revenue 3x"
 msgstr ""
 
 msgid "Incoming Mail"
@@ -331,7 +331,7 @@ msgstr ""
 msgid "Bounced"
 msgstr ""
 
-msgid "Add column to list"
+msgid "Add Column to List"
 msgstr ""
 
 msgid "Is Active"

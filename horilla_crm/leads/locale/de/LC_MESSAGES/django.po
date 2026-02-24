@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:12+0000\n"
+"POT-Creation-Date: 2026-02-21 08:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,19 +22,19 @@ msgid "Leads"
 msgstr "Interessenten"
 
 msgid "CRM"
-msgstr ""
+msgstr "CRM"
 
 msgid "CRM module for managing leads, contacts, and opportunities."
-msgstr ""
+msgstr "CRM-Modul zur Verwaltung von Interessenten, Kontakten und Chancen."
 
 msgid "Horilla CRM"
-msgstr ""
+msgstr "Horilla CRM"
 
 msgid "Welcome to Horilla CRM"
-msgstr ""
+msgstr "Willkommen bei Horilla CRM"
 
 msgid "Please sign up to access Horilla CRM"
-msgstr ""
+msgstr "Bitte registrieren Sie sich, um auf Horilla CRM zuzugreifen"
 
 msgid "Is Final Stage"
 msgstr "Ist Endphase"
@@ -59,6 +59,9 @@ msgstr "Statusreihenfolge"
 
 msgid "Status Color"
 msgstr "Statusfarbe"
+
+msgid "Leave blank for default (primary theme colour)."
+msgstr "Leer lassen für Standard (primäre Designfarbe)."
 
 msgid "Probability"
 msgstr "Wahrscheinlichkeit"
@@ -176,9 +179,6 @@ msgstr "Anforderungen"
 
 msgid "Lead Score"
 msgstr "Interessentenbewertung"
-
-msgid "Annual Revenue 3x"
-msgstr "Jahresumsatz 3x"
 
 msgid "Incoming Mail"
 msgstr "Eingehende Mail"
@@ -335,7 +335,8 @@ msgstr "Geklickt"
 msgid "Bounced"
 msgstr "Zurückgewiesen"
 
-msgid "Add column to list"
+
+msgid "Add Column to List"
 msgstr "Spalte zur Liste hinzufügen"
 
 msgid "Is Active"
@@ -380,22 +381,21 @@ msgstr "Bitte zuerst ein Konto auswählen"
 msgid "Select an account to see available opportunities"
 msgstr "Wählen Sie ein Konto, um verfügbare Chancen anzuzeigen"
 
-#, fuzzy
-#| msgid "Success Message"
+
 msgid "Success"
-msgstr "Erfolgsmeldung"
+msgstr "Erfolg"
 
 msgid "Your lead has been converted"
 msgstr "Ihr Interessent wurde konvertiert"
 
 msgid "Comapny"
-msgstr ""
+msgstr "Unternehmen"
 
 msgid "User"
-msgstr ""
+msgstr "Benutzer"
 
 msgid "crown"
-msgstr ""
+msgstr "Krone"
 
 msgid "Go to Leads"
 msgstr "Zu Interessenten gehen"
@@ -404,7 +404,7 @@ msgid "Manage Custom Stages"
 msgstr "Benutzerdefinierte Phasen verwalten"
 
 msgid "Drag"
-msgstr ""
+msgstr "Ziehen"
 
 msgid "Add Stage"
 msgstr "Phase hinzufügen"
@@ -442,7 +442,7 @@ msgid "Points"
 msgstr "Punkte"
 
 msgid "Edit"
-msgstr ""
+msgstr "Bearbeiten"
 
 msgid "Delete"
 msgstr "Löschen"
@@ -529,7 +529,7 @@ msgid "Save"
 msgstr "Speichern"
 
 msgid "Loading..."
-msgstr ""
+msgstr "Wird geladen..."
 
 msgid "Page Not Found"
 msgstr "Seite nicht gefunden"
@@ -551,12 +551,3 @@ msgstr "Standort"
 
 msgid "Change Owner"
 msgstr "Besitzer ändern"
-
-#~ msgid "Export"
-#~ msgstr "Exportieren"
-
-#~ msgid "Move"
-#~ msgstr "Verschieben"
-
-#~ msgid "Favourite"
-#~ msgstr "Favorit"
