@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-13 10:49+0000\n"
+"POT-Creation-Date: 2026-02-21 05:52+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -124,6 +124,165 @@ msgstr "Est vide"
 
 msgid "Is Not Empty"
 msgstr "N’est pas vide"
+
+msgid ""
+"Module for automating mail and notifications based on model events and "
+"conditions."
+msgstr ""
+"Module d'automatisation des e-mails et des notifications basé sur les "
+"événements et les conditions du modèle."
+
+msgid "Automations"
+msgstr "Automatisations"
+
+msgid "Mail & Notifications"
+msgstr "Mail et notifications"
+
+msgid "Equal (==)"
+msgstr "Égal à (==)"
+
+msgid "Not Equal (!=)"
+msgstr "Différent de (!=)"
+
+msgid "Less Than (<)"
+msgstr "Inférieur à (<)"
+
+msgid "Greater Than (>)"
+msgstr "Supérieur à (>)"
+
+msgid "Less Than or Equal To (<=)"
+msgstr "Inférieur ou égal à (<=)"
+
+msgid "Greater Than or Equal To (>=)"
+msgstr "Supérieur ou égal à (>=)"
+
+msgid "Title"
+msgstr "Titre"
+
+msgid "Method Title"
+msgstr "Titre de la méthode"
+
+msgid "Module"
+msgstr "Module"
+
+msgid "Mail to/Notify to"
+msgstr "Envoyer à / Notifier à"
+
+msgid ""
+"Specify recipients for email/notifications. Supports:\n"
+"- Direct email: user@example.com\n"
+"- Self: 'self' (person who triggered)\n"
+"- Instance fields: 'instance.owner.email', 'instance.created_by', 'instance."
+"owner'\n"
+"- Multiple: comma-separated (e.g., 'self, instance.owner.email, "
+"admin@example.com')\n"
+"\n"
+"For notifications: Use user fields directly (e.g., 'instance.owner') or "
+"email addresses.\n"
+"The system will find users by email if an email address is provided."
+msgstr ""
+"Spécifiez les destinataires pour les e-mails/notifications. Prend en charge :\n"
+"- E-mail direct : user@example.com\n"
+"- Soi-même : 'self' (personne qui a déclenché)\n"
+"- Champs d'instance : 'instance.owner.email', 'instance.created_by', 'instance.owner'\n"
+"- Plusieurs : séparés par des virgules (ex. : 'self, instance.owner.email, admin@example.com')\n"
+"\n"
+"Pour les notifications : utilisez directement les champs utilisateur (ex. : 'instance.owner') ou des adresses e-mail.\n"
+"Le système trouvera les utilisateurs par e-mail si une adresse e-mail est fournie."
+
+msgid "Also Send to"
+msgstr "Envoyer également à"
+
+msgid "Mail Detail Choice"
+msgstr "Choix des détails du mail"
+
+msgid "Trigger"
+msgstr "Déclencheur"
+
+msgid "Mail Template"
+msgstr "Modèle de mail"
+
+msgid "Notification Template"
+msgstr "Modèle de notification"
+
+msgid "Outgoing Mail Server"
+msgstr "Serveur de messagerie sortant"
+
+msgid ""
+"Select the mail server to use for sending emails. If not selected, the "
+"primary mail server will be used."
+msgstr ""
+"Sélectionnez le serveur de messagerie à utiliser pour l'envoi des e-mails. "
+"Si aucun n'est sélectionné, le serveur de messagerie principal sera utilisé."
+
+msgid "Choose Delivery Channel"
+msgstr "Choisir le canal de livraison"
+
+msgid "Mail and Notification"
+msgstr "Mail et notification"
+
+msgid "Mail and Notifications"
+msgstr "Mail et notifications"
+
+msgid "Automation"
+msgstr "Automatisation"
+
+msgid "Field Name"
+msgstr "Nom du champ"
+
+msgid "Operator"
+msgstr "Opérateur"
+
+msgid "Value"
+msgstr "Valeur"
+
+msgid "AND"
+msgstr "ET"
+
+msgid "OR"
+msgstr "OU"
+
+msgid "Logical Operator"
+msgstr "Opérateur logique"
+
+msgid "Order"
+msgstr "Ordre"
+
+msgid "Automation Condition"
+msgstr "Condition d'automatisation"
+
+msgid "Automation Conditions"
+msgstr "Conditions d'automatisation"
+
+msgid "Load Automation"
+msgstr "Charger l'automatisation"
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Mail Server"
+msgstr "Serveur de messagerie"
+
+msgid "Select mail server"
+msgstr "Sélectionner un serveur de messagerie"
+
+msgid "Add an outgoing mail server in Mail to load automations."
+msgstr "Ajoutez un serveur de messagerie sortant dans Mail pour charger les automatisations."
+
+msgid "Select All"
+msgstr "Tout sélectionner"
+
+msgid "Create"
+msgstr "Créer"
+
+msgid "No default automations found."
+msgstr "Aucune automatisation par défaut trouvée."
+
+msgid "Add an outgoing mail server to load automations."
+msgstr "Ajoutez un serveur de messagerie sortant pour charger les automatisations."
+
+msgid "Condition"
+msgstr "Condition"
 
 msgid "Users"
 msgstr "Utilisateurs"
@@ -242,17 +401,18 @@ msgstr "Le mot de passe est requis pour les nouveaux utilisateurs."
 msgid "Password must be at least 8 characters long."
 msgstr "Le mot de passe doit contenir au moins 8 caractères."
 
-msgid "Role"
-msgstr "Rôle"
-
-msgid "Select the role to assign to users."
-msgstr "Sélectionnez le rôle à attribuer aux utilisateurs."
-
 msgid "Select one or more users to assign to the role."
 msgstr "Sélectionnez un ou plusieurs utilisateurs à attribuer au rôle."
 
 msgid "The following user(s) are already assigned to this role"
 msgstr "Les utilisateurs suivants sont déjà affectés à ce rôle"
+
+msgid "Select one or more users to grant superuser privileges."
+msgstr "Sélectionnez un ou plusieurs utilisateurs auxquels accorder les privilèges superutilisateur."
+
+#, python-brace-format
+msgid "The following user(s) are already superusers: {users}"
+msgstr "Les utilisateurs suivants sont déjà superutilisateurs : {users}"
 
 msgid "Enter current password"
 msgstr "Entrez le mot de passe actuel"
@@ -284,9 +444,6 @@ msgstr ""
 msgid "New password must be different from current password."
 msgstr "Le nouveau mot de passe doit être différent du mot de passe actuel."
 
-msgid "Create"
-msgstr "Créer"
-
 msgid "Change"
 msgstr "Modifier"
 
@@ -296,10 +453,8 @@ msgstr "Afficher"
 msgid "Delete"
 msgstr "Supprimer"
 
-#, fuzzy
-#| msgid "Create New"
 msgid "Create Own"
-msgstr "Créer nouveau"
+msgstr "Créer ses propres"
 
 msgid "Change Own"
 msgstr "Modifier ses propres"
@@ -307,10 +462,8 @@ msgstr "Modifier ses propres"
 msgid "View Own"
 msgstr "Afficher ses propres"
 
-#, fuzzy
-#| msgid "Delete"
 msgid "Delete Own"
-msgstr "Supprimer"
+msgstr "Supprimer ses propres"
 
 msgid "Role does not exist"
 msgstr "Le rôle n'existe pas"
@@ -389,11 +542,14 @@ msgstr "Erreur lors de l'attribution des autorisations : {error}"
 msgid "Role Does not Exist"
 msgstr "Le rôle n'existe pas"
 
+msgid "Add Super Users"
+msgstr "Ajouter des super utilisateurs"
+
 msgid "First Name"
 msgstr "Prénom"
 
-msgid "Super User Status"
-msgstr "Statut de super utilisateur"
+msgid "Successfully added {count} user(s) as superuser(s)."
+msgstr "{count} utilisateur(s) ajouté(s) avec succès en tant que super utilisateur(s)."
 
 msgid "Import Data"
 msgstr "Importer des données"
@@ -505,6 +661,18 @@ msgstr "Fichier importé"
 
 msgid "Error File"
 msgstr "Fichier d'erreur"
+
+msgid "Please select a module first"
+msgstr "Veuillez d'abord sélectionner un module."
+
+msgid "Invalid module selected"
+msgstr "Module sélectionné invalide."
+
+msgid "Selected module is not available for import"
+msgstr "Le module sélectionné n'est pas disponible pour l'importation."
+
+msgid "Error loading fields"
+msgstr "Erreur lors du chargement des champs."
 
 msgid "Unauthorized. Please authenticate first."
 msgstr "Non autorisé. Veuillez vous authentifier d'abord."
@@ -650,6 +818,12 @@ msgstr "Sélectionnez votre format de date préféré."
 msgid "Date Format"
 msgstr "Format des dates"
 
+msgid "Select your preferred date time format."
+msgstr "Sélectionnez votre format de date et heure préféré."
+
+msgid "Date Time Format"
+msgstr "Format de date et d'heure"
+
 msgid "Activate Multiple Currencies"
 msgstr "Activer plusieurs devises"
 
@@ -685,6 +859,9 @@ msgstr "Description"
 
 msgid "Departments"
 msgstr "Départements"
+
+msgid "Role"
+msgstr "Rôle"
 
 msgid "Roles"
 msgstr "Rôles"
@@ -722,12 +899,6 @@ msgstr "Devise préférée de l'utilisateur pour l'affichage"
 msgid "Preferred Currency"
 msgstr "Devise préférée"
 
-msgid "Select your preferred date time format."
-msgstr "Sélectionnez votre format de date et heure préféré."
-
-msgid "Date Time Format"
-msgstr "Format de date et d'heure"
-
 msgid "Select your preferred number grouping format."
 msgstr "Sélectionnez votre format de regroupement des nombres préféré."
 
@@ -736,6 +907,21 @@ msgstr "Agrupación numérica"
 
 msgid "User"
 msgstr "Utilisateur"
+
+msgid "Username"
+msgstr "Nom d'utilisateur"
+
+msgid "Last Name"
+msgstr "Nom de famille"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "Administrator"
+msgstr "Administrateur"
+
+msgid "Active"
+msgstr "Actif"
 
 msgid "Can View Global Import"
 msgstr "Peut afficher l’import global"
@@ -773,11 +959,20 @@ msgstr "Peut modifier le profil"
 msgid "User Profile"
 msgstr "Profil utilisateur"
 
+msgid "Kanban"
+msgstr "Kanban"
+
+msgid "Group By"
+msgstr "Grouper par"
+
 msgid "Column User"
 msgstr "Utilisateur de la colonne"
 
 msgid "Name of the model (e.g., 'User') to group by."
 msgstr "Nom du modèle (par exemple, 'User') pour regrouper."
+
+msgid "Whether this setting is for Kanban view or Group By view."
+msgstr "Indique si ce paramètre est destiné à la vue Kanban ou à la vue Grouper par."
 
 msgid ""
 "Name of the field that can be used for grouping (ChoiceField or ForeignKey)."
@@ -1300,9 +1495,6 @@ msgstr "Durée (secondes)"
 msgid "Import Histories"
 msgstr "Historiques d'importation"
 
-msgid "Title"
-msgstr "Titre"
-
 msgid "The title or name of the attachment."
 msgstr "Le titre ou le nom de la pièce jointe."
 
@@ -1396,6 +1588,9 @@ msgstr "Ajouter devise"
 msgid "Edit Currency Information"
 msgstr "Modifier les informations sur la devise"
 
+msgid "Fetching conversion rate..."
+msgstr "Récupération du taux de conversion..."
+
 msgid "partner role"
 msgstr "rôle de partenaire"
 
@@ -1430,8 +1625,17 @@ msgstr ""
 "{len(users)} utilisateur(s) ont été attribués avec succès au rôle « {form."
 "cleaned_data['role']} »."
 
+msgid "The requested role does not exist."
+msgstr "Le rôle demandé n'existe pas."
+
+msgid "Please select a role to continue."
+msgstr "Veuillez sélectionner un rôle pour continuer."
+
 msgid "The requested user does not exist."
 msgstr "L'utilisateur demandé n'existe pas."
+
+msgid "Add Role"
+msgstr "ajouter rôle"
 
 msgid "Scheduled Export - {}"
 msgstr "Export planifié - {}"
@@ -1459,9 +1663,6 @@ msgstr "Localisation"
 
 msgid "Drag"
 msgstr "Glisser"
-
-msgid "Close"
-msgstr "Fermer"
 
 msgid "Permission Denied"
 msgstr "Autorisation refusée"
@@ -1652,6 +1853,18 @@ msgstr "Tous droits réservés."
 msgid "Are you sure you want to delete this holiday?"
 msgstr "Êtes-vous sûr de vouloir supprimer ce jour férié ?"
 
+msgid "Select Fields for Template"
+msgstr "Sélectionner les champs pour le modèle"
+
+msgid "File Format"
+msgstr "Format de fichier"
+
+msgid "Download Template"
+msgstr "Télécharger le modèle"
+
+msgid "Unselect All"
+msgstr "Tout désélectionner"
+
 msgid "Download"
 msgstr "Télécharger"
 
@@ -1744,9 +1957,6 @@ msgstr "Créer de nouveaux éléments et mettre à jour les éléments existants
 
 msgid "Record match by"
 msgstr "Record de match par"
-
-msgid "Module"
-msgstr "Module"
 
 msgid "Import Action"
 msgstr "Action d'importation"
@@ -1931,9 +2141,6 @@ msgstr "Sélectionner des utilisateurs"
 msgid "Search models..."
 msgstr "Rechercher des modèles..."
 
-msgid "Select All"
-msgstr "Tout sélectionner"
-
 msgid "Field permissions not available for this model"
 msgstr "Permissions de champ non disponibles pour ce modèle"
 
@@ -1964,6 +2171,8 @@ msgid ""
 "Required fields are always visible when creating or duplicating. Permissions "
 "for these fields apply only during editing."
 msgstr ""
+"Les champs obligatoires sont toujours visibles lors de la création ou de la "
+"duplication. Les autorisations pour ces champs s'appliquent uniquement lors de la modification."
 
 msgid "Read Only"
 msgstr "Lecture seule"
@@ -1974,10 +2183,8 @@ msgstr "Lecture et écriture"
 msgid "Don't Show"
 msgstr "Ne pas afficher"
 
-#, fuzzy
-#| msgid "Enter %(field)s"
 msgid "Mandatory field"
-msgstr "Saisir %(field)s"
+msgstr "Champ obligatoire"
 
 msgid "No fields found for this model."
 msgstr "Aucun champ trouvé pour ce modèle."
@@ -2021,6 +2228,12 @@ msgstr "Aucun modèle trouvé correspondant à votre recherche."
 msgid "No models available."
 msgstr "Aucun modèle disponible."
 
+msgid "Are you sure you want to remove superuser status from this user?"
+msgstr "Êtes-vous sûr de vouloir retirer le statut de superutilisateur à cet utilisateur ?"
+
+msgid "Remove"
+msgstr "Supprimer"
+
 msgid "No users available."
 msgstr "Aucun utilisateur disponible."
 
@@ -2033,11 +2246,8 @@ msgstr "Langue et fuseau horaire"
 msgid "Number Format"
 msgstr "Format des nombres"
 
-msgid "Role Hierarchy"
-msgstr "Hiérarchie rôles"
-
-msgid "Add Role"
-msgstr "ajouter rôle"
+msgid "roles"
+msgstr "rôles"
 
 msgid "No roles found"
 msgstr "Aucun rôle trouvé"
@@ -2141,9 +2351,6 @@ msgstr "Icône"
 msgid "Personal Information"
 msgstr "Informations personnelles"
 
-msgid "Last Name"
-msgstr "Nom de famille"
-
 msgid "Work Info"
 msgstr "Informations sur le travail"
 
@@ -2195,6 +2402,9 @@ msgstr "Informations professionnelles"
 msgid "Localization Information"
 msgstr "Informations de localisation"
 
+msgid "Change Company"
+msgstr "Changer d'entreprise"
+
 msgid "Invalid credentials. Please check and try again."
 msgstr "Identifiants invalides. Veuillez vérifier et réessayer."
 
@@ -2241,11 +2451,13 @@ msgid "Select %(field)s"
 msgstr "Sélectionner %(field)s"
 
 msgid "This field is read-only and cannot be modified."
-msgstr ""
+msgstr "Ce champ est en lecture seule et ne peut pas être modifié."
 
-#, python-format
-msgid "Enter %(field)s here..."
-msgstr "Entrez %(field)s ici..."
+msgid "Group By Settings"
+msgstr "Paramètres de regroupement"
+
+msgid "Kanban Settings"
+msgstr "Paramètres Kanban"
 
 msgid "Select Fields to Display"
 msgstr "Sélectionner les Champs à Afficher"
@@ -2253,8 +2465,29 @@ msgstr "Sélectionner les Champs à Afficher"
 msgid "Available Fields"
 msgstr "Champs Disponibles"
 
+msgid "Search fields..."
+msgstr "Rechercher des champs..."
+
 msgid "Visible Fields"
-msgstr "Champs Visibles"
+msgstr "Champs visibles"
+
+msgid "Reset to Default"
+msgstr "Réinitialiser par défaut"
+
+msgid "Change Detail View Fields"
+msgstr "Modifier les champs de la vue détaillée"
+
+msgid "Header Portion Fields"
+msgstr "Champs de la section en-tête"
+
+msgid "All fields added"
+msgstr "Tous les champs ajoutés"
+
+msgid "No fields"
+msgstr "Aucun champ"
+
+msgid "Details Tab Fields"
+msgstr "Champs de l'onglet Détails"
 
 msgid "Menu"
 msgstr "Menu"
@@ -2289,10 +2522,8 @@ msgstr "Aucun fichier choisi"
 msgid "Clear"
 msgstr "Effacer"
 
-#, fuzzy
-#| msgid "Create New"
 msgid "Save & New"
-msgstr "Créer nouveau"
+msgstr "Enregistrer & Nouveau"
 
 msgid "Add Notes and Attachment"
 msgstr "Ajouter des notes et une pièce jointe"
@@ -2315,11 +2546,23 @@ msgstr "Nous avons recherché"
 msgid "No search results found"
 msgstr "Aucun résultat de recherche trouvé"
 
+msgid "Select Visible Items"
+msgstr "Sélectionner les éléments visibles"
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "No items in this group."
+msgstr "Aucun élément dans ce groupe."
+
+msgid "Nothing to show yet. Please add your"
+msgstr "Rien à afficher pour le moment. Veuillez ajouter votre"
+
+msgid "Add New"
+msgstr "Ajouter nouveau"
+
 msgid "Clear Filters"
 msgstr "Effacer les Filtres"
-
-msgid "Email"
-msgstr "E-mail"
 
 msgid "Call"
 msgstr "Appel"
@@ -2354,15 +2597,6 @@ msgstr "Action effectuée par"
 msgid "No history available for this object."
 msgstr "Aucun historique disponible pour cet objet."
 
-msgid "Kanban Settings"
-msgstr "Paramètres Kanban"
-
-msgid "Nothing to show yet. Please add your"
-msgstr "Rien à afficher pour le moment. Veuillez ajouter votre"
-
-msgid "Add New"
-msgstr "Ajouter nouveau"
-
 msgid "Select Columns to Export (Optional)"
 msgstr "Sélectionner les Colonnes à Exporter (Optionnel)"
 
@@ -2390,8 +2624,8 @@ msgstr "Mise à Jour en Masse"
 msgid "Bulk Delete"
 msgstr "Suppression en Masse"
 
-msgid "Selected"
-msgstr "Sélectionné"
+msgid "Edit List"
+msgstr "Modifier la liste"
 
 msgid "Delete List"
 msgstr "Supprimer la Liste"
@@ -2399,16 +2633,17 @@ msgstr "Supprimer la Liste"
 msgid "Clear Session"
 msgstr "Effacer la Session"
 
-msgid "Actions"
-msgstr "Actions"
-
 #, python-format
 msgid ""
 "\n"
-"                    Nothing to show yet. The %(view)s list doesn’t have any "
+"                    Nothing to show yet. The %(view)s list doesn't have any "
 "data.\n"
 "                    "
 msgstr ""
+"\n"
+"                    Rien à afficher pour le moment. La liste %(view)s ne "
+"contient aucune donnée.\n"
+"                    "
 
 msgid " Nothing to show yet. Please add your"
 msgstr " Rien à afficher pour le moment. Veuillez ajouter votre"
@@ -2434,11 +2669,11 @@ msgstr "Rechercher"
 msgid "Reload"
 msgstr "Recharger"
 
+msgid "Layout"
+msgstr "Mise en page"
+
 msgid "List"
 msgstr "Liste"
-
-msgid "Kanban"
-msgstr "Kanban"
 
 msgid "Notes and Attachments"
 msgstr "Notes et pièces jointes"
@@ -2451,6 +2686,9 @@ msgstr "Taille du fichier"
 
 msgid "Related To"
 msgstr "Lié à"
+
+msgid "Delete Attachment"
+msgstr "Supprimer la pièce jointe"
 
 msgid "Bulk Reassign Dependencies"
 msgstr "Réassignation en Masse des Dépendances"
@@ -2547,6 +2785,15 @@ msgstr "Définir Nul"
 msgid "No dependent records found."
 msgstr "Aucun enregistrement dépendant trouvé."
 
+msgid "Add Quick Filter"
+msgstr "Ajouter un filtre rapide"
+
+msgid "Select Fields"
+msgstr "Sélectionner les champs"
+
+msgid "No available fields to add as quick filter."
+msgstr "Aucun champ disponible à ajouter comme filtre rapide."
+
 msgid "Hard Delete Confirmation"
 msgstr "Confirmation de suppression définitive"
 
@@ -2570,9 +2817,6 @@ msgstr "Non"
 
 msgid "No fields available for bulk update."
 msgstr "Aucun champ disponible pour la mise à jour en masse."
-
-msgid "Remove"
-msgstr "Supprimer"
 
 msgid "Choose the deletion mode for the selected records"
 msgstr "Choisir le mode de suppression pour les enregistrements sélectionnés"
@@ -2598,6 +2842,12 @@ msgstr "Appliquer"
 msgid "More Action"
 msgstr "Plus d'actions"
 
+msgid "All"
+msgstr "Tout"
+
+msgid "Are you sure you want to delete this quick filter"
+msgstr "Êtes-vous sûr de vouloir supprimer ce filtre rapide ?"
+
 msgid "Soft Delete Confirmation"
 msgstr "Confirmation de suppression douce"
 
@@ -2607,6 +2857,9 @@ msgstr "Aucun enregistrement à supprimer"
 msgid "No related lists found for this"
 msgstr "Aucune liste associée trouvée pour ceci"
 
+msgid "Edit List View"
+msgstr "Modifier la vue de liste"
+
 msgid "New List View"
 msgstr "Nouvelle Vue de Liste"
 
@@ -2615,12 +2868,33 @@ msgstr "Aucun paramètre de filtre disponible."
 
 msgid "List View Name"
 msgstr "Nom de la Vue de Liste"
+msgid "Make as public"
+msgstr "Rendre public"
 
 msgid "Conditions"
 msgstr "Conditions"
 
 msgid "Add More"
 msgstr "Ajouter plus"
+
+msgid ""
+"No grouping field specified or you don't have permission to view any "
+"grouping fields."
+msgstr ""
+"Aucun champ de regroupement spécifié ou vous n'avez pas la permission "
+"d'afficher les champs de regroupement."
+
+msgid "Field '%(field)s' is not a Choice field or ForeignKey field."
+msgstr "Le champ '%(field)s' n'est pas un champ de choix ou une clé étrangère."
+
+msgid "None"
+msgstr "Aucun"
+
+msgid "Invalid grouping field '%(field)s': %(err)s"
+msgstr "Champ de regroupement invalide '%(field)s' : %(err)s"
+
+msgid "Error grouping by field '%(field)s': %(err)s"
+msgstr "Erreur lors du regroupement par champ '%(field)s' : %(err)s"
 
 msgid "You don't have permission to update this record."
 msgstr "Vous n'avez pas la permission de mettre à jour cet enregistrement."
@@ -2657,35 +2931,31 @@ msgid "Invalid related object."
 msgstr "Objet associé invalide."
 
 msgid "duplicated"
-msgstr ""
+msgstr "dupliqué"
 
-#, fuzzy
-#| msgid "Update"
 msgid "updated"
-msgstr "mise à jour"
+msgstr "mis à jour"
 
-#, python-format
 msgid "%(model)s %(action)s successfully!"
-msgstr ""
+msgstr "%(model)s %(action)s avec succès !"
 
-#, fuzzy, python-format
-#| msgid "A user with this username already exists."
 msgid "A %(model)s with this %(field)s already exists."
-msgstr "Un utilisateur avec ce nom d'utilisateur existe déjà."
+msgstr "Un %(model)s avec ce %(field)s existe déjà."
 
-#, fuzzy, python-format
-#| msgid "A user with this username already exists."
 msgid "A %(model)s with this combination of %(fields)s already exists."
-msgstr "Un utilisateur avec ce nom d'utilisateur existe déjà."
+msgstr "Un %(model)s avec cette combinaison de %(fields)s existe déjà."
 
-#, python-format
 msgid ""
 "This %(model)s could not be saved due to a duplicate entry. Please check "
 "your input and try again."
 msgstr ""
+"Ce %(model)s n'a pas pu être enregistré en raison d'une entrée en double. "
+"Veuillez vérifier votre saisie et réessayer."
 
 msgid "An error occurred while saving. Please try again or contact support."
 msgstr ""
+"Une erreur s'est produite lors de l'enregistrement. Veuillez réessayer "
+"ou contacter le support."
 
 msgid ""
 "Selected record is not associated with any company. Activate a company to "
@@ -2697,11 +2967,52 @@ msgstr ""
 msgid "Notifications"
 msgstr "Notifications"
 
+msgid ""
+"Message contains potentially dangerous content (XSS detected). Please remove "
+"any scripts or malicious code."
+msgstr ""
+"Le message contient du contenu potentiellement dangereux (XSS détecté). Veuillez supprimer "
+"tout script ou code malveillant."
+
+msgid ""
+"URL contains potentially dangerous content (XSS detected). Please remove any "
+"scripts or malicious code."
+msgstr ""
+"L'URL contient du contenu potentiellement dangereux (XSS détecté). Veuillez supprimer "
+"tout script ou code malveillant."
+
 msgid "Notification"
 msgstr "Notification"
 
-msgid "No notifications"
-msgstr "Aucune notification"
+msgid "Template Title"
+msgstr "Titre du modèle"
+
+msgid "Message"
+msgstr "Message"
+
+msgid "Related Model"
+msgstr "Modèle associé"
+
+msgid "Notification Templates"
+msgstr "Modèles de notification"
+
+msgid "Update Notification Template"
+msgstr "Modifier le modèle de notification"
+
+msgid "Update Template"
+msgstr "Modifier le modèle"
+
+msgid "Create Notification Template"
+msgstr "Créer un modèle de notification"
+
+msgid "Save Template"
+msgstr "Enregistrer le modèle"
+
+msgid "Notification template \"{}\" updated successfully."
+msgstr "Le modèle de notification \"{}\" a été mis à jour avec succès."
+
+msgid "Notification template \"{}\" created successfully."
+msgstr "Le modèle de notification \"{}\" a été créé avec succès."
 
 msgid "No unread notifications"
 msgstr "Aucune notification non lue"
@@ -2712,11 +3023,56 @@ msgstr "Afficher toutes les notifications"
 msgid "All Notifications"
 msgstr "Toutes les notifications"
 
+msgid "No notifications"
+msgstr "Aucune notification"
+
+msgid "Insert Fields"
+msgstr "Insérer des champs"
+
+msgid "Select fields to insert into your email template."
+msgstr "Sélectionnez les champs à insérer dans votre modèle d'e-mail."
+
+msgid "Instance"
+msgstr "Instance"
+
+msgid "Request"
+msgstr "Requête"
+
+msgid "Direct Fields"
+msgstr "Champs directs"
+
+msgid "User Fields"
+msgstr "Champs utilisateur"
+
+msgid "Company Fields"
+msgstr "Champs de l'entreprise"
+
+msgid "Request Fields"
+msgstr "Champs de requête"
+
+msgid "Related Fields"
+msgstr "Champs associés"
+
+msgid "Reverse Related Fields"
+msgstr "Champs associés inverses"
+
+msgid "No fields available for this model"
+msgstr "Aucun champ disponible pour ce modèle."
+
+msgid "Insert Selected Fields"
+msgstr "Insérer les champs sélectionnés"
+
+msgid "Select content type (optional)"
+msgstr "Sélectionner le type de contenu (optionnel)"
+
 msgid "No recent items"
 msgstr "Aucun élément récent"
 
 msgid "icon"
 msgstr "icône"
+
+msgid "All Company"
+msgstr "Toutes les entreprises"
 
 msgid "No companies available"
 msgstr "Aucune entreprise disponible"
@@ -2726,9 +3082,6 @@ msgstr "Déconnexion"
 
 msgid "Menu arrow"
 msgstr "Flèche du menu"
-
-msgid "Username"
-msgstr "Nom d'utilisateur"
 
 msgid "Load Demo Data"
 msgstr "Charger les données de démonstration"
