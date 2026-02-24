@@ -911,9 +911,11 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
 
                 model_fields = []
 
-                # Get regular fields
+                # Get regular fields (skip editable=False)
                 for field in model_class._meta.get_fields():
                     if field.name in excluded_fields:
+                        continue
+                    if not getattr(field, "editable", True):
                         continue
 
                     if not field.many_to_many and not field.one_to_many:
@@ -937,12 +939,16 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                     # Skip excluded fields
                     if field.name in excluded_fields:
                         continue
+                    if not getattr(field, "editable", True):
+                        continue
 
                     if field.many_to_one and hasattr(field, "related_model"):
                         # Get fields from the related model without needing object instance
                         for related_field in field.related_model._meta.get_fields():
                             # Skip excluded fields in related model too
                             if related_field.name in excluded_fields:
+                                continue
+                            if not getattr(related_field, "editable", True):
                                 continue
 
                             if (
@@ -1023,6 +1029,8 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                                         or reverse_field.one_to_many
                                     ):
                                         continue
+                                    if not getattr(reverse_field, "editable", True):
+                                        continue
 
                                     if (
                                         hasattr(reverse_field, "related_model")
@@ -1075,6 +1083,8 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
                 for field in user._meta.get_fields():
                     if field.name in excluded_fields:
                         continue
+                    if not getattr(field, "editable", True):
+                        continue
 
                     if not field.many_to_many and not field.one_to_many:
                         field_info = {
@@ -1106,6 +1116,8 @@ class HorillaMailFieldSelectionView(LoginRequiredMixin, TemplateView):
 
                     for field in company._meta.get_fields():
                         if field.name in excluded_fields:
+                            continue
+                        if not getattr(field, "editable", True):
                             continue
 
                         if not field.many_to_many and not field.one_to_many:
