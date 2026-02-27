@@ -1100,7 +1100,7 @@ function initializeSelect2Pagination() {
                 loadInitialData($this, url, initialData, fieldName, isMultiple);
             }
         } catch (error) {
-            console.error(`Error initializing Select2 for ${fieldName}:`, error);
+            console.error(`Error initializing Select2`, { fieldName }, error);
         }
     });
 }
