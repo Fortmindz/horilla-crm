@@ -15,14 +15,15 @@ from django.utils.functional import cached_property  # type: ignore
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 
-# First-party / Horilla imports
-from horilla.utils.shortcuts import get_object_or_404
-from horilla_activity.views import HorillaActivitySectionView
-from horilla_core.decorators import (
+from horilla.decorator import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
+from horilla_activity.views import HorillaActivitySectionView
 from horilla_core.utils import is_owner
 from horilla_crm.contacts.models import ContactAccountRelationship
 from horilla_crm.opportunities.filters import OpportunityFilter
@@ -777,7 +778,7 @@ class OpportunityDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDeta
                     "text_color": "text-white",
                     "hover_color": None,  # No hover for closed won
                 }
-            elif stage_type == "lost":
+            if stage_type == "lost":
                 return {
                     "bg_color": "bg-red-600",
                     "text_color": "text-white",

@@ -14,14 +14,14 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView, View
 
 from horilla.auth.models import User
-
-# First-party / Horilla imports
-from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import (
+from horilla.decorator import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunitySettings,
@@ -83,7 +83,6 @@ class OpportunitySplitListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("opportunities:opportunity_split_view")
     save_to_list_option = False
     bulk_select_option = False
-    clear_session_button_enabled = False
     table_width = False
     enable_sorting = False
     table_height = False

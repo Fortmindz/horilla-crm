@@ -18,21 +18,21 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
-
-# First-party / Horilla imports
-from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import (
+from horilla.decorator import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
+from horilla.exceptions import HorillaHttp404
+
+# First-party / Horilla imports
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_core.models import Company
 from horilla_core.progress import ProgressStepsMixin
 from horilla_crm.opportunities.filters import OpportunityStageFilter
@@ -111,7 +111,6 @@ class OpportunityStageListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("opportunities:opportunity_stage_view")
     save_to_list_option = False
     bulk_select_option = False
-    clear_session_button_enabled = False
     table_width = False
     enable_sorting = False
     table_height = False
@@ -829,21 +828,20 @@ class SaveCustomOppStagesView(LoginRequiredMixin, View):
                 return response
 
             branches_view_url = reverse_lazy("horilla_core:branches_view")
-            oob_clear_error = (
-                '<div id="custom-stages-error" class="mb-4" hx-swap-oob="true"></div>'
+            response_html = format_html(
+                "<span "
+                'hx-trigger="load" '
+                'hx-get="{}" '
+                'hx-select="#branches-view" '
+                'hx-target="#branches-view" '
+                'hx-swap="outerHTML" '
+                'hx-on::after-request="closeContentModal()"'
+                'hx-select-oob="#dropdown-companies">'
+                "</span>"
+                '<div id="custom-stages-error" class="mb-4" hx-swap-oob="true"></div>',
+                branches_view_url,
             )
-            response_html = (
-                f"<span "
-                f'hx-trigger="load" '
-                f'hx-get="{branches_view_url}" '
-                f'hx-select="#branches-view" '
-                f'hx-target="#branches-view" '
-                f'hx-swap="outerHTML" '
-                f'hx-on::after-request="closeContentModal()"'
-                f'hx-select-oob="#dropdown-companies">'
-                f"</span>{oob_clear_error}"
-            )
-            return HttpResponse(mark_safe(response_html))
+            return HttpResponse(response_html)
 
         except Exception:
             return self._error_response(
@@ -893,24 +891,37 @@ class CreateOppStageGroupView(LoginRequiredMixin, View):
                     order = int(stage_orders[i])
                     probability = float(stage_probabilities[i])
                 except (ValueError, IndexError) as e:
-                    return HttpResponse(
-                        f'<div class="alert alert-danger">Invalid numeric value for stage {i+1}: {str(e)}</div>',
-                        status=400,
+                    response = render(
+                        request,
+                        "common/message_fragment.html",
+                        {"message": f"Invalid numeric value for stage {i+1}: {str(e)}"},
                     )
+                    response.status_code = 400
+                    return response
 
                 if probability < 0 or probability > 100:
-                    return HttpResponse(
-                        f'<div class="alert alert-danger">Probability must be between 0 and 100 for stage: {stage_names[i]}</div>',
-                        status=400,
+                    response = render(
+                        request,
+                        "common/message_fragment.html",
+                        {
+                            "message": f"Probability must be between 0 and 100 for stage: {stage_names[i]}"
+                        },
                     )
+                    response.status_code = 400
+                    return response
 
                 if OpportunityStage.objects.filter(
                     name=stage_names[i], company=company
                 ).exists():
-                    return HttpResponse(
-                        f'<div class="alert alert-danger">Stage "{stage_names[i]}" already exists for this company.</div>',
-                        status=400,
+                    response = render(
+                        request,
+                        "common/message_fragment.html",
+                        {
+                            "message": f'Stage "{stage_names[i]}" already exists for this company.',
+                        },
                     )
+                    response.status_code = 400
+                    return response
 
                 if probability == 100.0:
                     stage_type = "won"
@@ -955,25 +966,29 @@ class CreateOppStageGroupView(LoginRequiredMixin, View):
                 return response
 
             branches_view_url = reverse_lazy("horilla_core:branches_view")
-            response_html = (
-                f"<span "
-                f'hx-trigger="load" '
-                f'hx-get="{branches_view_url}" '
-                f'hx-select="#branches-view" '
-                f'hx-target="#branches-view" '
-                f'hx-swap="outerHTML" '
-                f'hx-on::after-request="closeContentModal()"'
-                f'hx-select-oob="#dropdown-companies">'
-                f"</span>"
+            response_html = format_html(
+                "<span "
+                'hx-trigger="load" '
+                'hx-get="{}" '
+                'hx-select="#branches-view" '
+                'hx-target="#branches-view" '
+                'hx-swap="outerHTML" '
+                'hx-on::after-request="closeContentModal()"'
+                'hx-select-oob="#dropdown-companies">'
+                "</span>",
+                branches_view_url,
             )
-            return HttpResponse(mark_safe(response_html))
+            return HttpResponse(response_html)
 
         except Exception as e:
             print(f"Error:{e}")
-            return HttpResponse(
-                f'<div class="alert alert-danger">Error creating stages: {str(e)}</div>',
-                status=500,
+            response = render(
+                request,
+                "common/message_fragment.html",
+                {"message": f"Error creating stages: {str(e)}"},
             )
+            response.status_code = 500
+            return response
 
 
 class InitializeDatabaseOpportunityStages(View, ProgressStepsMixin):

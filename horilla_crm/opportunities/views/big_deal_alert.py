@@ -15,11 +15,12 @@ from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import View
 
+from horilla.decorator import htmx_required, permission_required_or_denied
+
 # First-party / Horilla imports
 from horilla_automations.filters import HorillaAutomationFilter
 from horilla_automations.models import HorillaAutomation
 from horilla_automations.views import HorillaAutomationFormView
-from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_core.models import HorillaContentType
 from horilla_generics.views import HorillaNavView, HorillaView
 from horilla_utils.middlewares import _thread_local
@@ -254,13 +255,10 @@ class BigDealAutomationFormView(HorillaAutomationFormView):
                 and not self.duplicate_mode
             ):
                 create_url = self.get_create_url()
-                return HttpResponse(
-                    f"<div hx-get='{create_url}' "
-                    f"hx-target='#modalBox' "
-                    f"hx-swap='innerHTML' "
-                    f"hx-trigger='load'>"
-                    f"</div>"
-                    f"<script>$('#reloadButton').click();</script>"
+                return render(
+                    self.request,
+                    "big_deal_alert_reload_fragment.html",
+                    {"load_url": create_url, "close_modal": False},
                 )
 
             if (
@@ -271,17 +269,16 @@ class BigDealAutomationFormView(HorillaAutomationFormView):
                 detail_url = reverse_lazy(
                     self.detail_url_name, kwargs={"pk": self.object.pk}
                 )
-                return HttpResponse(
-                    f"<div hx-get='{detail_url}' "
-                    f"hx-target='#modalBox' "
-                    f"hx-swap='innerHTML' "
-                    f"hx-trigger='load'>"
-                    f"</div>"
-                    f"<script>$('#reloadButton').click();closeModal();</script>"
+                return render(
+                    self.request,
+                    "big_deal_alert_reload_fragment.html",
+                    {"load_url": detail_url, "close_modal": True},
                 )
 
-            return HttpResponse(
-                "<script>$('#reloadButton').click();closeModal();</script>"
+            return render(
+                self.request,
+                "big_deal_alert_reload_fragment.html",
+                {"load_url": None, "close_modal": True},
             )
         except Exception as e:
             messages.error(self.request, f"Error saving: {str(e)}")

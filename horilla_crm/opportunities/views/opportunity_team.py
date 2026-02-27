@@ -18,16 +18,17 @@ from django.http import HttpResponse
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, TemplateView, View
 
 from horilla.auth.models import User
+from horilla.decorator import htmx_required
 from horilla.exceptions import HorillaHttp404
 
 # First-party / Horilla imports
+from horilla.http import HorillaRefreshResponse
 from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import htmx_required
 from horilla_crm.opportunities.filters import (
     OpportunityTeamFilter,
     OpportunityTeamMembersFilter,
@@ -104,7 +105,6 @@ class OpportunityTeamListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("opportunities:opportunity_team_view")
     save_to_list_option = False
     bulk_select_option = False
-    clear_session_button_enabled = False
     table_width = False
     enable_sorting = False
 
@@ -297,7 +297,7 @@ class OpportunityTeamDetailView(LoginRequiredMixin, DetailView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e) from e
         return super().dispatch(request, *args, **kwargs)
 
@@ -367,7 +367,6 @@ class OpportunityTeamDetailListView(LoginRequiredMixin, HorillaListView):
     main_url = reverse_lazy("opportunities:opportunity_team_view")
     save_to_list_option = False
     bulk_select_option = False
-    clear_session_button_enabled = False
     table_width = False
     enable_sorting = False
 
@@ -852,15 +851,12 @@ class ToggleTeamSellingView(LoginRequiredMixin, View):
             )
         view_url = reverse_lazy("opportunities:team_selling_setup")
 
-        response_html = (
-            f"<span "
-            f'hx-trigger="load" '
-            f'hx-get="{view_url}" '
-            f'hx-select="#opportunity-team-settings" '
-            f'hx-target="#opportunity-team-settings" '
-            f'hx-swap="outerHTML" '
-            f'hx-push-url="false" '
-            f'hx-select-oob="#settings-sidebar">'
-            f"</span>"
+        response_html = format_html(
+            '<span hx-trigger="load" hx-get="{}" '
+            'hx-select="#opportunity-team-settings" '
+            'hx-target="#opportunity-team-settings" '
+            'hx-swap="outerHTML" hx-push-url="false" '
+            'hx-select-oob="#settings-sidebar"></span>',
+            view_url,
         )
-        return HttpResponse(mark_safe(response_html))
+        return HttpResponse(response_html)
