@@ -2,12 +2,7 @@
 
 from django.urls import path
 
-from horilla_reports.default_reports import (
-    CreateSelectedDefaultReportsView,
-    LoadDefaultReportsModalView,
-)
-
-from . import views
+from horilla_reports import views
 
 app_name = "horilla_reports"
 
@@ -203,12 +198,12 @@ urlpatterns = [
     path("export/<int:pk>/", views.ReportExportView.as_view(), name="report_export"),
     path(
         "load-default-reports/",
-        LoadDefaultReportsModalView.as_view(),
+        views.LoadDefaultReportsModalView.as_view(),
         name="load_default_reports",
     ),
     path(
         "create-selected-default-reports/",
-        CreateSelectedDefaultReportsView.as_view(),
+        views.CreateSelectedDefaultReportsView.as_view(),
         name="create_selected_default_reports",
     ),
 ]

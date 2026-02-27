@@ -4,6 +4,7 @@ Views for the `horilla_reports` app.
 Contains list, detail, and utility views used by the reports UI.
 """
 
+# Standard library imports
 import copy
 import csv
 import json
@@ -27,7 +28,6 @@ from django.core.exceptions import FieldDoesNotExist
 from django.db.models import ForeignKey, Q
 from django.http import Http404, HttpResponse, QueryDict
 from django.shortcuts import redirect, render
-from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
 from django.utils.translation import gettext_lazy as _
@@ -36,15 +36,17 @@ from django.views.decorators.http import require_POST
 from django.views.generic import DetailView
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-# First-party / Horilla imports
-from horilla.exceptions import HorillaHttp404
-from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
-from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import (
+from horilla.decorator import (
     htmx_required,
     permission_required,
     permission_required_or_denied,
 )
+
+# First-party / Horilla imports
+from horilla.exceptions import HorillaHttp404
+from horilla.http import HorillaRefreshResponse
+from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
+from horilla.utils.shortcuts import get_object_or_404
 from horilla_generics.forms import HorillaModelForm
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
@@ -328,7 +330,7 @@ class ReportDetailView(RecentlyViewedMixin, LoginRequiredMixin, DetailView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
         return super().dispatch(request, *args, **kwargs)
 
@@ -576,7 +578,6 @@ class ReportDetailView(RecentlyViewedMixin, LoginRequiredMixin, DetailView):
         list_view.request = self.request
         list_view.table_width = False
         list_view.bulk_select_option = False
-        list_view.clear_session_button_enabled = False
         list_view.list_column_visibility = False
         list_view.paginate_by = 10
         list_view.table_height = False
@@ -2264,7 +2265,6 @@ class ReportDetailFilteredView(LoginRequiredMixin, View):
         list_view.request = request
         list_view.table_width = False
         list_view.bulk_select_option = False
-        list_view.clear_session_button_enabled = False
         list_view.paginate_by = 10
         list_view.list_column_visibility = False
         list_view.table_height = False
@@ -2305,6 +2305,7 @@ class ToggleAggregateView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2313,7 +2314,7 @@ class ToggleAggregateView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -2330,7 +2331,7 @@ class ToggleAggregateView(LoginRequiredMixin, View):
                         "Invalid field '{}'. This field does not exist on the model."
                     ).format(field_name),
                 )
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
 
         preview_data = request.session.get(session_key, {})
         current_aggregate = preview_data.get(
@@ -2383,6 +2384,7 @@ class UpdateAggregateFunctionView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2391,7 +2393,7 @@ class UpdateAggregateFunctionView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         aggfunc = request.POST.get("aggfunc")
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -2441,6 +2443,7 @@ class SaveReportChangesView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2449,7 +2452,7 @@ class SaveReportChangesView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         session_key = f"report_preview_{report.pk}"
         preview_data = request.session.get(session_key, {})
@@ -2488,6 +2491,7 @@ class DiscardReportChangesView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2496,7 +2500,7 @@ class DiscardReportChangesView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         session_key = f"report_preview_{pk}"
 
@@ -2530,6 +2534,7 @@ class ReportUpdateView(LoginRequiredMixin, DetailView):
     context_object_name = "report"
 
     def dispatch(self, request, *args, **kwargs):
+        """Ensure user is authenticated and report exists before dispatching."""
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         try:
@@ -2537,11 +2542,12 @@ class ReportUpdateView(LoginRequiredMixin, DetailView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
+        """Build context with report, preview data, active tab, and available fields for the panel."""
         context = super().get_context_data(**kwargs)
         report = self.object
         model_class = report.model_class
@@ -2595,6 +2601,7 @@ class AddColumnView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2603,7 +2610,7 @@ class AddColumnView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -2620,7 +2627,7 @@ class AddColumnView(LoginRequiredMixin, View):
                         "Invalid field '{}'. This field does not exist on the model."
                     ).format(field_name),
                 )
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
 
         # Get current preview data or start from original
         preview_data = request.session.get(session_key, {})
@@ -2671,6 +2678,7 @@ class RemoveColumnView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2679,7 +2687,7 @@ class RemoveColumnView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -2759,6 +2767,7 @@ class AddFilterFieldView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2767,7 +2776,7 @@ class AddFilterFieldView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -2784,7 +2793,7 @@ class AddFilterFieldView(LoginRequiredMixin, View):
                         "Invalid field '{}'. This field does not exist on the model."
                     ).format(field_name),
                 )
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
 
         # Get current preview data or start from original
         preview_data = request.session.get(session_key, {})
@@ -2870,6 +2879,7 @@ class UpdateFilterOperatorView(View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2878,7 +2888,7 @@ class UpdateFilterOperatorView(View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get("field_name")
         operator = request.POST.get("operator")
         session_key = f"report_preview_{report.pk}"
@@ -2932,7 +2942,7 @@ class UpdateFilterOperatorView(View):
             else:
                 request.session.pop(session_key, None)
             messages.error(request, _("Invalid filter value: {}").format(str(e)))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         return render(request, "report_detail.html", context)
 
@@ -2980,6 +2990,7 @@ class UpdateFilterValueView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -2988,7 +2999,7 @@ class UpdateFilterValueView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         value = request.POST.get("value")
@@ -3044,7 +3055,7 @@ class UpdateFilterValueView(LoginRequiredMixin, View):
             else:
                 request.session.pop(session_key, None)
             messages.error(request, _("Invalid filter value: {}").format(str(e)))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         return render(request, "report_detail.html", context)
 
@@ -3092,6 +3103,7 @@ class UpdateFilterLogicView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3100,7 +3112,7 @@ class UpdateFilterLogicView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get(
             "field_name"
         )  # This is the unique field name (e.g., field_name_1)
@@ -3140,7 +3152,7 @@ class UpdateFilterLogicView(LoginRequiredMixin, View):
             else:
                 request.session.pop(session_key, None)
             messages.error(request, _("Invalid filter value: {}").format(str(e)))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         return render(request, "report_detail.html", context)
 
@@ -3162,6 +3174,7 @@ class RemoveFilterView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3170,7 +3183,7 @@ class RemoveFilterView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
 
@@ -3239,6 +3252,7 @@ class ToggleRowGroupView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3247,7 +3261,7 @@ class ToggleRowGroupView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
 
@@ -3263,7 +3277,7 @@ class ToggleRowGroupView(LoginRequiredMixin, View):
                         "Invalid field '{}'. This field does not exist on the model."
                     ).format(field_name),
                 )
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
 
         # Get current preview data or start from original
         preview_data = request.session.get(session_key, {})
@@ -3315,6 +3329,7 @@ class RemoveRowGroupView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3323,7 +3338,7 @@ class RemoveRowGroupView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
         preview_data = request.session.get(session_key, {})
@@ -3373,6 +3388,7 @@ class ToggleColumnGroupView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3389,7 +3405,7 @@ class ToggleColumnGroupView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
 
@@ -3405,7 +3421,7 @@ class ToggleColumnGroupView(LoginRequiredMixin, View):
                         "Invalid field '{}'. This field does not exist on the model."
                     ).format(field_name),
                 )
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
 
         preview_data = request.session.get(session_key, {})
 
@@ -3455,6 +3471,7 @@ class RemoveColumnGroupView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3463,7 +3480,7 @@ class RemoveColumnGroupView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -3526,6 +3543,7 @@ class RemoveAggregateColumnView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -3534,7 +3552,7 @@ class RemoveAggregateColumnView(LoginRequiredMixin, View):
             report = get_object_or_404(Report, pk=pk)
         except Exception as e:
             messages.error(request, str(e))
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
 
         field_name = request.POST.get("field_name")
         session_key = f"report_preview_{report.pk}"
@@ -3589,6 +3607,7 @@ class SearchAvailableFieldsView(LoginRequiredMixin, DetailView):
     model = Report
 
     def dispatch(self, request, *args, **kwargs):
+        """Ensure user is authenticated and report exists before dispatching."""
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         try:
@@ -3596,11 +3615,12 @@ class SearchAvailableFieldsView(LoginRequiredMixin, DetailView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
+        """Return filtered available fields HTML for columns, grouping, or filter based on search."""
         report = self.get_object()
         search_query = request.GET.get("search_columns", "").strip().lower()
         search_grouping = request.GET.get("search_grouping", "").strip().lower()
@@ -3650,25 +3670,26 @@ class SearchAvailableFieldsView(LoginRequiredMixin, DetailView):
         temp_report = self.create_temp_report(report, preview_data)
 
         # Render the appropriate template based on field type
+        context = {"available_fields": filtered_fields, "report": temp_report}
         if field_type == "columns":
-            html = render_to_string(
+            return render(
+                self.request,
                 "partials/available_columns_list.html",
-                {"available_fields": filtered_fields, "report": temp_report},
+                context,
             )
-        elif field_type == "grouping":
-            html = render_to_string(
+        if field_type == "grouping":
+            return render(
+                self.request,
                 "partials/available_grouping_list.html",
-                {"available_fields": filtered_fields, "report": temp_report},
+                context,
             )
-        elif field_type == "filter":
-            html = render_to_string(
+        if field_type == "filter":
+            return render(
+                self.request,
                 "partials/available_filter_list.html",
-                {"available_fields": filtered_fields, "report": temp_report},
+                context,
             )
-        else:
-            html = "<div>Invalid field type</div>"
-
-        return HttpResponse(html)
+        return HttpResponse("<div>Invalid field type</div>")
 
     def create_temp_report(self, original_report, preview_data):
         """Create a temporary report object with preview data"""
@@ -3858,6 +3879,7 @@ class CreateReportView(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("horilla_reports:create_report")
 
     def get_initial(self):
+        """Set initial folder from query param and report_owner to current user."""
         initial = super().get_initial()
         pk = self.request.GET.get("pk")
         initial["folder"] = pk if pk else None
@@ -3911,6 +3933,7 @@ class UpdateReportView(LoginRequiredMixin, HorillaSingleFormView):
         return None
 
     def get(self, request, *args, **kwargs):
+        """Allow GET only if user has change/add permission or is the report owner."""
         report_id = self.kwargs.get("pk")
         if request.user.has_perm(
             "horilla_reports.change_report"
@@ -3954,6 +3977,7 @@ class MoveReportView(LoginRequiredMixin, HorillaSingleFormView):
         return None
 
     def get(self, request, *args, **kwargs):
+        """Allow GET only if user has change/add permission or is the report owner."""
         report_id = self.kwargs.get("pk")
         if request.user.has_perm(
             "horilla_reports.change_report"
@@ -3977,6 +4001,7 @@ class MoveReportView(LoginRequiredMixin, HorillaSingleFormView):
         return render(request, "error/403.html")
 
     def get_form(self, form_class=None):
+        """Return form with folder widget styling and queryset limited to user's folders for non-superusers."""
         form = super().get_form(form_class)
         user = getattr(self.request, "user", None)
         if user:
@@ -4012,6 +4037,7 @@ class MoveFolderView(LoginRequiredMixin, HorillaSingleFormView):
         return None
 
     def get(self, request, *args, **kwargs):
+        """Allow GET only if user has change/add permission or is the folder owner."""
         folder_id = self.kwargs.get("pk")
         if request.user.has_perm(
             "horilla_reports.change_report"
@@ -4035,6 +4061,7 @@ class MoveFolderView(LoginRequiredMixin, HorillaSingleFormView):
         return render(request, "error/403.html")
 
     def get_form(self, form_class=None):
+        """Return form with parent widget styling and queryset limited to user's folders for non-superusers."""
         form = super().get_form(form_class)
         user = getattr(self.request, "user", None)
         if user:
@@ -4106,12 +4133,14 @@ class CreateFolderView(LoginRequiredMixin, HorillaSingleFormView):
     hidden_fields = ["parent", "report_folder_owner"]
 
     def get_form(self, form_class=None):
+        """Limit form to name field when updating an existing folder (pk in URL)."""
         form = super().get_form(form_class)
         if self.kwargs.get("pk"):
             form.fields = {k: v for k, v in form.fields.items() if k in ["name"]}
         return form
 
     def get_initial(self):
+        """Set initial parent from query param and report_folder_owner to current user."""
         initial = super().get_initial()
         pk = self.request.GET.get("pk")
         initial["parent"] = pk if pk else None
@@ -4311,7 +4340,7 @@ class ReportFolderDetailView(LoginRequiredMixin, HorillaListView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
 
         return super().get(request, *args, **kwargs)
@@ -4409,6 +4438,7 @@ class MarkFolderAsFavouriteView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -4440,6 +4470,7 @@ class MarkReportAsFavouriteView(LoginRequiredMixin, View):
 
     @method_decorator(require_POST)
     def dispatch(self, *args, **kwargs):
+        """Restrict to POST and delegate to parent dispatch."""
         return super().dispatch(*args, **kwargs)
 
     def post(self, request, pk):
@@ -4508,7 +4539,7 @@ class ReportExportView(LoginRequiredMixin, View):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
         export_format = request.GET.get("format", "excel")
 

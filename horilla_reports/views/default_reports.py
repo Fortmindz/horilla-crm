@@ -14,9 +14,10 @@ from django.utils.decorators import method_decorator
 from django.views.generic import TemplateView, View
 
 # First-party (Horilla) imports
-from horilla_core.decorators import htmx_required
+from horilla.decorator import htmx_required
 
-from .models import Report, ReportFolder
+# Local application imports
+from horilla_reports.models import Report, ReportFolder
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -26,6 +27,7 @@ class LoadDefaultReportsModalView(LoginRequiredMixin, TemplateView):
     template_name = "reports/load_default_reports.html"
 
     def get_context_data(self, **kwargs):
+        """Build context with default reports from all installed apps report files."""
         context = super().get_context_data(**kwargs)
 
         all_reports = []
