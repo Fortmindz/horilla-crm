@@ -379,6 +379,13 @@ def get_field_permissions_for_model(user, model):
     all permissions at once instead of one by one.
     """
 
+    if not user.is_authenticated:
+        permissions_dict = {}
+        model_defaults = getattr(model, "default_field_permissions", {})
+        for field_name, default_value in model_defaults.items():
+            permissions_dict[field_name] = default_value
+        return permissions_dict
+
     if user.is_superuser:
         return {}
 
