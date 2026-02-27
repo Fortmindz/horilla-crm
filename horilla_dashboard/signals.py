@@ -5,18 +5,12 @@ This module contains Django signal receivers related to dashboard lifecycle
 events (e.g., pre/post-save behavior).
 """
 
-# Currently, there are no signal handlers defined for this app.
-"""
-Signal handlers for the horilla_calendar app.
-
-This module defines Django signal receivers related to calendar functionality,
-for example creating default shortcut keys for newly created users.
-"""
-
+# Third-party imports
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse_lazy
 
+# First-party imports
 from horilla.auth.models import User
 from horilla_keys.models import ShortcutKey
 
