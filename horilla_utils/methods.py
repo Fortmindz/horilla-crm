@@ -15,7 +15,6 @@ from django import template
 # Django / third-party imports
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
-from django.http import HttpResponse
 from django.middleware.csrf import get_token
 from django.template import loader
 from django.template.defaultfilters import register
@@ -97,7 +96,6 @@ def render_template(
     """
     This method is used to render HTML text with context.
     """
-
     request = getattr(_thread_local, "request", None)
     context.update(get_all_context_variables(request))
     template_loader = loader.get_template(path)
@@ -105,7 +103,7 @@ def render_template(
     template_bdy = template.Template(template_body)
     context_instance = template.Context(context)
     rendered_content = template_bdy.render(context_instance)
-    return HttpResponse(rendered_content, status=status).content.decode(decoding)
+    return format_html("{}", rendered_content)
 
 
 def closest_numbers(numbers: list, input_number: int) -> tuple:
