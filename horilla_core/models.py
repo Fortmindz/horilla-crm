@@ -6,7 +6,7 @@ models for horilla core app
 import json
 import logging
 from collections.abc import Iterable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import uuid4
 
@@ -32,14 +32,12 @@ from django.db import models, transaction
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.formats import time_format
-from django.utils.html import format_html
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html, format_html_join
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 from djmoney.settings import CURRENCY_CHOICES
 from multiselectfield import MultiSelectField
-from pytz import common_timezones
 
 # First-party / Horilla imports
 from horilla.menu.sub_section_menu import sub_section_menu
@@ -52,6 +50,7 @@ from horilla.utils.choices import (
     MONTH_CHOICES,
     NUMBER_GROUPING_CHOICES,
     TIME_FORMAT_CHOICES,
+    TIMEZONE_CHOICES,
 )
 from horilla_utils.methods import render_template
 from horilla_utils.middlewares import _thread_local
@@ -118,7 +117,9 @@ class Company(models.Model):
         blank=True,
         verbose_name=_("Company Icon"),
     )
-    contact_number = models.CharField(max_length=20, verbose_name=_("Contact Number"))
+    contact_number = models.CharField(
+        max_length=20, blank=True, null=True, verbose_name=_("Contact Number")
+    )
     fax = models.CharField(
         max_length=20, blank=True, null=True, verbose_name=_("Fax Number")
     )
@@ -129,12 +130,20 @@ class Company(models.Model):
         blank=True,
         verbose_name=_("Annual Revenue"),
     )
-    no_of_employees = models.PositiveIntegerField(verbose_name=_("Number of Employees"))
+    no_of_employees = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name=_("Number of Employees")
+    )
     hq = models.BooleanField(default=False, verbose_name=_("Head quarter"))
-    city = models.CharField(max_length=255, verbose_name=_("City"))
-    state = models.CharField(max_length=255, verbose_name=_("State/Province"))
     country = CountryField(verbose_name=_("Country"))
-    zip_code = models.CharField(max_length=20, verbose_name=_("ZIP/Postal Code"))
+    state = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name=_("State/Province")
+    )
+    city = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name=_("City")
+    )
+    zip_code = models.CharField(
+        max_length=20, blank=True, null=True, verbose_name=_("ZIP/Postal Code")
+    )
     language = models.CharField(
         max_length=50,
         choices=settings.LANGUAGES,
@@ -146,16 +155,14 @@ class Company(models.Model):
     )
     time_zone = models.CharField(
         max_length=100,
-        blank=True,
-        null=True,
-        choices=[(tz, tz) for tz in common_timezones],
+        choices=TIMEZONE_CHOICES,
+        default="UTC",
         verbose_name=_("Time Zone"),
     )
     currency = models.CharField(
         max_length=20,
         choices=CURRENCY_CHOICES,
-        blank=True,
-        null=True,
+        default="USD",
         help_text=_("Select your preferred currency"),
         verbose_name=_("Currency"),
     )
@@ -271,7 +278,6 @@ class Company(models.Model):
             self._original_currency = self.currency
 
             if self.activate_multiple_currencies:
-                from horilla_core.models import MultipleCurrency
 
                 default_currency = MultipleCurrency.objects.filter(
                     company=self, is_default=True
@@ -297,8 +303,6 @@ class Company(models.Model):
         - Get the conversion rate between old and new currency
         - Apply the rate directly to all amounts
         """
-        from horilla_core.models import MultipleCurrency
-        from horilla_core.signals import company_currency_changed
 
         request = getattr(_thread_local, "request", None)
 
@@ -336,6 +340,8 @@ class Company(models.Model):
                 new_default_currency.is_default = True
                 new_default_currency.conversion_rate = Decimal("1.00")
                 new_default_currency.save()
+                from horilla_core.signals import company_currency_changed
+
                 company_currency_changed.send(
                     sender=self.__class__, company=self, conversion_rate=conversion_rate
                 )
@@ -416,9 +422,7 @@ class HorillaCoreModel(models.Model):
         blank=True,
         verbose_name=_("Company"),
     )
-    created_at = models.DateTimeField(
-        default=timezone.now, verbose_name=_("Created At")
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Created At"))
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -426,9 +430,7 @@ class HorillaCoreModel(models.Model):
         related_name="%(class)s_created",
         verbose_name=_("Created By"),
     )
-    updated_at = models.DateTimeField(
-        default=timezone.now, verbose_name=_("Updated At")
-    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Updated At"))
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -896,7 +898,7 @@ class MultipleCurrency(HorillaCoreModel):
             "multiple_currency/is_default_col.html",
             {"instance": self, "total_currencies": total_currencies},
         )
-        return mark_safe(html)
+        return html
 
     def get_edit_url(self):
         """
@@ -929,10 +931,16 @@ class HorillaUser(AbstractUser):
     contact_number = models.CharField(
         max_length=15, blank=True, null=True, verbose_name=_("Contact Number")
     )
-    city = models.CharField(max_length=255, verbose_name=_("City"))
-    state = models.CharField(max_length=255, verbose_name=_("State/Province"))
     country = CountryField(verbose_name=_("Country"))
-    zip_code = models.CharField(max_length=20, verbose_name=_("ZIP/Postal Code"))
+    state = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name=_("State/Province")
+    )
+    city = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name=_("City")
+    )
+    zip_code = models.CharField(
+        max_length=20, blank=True, null=True, verbose_name=_("ZIP/Postal Code")
+    )
     company = models.ForeignKey(
         Company,
         on_delete=models.PROTECT,
@@ -967,9 +975,8 @@ class HorillaUser(AbstractUser):
     )
     time_zone = models.CharField(
         max_length=100,
-        blank=True,
-        null=True,
-        choices=[(tz, tz) for tz in common_timezones],
+        choices=TIMEZONE_CHOICES,
+        default="UTC",
         verbose_name=_("Time Zone"),
     )
     currency = models.ForeignKey(
@@ -1036,6 +1043,7 @@ class HorillaUser(AbstractUser):
     default_field_permissions = {
         "role": "readonly",
         "department": "readonly",
+        "company": "readonly",
     }
 
     class Meta:
@@ -1155,6 +1163,7 @@ class HorillaUser(AbstractUser):
         return any(self.has_perm(perm, obj) for perm in perm_list)
 
     def save(self, *args, **kwargs):
+        """Set username from email and password from contact_number if missing; then save."""
         if not self.username and self.email:
             self.username = self.email
 
@@ -1170,7 +1179,7 @@ class HorillaUser(AbstractUser):
             path="permissions/super_user_action_col.html",
             context={"instance": self, "superuser_count": superuser_count},
         )
-        return mark_safe(html)
+        return html
 
 
 class HorillaImport(models.Model):
@@ -1471,6 +1480,10 @@ class DetailFieldVisibility(models.Model):
     all_objects = models.Manager()
 
     class Meta:
+        """
+        Meta options for the DetailFieldVisibility model.
+        """
+
         unique_together = ("user", "app_label", "model_name", "url_name")
 
     def __str__(self):
@@ -2719,9 +2732,8 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
     )
     time_zone = models.CharField(
         max_length=100,
-        blank=True,
-        null=True,
-        choices=[(tz, tz) for tz in common_timezones],
+        choices=TIMEZONE_CHOICES,
+        default="UTC",
         verbose_name=_("Time Zone"),
     )
 
@@ -2855,11 +2867,12 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
         Returns a formatted HTML representation of the business hours.
         """
 
-        def format_time(value):
+        def format_time_value(value):
             if not value:
                 return "--:--"
             return time_format(value, "P")
 
+        # Normalize selected weekdays
         raw_week_days = self.week_days
         if isinstance(raw_week_days, (list, tuple)):
             selected = list(raw_week_days)
@@ -2870,64 +2883,84 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
         else:
             selected = []
 
-        # 24/7
+        # 24 / 7
         if self.business_hour_type == "24_7":
-            return mark_safe("Monday - Sunday<br><strong>(24 Hours)</strong>")
+            return format_html(
+                "{}<br><strong>(24 Hours)</strong>",
+                "Monday - Sunday",
+            )
 
-        # 24/5
+        # 24 / 5
         if self.business_hour_type == "24_5":
             selected_set = set(selected) if selected else set(self.WEEK_ORDER[:5])
 
+            selected_labels = [
+                self.DAY_LABELS[d] for d in self.WEEK_ORDER if d in selected_set
+            ]
+            # Resolve lazy translations to strings so format_html renders them correctly
+            labels_text = ", ".join(str(label) for label in selected_labels)
+
             if selected_set == set(self.WEEK_ORDER[:5]):
-                return mark_safe(
-                    "<span style='white-space: nowrap;'>"
-                    "Monday – Friday"
-                    "<span style='font-weight:bold;'> (24 Hours)</span>"
-                    "</span>"
+                return format_html(
+                    "<span style='white-space: nowrap;'>{}<span style='font-weight:bold;'> (24 Hours)</span></span>",
+                    labels_text,
                 )
 
             if selected_set == set(self.WEEK_ORDER):
-                return mark_safe(
+                return format_html(
                     "<span style='white-space: nowrap;'>"
                     "Monday – Sunday"
                     "<span style='font-weight:bold;'> (24 Hours)</span>"
                     "</span>"
                 )
 
-            selected_labels = [
-                self.DAY_LABELS[d] for d in self.WEEK_ORDER if d in selected_set
-            ]
-
-            return mark_safe(
-                "<span style='white-space: nowrap;'>"
-                f"{', '.join(selected_labels)}"
-                "<span style='font-weight:bold;'> (24 Hours)</span>"
-                "</span>"
+            return format_html(
+                "<span style='white-space: nowrap;'>{}<span style='font-weight:bold;'> (24 Hours)</span></span>",
+                labels_text,
             )
 
         # CUSTOM
         if self.business_hour_type == "custom":
+
+            # Same timing for all days
             if self.timing_type == "same":
-                start = format_time(self.default_start_time)
-                end = format_time(self.default_end_time)
+                start = format_time_value(self.default_start_time)
+                end = format_time_value(self.default_end_time)
+
                 labels = [self.DAY_LABELS[d] for d in self.WEEK_ORDER if d in selected]
 
+                if labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER[:5]]:
+                    return format_html(
+                        "Monday - Friday<br><strong>({} – {})</strong>",
+                        start,
+                        end,
+                    )
+
+                if labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER]:
+                    return format_html(
+                        "Monday - Sunday<br><strong>({} – {})</strong>",
+                        start,
+                        end,
+                    )
+
                 if labels:
-                    if labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER[:5]]:
-                        return mark_safe(
-                            f"Monday - Friday<br><strong>({start} – {end})</strong>"
-                        )
-                    if labels == [self.DAY_LABELS[d] for d in self.WEEK_ORDER]:
-                        return mark_safe(
-                            f"Monday - Sunday<br><strong>({start} – {end})</strong>"
-                        )
-                    days = ", ".join(labels)
-                    return mark_safe(f"{days}<br><strong>({start} – {end})</strong>")
+                    return format_html(
+                        "{}<br><strong>({} – {})</strong>",
+                        ", ".join(labels),
+                        start,
+                        end,
+                    )
 
-                return mark_safe(f"{start} – {end}")
+                return format_html("{} – {}", start, end)
 
+            # Different timing per day
             if self.timing_type == "different":
+
+                def is_midnight(t):
+                    return t is None or t == time(0, 0)
+
                 rows = []
+
                 for day_code in self.WEEK_ORDER:
                     day_label = self.DAY_LABELS[day_code]
                     is_open = day_code in selected
@@ -2937,32 +2970,31 @@ class BusinessHour(BusinessHourDayMixin, HorillaCoreModel):
                         start_val = getattr(self, f"{prefix}_start", None)
                         end_val = getattr(self, f"{prefix}_end", None)
 
-                        from datetime import time
-
-                        is_midnight = lambda t: t is None or t == time(0, 0)
-
                         if is_midnight(start_val) and is_midnight(end_val):
                             time_range = "Closed"
                         else:
-                            time_range = (
-                                f"{format_time(start_val)} – {format_time(end_val)}"
+                            time_range = "{} – {}".format(
+                                format_time_value(start_val),
+                                format_time_value(end_val),
                             )
                     else:
                         time_range = "Closed"
 
-                    row = (
-                        f'<tr class="text-sm">'
-                        f'<td class="pr-4 text-gray-600 whitespace-nowrap w-24 mb-5">{day_label}</td>'
-                        f'<td class="font-semibold text-black whitespace-nowrap">{time_range}</td>'
-                        f"</tr>"
-                    )
-                    rows.append(row)
+                    rows.append((day_label, time_range))
 
-                return mark_safe(
-                    f'<table class="text-left align-top space-y-1">{"".join(rows)}</table>'
+                return format_html(
+                    "<table class='text-left align-top space-y-1'>{}</table>",
+                    format_html_join(
+                        "",
+                        "<tr class='text-sm'>"
+                        "<td class='pr-4 text-gray-600 whitespace-nowrap w-24 mb-5'>{}</td>"
+                        "<td class='font-semibold text-black whitespace-nowrap'>{}</td>"
+                        "</tr>",
+                        rows,
+                    ),
                 )
 
-        return mark_safe("—")
+        return format_html("—")
 
 
 class RecycleBin(models.Model):
@@ -3108,6 +3140,7 @@ class RecycleBinPolicy(models.Model):
         verbose_name_plural = _("Recycle Bin Policies")
 
     def save(self, *args, **kwargs):
+        """Set company from request active_company before saving."""
         request = getattr(_thread_local, "request", None)
         self.company = getattr(request, "active_company", None)
         super().save(*args, **kwargs)
@@ -3313,7 +3346,7 @@ class ImportHistory(HorillaCoreModel):
             path="import/error_list_col.html",
             context={"instance": self},
         )
-        return mark_safe(html)
+        return html
 
     def imported_file(self):
         """Returns the HTML for the is_default column in the list view."""
@@ -3321,7 +3354,7 @@ class ImportHistory(HorillaCoreModel):
             path="import/import_file_col.html",
             context={"instance": self},
         )
-        return mark_safe(html)
+        return html
 
     @property
     def has_errors(self):
@@ -3646,7 +3679,7 @@ class FieldPermission(models.Model):
         return f"{target} - {self.content_type.model}.{self.field_name}: {self.permission_type}"
 
     def clean(self):
-
+        """Ensure either user or role is set, but not both."""
         # Ensure either user or role is set, but not both
         if not self.user and not self.role:
             raise ValidationError("Either user or role must be set")
@@ -3667,6 +3700,10 @@ class QuickFilter(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """
+        Meta options for the QuickFilter model.
+        """
+
         unique_together = ("user", "app_label", "model_name", "field_name")
         ordering = ["display_order", "created_at"]
 
