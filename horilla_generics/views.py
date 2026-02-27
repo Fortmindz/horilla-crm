@@ -21,8 +21,8 @@ from io import BytesIO
 from operator import or_
 from typing import Any
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfo
 
-import pytz
 from auditlog.models import LogEntry
 
 # Django / third-party imports
@@ -73,11 +73,13 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# First-party (Horilla)
+from horilla.decorator import htmx_required, permission_required_or_denied
 from horilla.exceptions import HorillaHttp404
+
+# First-party (Horilla)
+from horilla.http import HorillaRefreshResponse
 from horilla.utils.choices import FIELD_TYPE_MAP, TABLE_FALLBACK_FIELD_TYPES
 from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_core.mixins import OwnerQuerysetMixin, get_allowed_users_queryset_for_model
 from horilla_core.models import (
     ActiveTab,
@@ -121,6 +123,7 @@ class HorillaView(TemplateView):
     nav_url: str = ""
 
     def get_context_data(self, **kwargs):
+        """Add nav/list/kanban/group_by URLs and filter_form trigger to template context."""
         context = super().get_context_data(**kwargs)
         filter_form = self.request.headers.get("HX-Trigger")
         if filter_form == "filter-form":
@@ -216,6 +219,7 @@ class HorillaNavView(TemplateView):
         return False
 
     def get_context_data(self, **kwargs):
+        """Add effective_layout, nav_title, search_url, and search_push_url to context."""
         context = super().get_context_data(**kwargs)
         context["effective_layout"] = self.request.GET.get("layout") or getattr(
             self, "default_layout", "list"
@@ -398,7 +402,6 @@ class HorillaListView(ListView):
     bulk_delete_enabled = True
     header_attrs = []
     col_attrs = []
-    clear_session_button_enabled = True
     bulk_select_option = True
     no_record_section = True
     no_record_add_button: dict = None
@@ -536,7 +539,7 @@ class HorillaListView(ListView):
                 return [{"value": val, "label": label} for val, label in field.choices]
 
             # ForeignKey fields
-            elif field_class_name == "ForeignKey":
+            if field_class_name == "ForeignKey":
                 related_model = field.related_model
                 queryset = related_model.objects.all()
 
@@ -565,7 +568,7 @@ class HorillaListView(ListView):
 
         except Exception as e:
             logger.error(
-                f"Error getting quick filter choices for {field_name}: {str(e)}"
+                "Error getting quick filter choices for %s:%s", field_name, str(e)
             )
             return []
 
@@ -618,7 +621,9 @@ class HorillaListView(ListView):
                     queryset = queryset.filter(**{qf.field_name: filter_value})
 
             except Exception as e:
-                logger.error(f"Error applying quick filter {qf.field_name}: {str(e)}")
+                logger.error(
+                    "Error applying quick filter %s: %s", qf.field_name, str(e)
+                )
 
         return queryset
 
@@ -2261,7 +2266,7 @@ class HorillaListView(ListView):
                             if isinstance(value, datetime):
                                 if getattr(user, "time_zone", None):
                                     try:
-                                        user_tz = pytz.timezone(user.time_zone)
+                                        user_tz = ZoneInfo(user.time_zone)
                                         if timezone.is_naive(value):
                                             value = timezone.make_aware(
                                                 value, timezone.get_default_timezone()
@@ -3403,7 +3408,6 @@ class HorillaListView(ListView):
             if field["name"] in editable_bulk_field_names
         ]
         context["bulk_update_fields"] = bulk_update_fields_metadata
-        context["clear_session_button_enabled"] = self.clear_session_button_enabled
         context["bulk_select_option"] = self.bulk_select_option
         context["bulk_update_option"] = self.bulk_update_option
         context["enable_sorting"] = self.enable_sorting
@@ -3508,6 +3512,8 @@ class HorillaKanbanView(HorillaListView):
     filterset_module = "filters"
     kanban_attrs: str = None
     height_kanban = None
+    # Order items within each column: "-updated_at" (newest updated first) or override with tuple/list
+    kanban_order_by = "-updated_at"
 
     _view_registry = {}
 
@@ -3517,6 +3523,7 @@ class HorillaKanbanView(HorillaListView):
             HorillaKanbanView._view_registry[cls.model] = cls
 
     def dispatch(self, request, *args, **kwargs):
+        """Ensure user is authenticated and resolve model from URL/POST; then dispatch."""
         if not self.request.user.is_authenticated:
             login_url = f"{reverse_lazy('horilla_core:login')}?next={request.path}"
             return redirect(login_url)
@@ -3536,6 +3543,19 @@ class HorillaKanbanView(HorillaListView):
             raise ImproperlyConfigured("Model must be specified via URL or POST data.")
 
         return super().dispatch(request, *args, **kwargs)
+
+    def get_kanban_order_by(self):
+        """Return order_by value for items within each kanban column (e.g. by updated)."""
+        order = getattr(self, "kanban_order_by", "-updated_at")
+        if isinstance(order, (list, tuple)):
+            return order
+        # If model has no updated_at, fall back to -id
+        if order == "-updated_at" and self.model:
+            try:
+                self.model._meta.get_field("updated_at")
+            except Exception:
+                return "-id"
+        return order
 
     def can_user_modify_item(self, item):
         """
@@ -3958,9 +3978,14 @@ class HorillaKanbanView(HorillaListView):
 
                 for key, group in sorted_items.items():
                     total_count = group["items"].count()
+                    order_by = self.get_kanban_order_by()
                     ordered_items = group["items"].order_by(
-                        "id"
-                    )  # Use 'id' or 'created_at'
+                        *(
+                            order_by
+                            if isinstance(order_by, (list, tuple))
+                            else (order_by,)
+                        )
+                    )
                     paginator = Paginator(ordered_items, self.paginate_by)
                     page = self.request.GET.get(f"page_{key}", 1)
                     try:
@@ -4030,9 +4055,14 @@ class HorillaKanbanView(HorillaListView):
 
                 for key, group in sorted_items.items():
                     total_count = group["items"].count()
+                    order_by = self.get_kanban_order_by()
                     ordered_items = group["items"].order_by(
-                        "id"
-                    )  # Use 'id' or 'created_at'
+                        *(
+                            order_by
+                            if isinstance(order_by, (list, tuple))
+                            else (order_by,)
+                        )
+                    )
                     paginator = Paginator(ordered_items, self.paginate_by)
                     page = self.request.GET.get(f"page_{key}", 1)
                     try:
@@ -4157,16 +4187,22 @@ class HorillaKanbanView(HorillaListView):
             queryset = self.get_queryset()
 
             # Filter by the specific column after applying all other filters
+            order_by = self.get_kanban_order_by()
+            order_by_tuple = (
+                order_by if isinstance(order_by, (list, tuple)) else (order_by,)
+            )
             if hasattr(field, "choices") and field.choices:
-                items = queryset.filter(**{group_by: column_key}).order_by("id")
+                items = queryset.filter(**{group_by: column_key}).order_by(
+                    *order_by_tuple
+                )
             elif isinstance(field, ForeignKey):
                 if column_key is None:
                     items = queryset.filter(**{f"{group_by}__isnull": True}).order_by(
-                        "id"
+                        *order_by_tuple
                     )
                 else:
                     items = queryset.filter(**{f"{group_by}__pk": column_key}).order_by(
-                        "id"
+                        *order_by_tuple
                     )
 
             paginate_by = getattr(self, "paginate_by", 10)
@@ -4665,6 +4701,7 @@ class HorillaDetailView(DetailView):
             HorillaDetailView._view_registry[cls.model] = cls
 
     def dispatch(self, request, *args, **kwargs):
+        """Resolve model and object, check view/own permissions, then dispatch."""
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
 
@@ -4679,7 +4716,7 @@ class HorillaDetailView(DetailView):
         except Exception as e:
             if request.headers.get("HX-Request") == "true":
                 messages.error(request, e)
-                return HttpResponse(headers={"HX-Refresh": "true"})
+                return HorillaRefreshResponse(request)
             raise HorillaHttp404(e)
 
         app = self.model._meta.app_label
@@ -4716,12 +4753,14 @@ class HorillaDetailView(DetailView):
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
+        """Redirect unauthenticated users to login; otherwise delegate to parent get."""
         if not self.request.user.is_authenticated:
             login_url = f"{reverse_lazy('horilla_core:login')}?next={request.path}"
             return redirect(login_url)
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
+        """Return the queryset for the detail view; require model to be set."""
         if not self.model:
             raise HorillaHttp404("Model not found")
         return super().get_queryset()
@@ -4964,7 +5003,7 @@ class HorillaDetailView(DetailView):
                     # If no condition, always show
                     badges.append(badge_data)
             except Exception as e:
-                logger.warning(f"Error evaluating badge condition: {e}")
+                logger.warning("Error evaluating badge condition: %s", str(e))
                 continue
 
         return badges
@@ -5002,6 +5041,7 @@ class HorillaDetailView(DetailView):
             return None
 
     def get_context_data(self, **kwargs):
+        """Add header_fields, body, pipeline_choices, badges, and permissions to context."""
         context = super().get_context_data(**kwargs)
         context["header_fields"] = self.get_header_fields()
         context["body"] = self.get_body()
@@ -5038,8 +5078,6 @@ class HorillaDetailView(DetailView):
 
         queryset_ids = self.request.session.get(session_key, [])
         if not queryset_ids:
-            from horilla_generics.views import HorillaListView
-
             list_view = HorillaListView()
             list_view.request = self.request
             list_view.model = self.model
@@ -5426,6 +5464,7 @@ class HorillaTabView(TemplateView):
         self.request = request
 
     def get_context_data(self, **kwargs):
+        """Add active_target, tabs, view_id, and tab styling to context."""
         context = super().get_context_data(**kwargs)
         if self.request.user:
             active_tab = ActiveTab.objects.filter(
@@ -5630,6 +5669,7 @@ class HorillaDetailSectionView(DetailView):
         ]
 
     def get_context_data(self, **kwargs):
+        """Add body (with detail field visibility), header_fields, and related list data to context."""
         context = super().get_context_data(**kwargs)
         body = self.body or self.get_default_body()
         detail_url_name = self.request.GET.get("detail_url_name")
@@ -6112,7 +6152,6 @@ class HorillaRelatedListSectionView(DetailView):
         list_view.action_method = actions_method
         list_view.col_attrs = col_attrs
         list_view.bulk_select_option = False
-        list_view.clear_session_button_enabled = False
         list_view.filterset_class = None
         list_view.table_width = False
         list_view.table_class = False
@@ -6175,6 +6214,7 @@ class HorillaRelatedListSectionView(DetailView):
         return columns
 
     def get_context_data(self, **kwargs):
+        """Add related_lists_metadata, object_id, and class_name to context."""
         context = super().get_context_data(**kwargs)
         context["related_lists_metadata"] = self.get_related_lists_metadata()
         context["object_id"] = self.object.pk
@@ -6205,9 +6245,7 @@ class HorillaRelatedListContentView(LoginRequiredMixin, DetailView):
         return HorillaRelatedListSectionView
 
     def get_queryset(self):
-        """
-        Dynamically resolve the model and app_label from model_name query parameter
-        """
+        """Dynamically resolve the model and app_label from model_name query parameter."""
         model_name = self.request.GET.get("model_name")
         if not model_name:
             raise HorillaHttp404("model_name parameter is required")
@@ -6221,6 +6259,7 @@ class HorillaRelatedListContentView(LoginRequiredMixin, DetailView):
             raise HorillaHttp404(e)
 
     def get(self, request, *args, **kwargs):
+        """Load and render related list content for the given field_name."""
         self.object = self.get_object()
         field_name = request.GET.get("field_name")
         class_name = request.GET.get("class_name")
@@ -6284,6 +6323,7 @@ class HorillaModalDetailView(DetailView):
         return queryset
 
     def get_object(self, queryset=None):
+        """Resolve the current object from queryset and store on self.instance."""
         if queryset is None:
             queryset = self.get_queryset()
         try:
@@ -6293,6 +6333,7 @@ class HorillaModalDetailView(DetailView):
         return self.instance
 
     def get(self, request, *args, **kwargs):
+        """Initialize session ordered_ids if needed; render empty template or error when no instance."""
         if not self.request.GET.get(self.ids_key) and not self.request.session.get(
             self.ordered_ids_key
         ):
@@ -6306,6 +6347,7 @@ class HorillaModalDetailView(DetailView):
         return response
 
     def __init__(self, **kwargs: Any) -> None:
+        """Set ordered_ids_key from model name and attach request from thread local."""
         super().__init__(**kwargs)
         self.ordered_ids_key = f"ordered_ids_{self.model.__name__.lower()}"
         request = getattr(_thread_local, "request", None)
@@ -6313,6 +6355,7 @@ class HorillaModalDetailView(DetailView):
         # update_initial_cache(request, CACHE, HorillaDetailedView)
 
     def get_context_data(self, **kwargs: Any):
+        """Add ordered instance_ids and navigation data for prev/next to context."""
         context = super().get_context_data(**kwargs)
         obj = context.get("object")
 
@@ -6495,6 +6538,7 @@ class HorillaNotesAttachementSectionView(DetailView):
         return False
 
     def get(self, request, *args, **kwargs):
+        """Load attachment list for the detail object and render with add-permission flag."""
         self.object = self.get_object()
         object_id = self.kwargs.get("pk")
 
@@ -6543,6 +6587,7 @@ class HorillaNotesAttachementDetailView(HorillaModalDetailView):
     title = "Notes and Attachment"
 
     def get(self, request, *args, **kwargs):
+        """Load attachment detail or return error script if not found."""
         try:
             self.object = self.get_object()
         except Http404:
@@ -6564,6 +6609,7 @@ class HorillaNotesAttachmentCreateView(LoginRequiredMixin, FormView):
     model = HorillaAttachment
 
     def get_context_data(self, **kwargs):
+        """Set form_url for create or edit based on pk."""
         context = super().get_context_data(**kwargs)
         context["form_url"] = reverse_lazy("horilla_generics:notes_attachment_create")
         pk = self.kwargs.get("pk")
@@ -6697,6 +6743,7 @@ class HorillaNotesAttachmentCreateView(LoginRequiredMixin, FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
+        """Save attachment (create or update) and return close-modal/reload script."""
         model_name = self.request.GET.get("model_name")
         pk = self.kwargs.get("pk")
 
@@ -6716,6 +6763,7 @@ class HorillaNotesAttachmentCreateView(LoginRequiredMixin, FormView):
         )
 
     def get(self, request, *args, **kwargs):
+        """Validate attachment pk when editing; then delegate to parent get."""
         pk = kwargs.get("pk")
         if pk:
             try:
@@ -6739,14 +6787,16 @@ class HorillaHistorySectionView(DetailView):
     filter_form_class = HorillaHistoryForm
 
     def dispatch(self, request, *args, **kwargs):
+        """Resolve object and return HX-Refresh on error; otherwise dispatch."""
         try:
             self.object = self.get_object()
         except Exception as e:
             messages.error(self.request, e)
-            return HttpResponse(headers={"HX-Refresh": "true"})
+            return HorillaRefreshResponse(request)
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
+        """Add paginated history by date, filter form, and filter_applied to context."""
         context = super().get_context_data(**kwargs)
         context["model_name"] = self.model._meta.model_name
         histories = self.get_object().full_histories
@@ -6784,6 +6834,7 @@ class HorillaHistorySectionView(DetailView):
         return context
 
     def get(self, request, *args, **kwargs):
+        """Render history tab or filter form partial when show_filter=true and HX-Request."""
         self.object = self.get_object()
         context = self.get_context_data(**kwargs)
         if request.GET.get("show_filter") == "true" and request.headers.get(
@@ -6907,6 +6958,7 @@ class HorillaMultiStepFormView(FormView):
         self.object = None
 
     def dispatch(self, request, *args, **kwargs):
+        """Check permission and resolve object when pk given; then dispatch."""
         if not self.skip_permission_check and not self.has_permission():
             return render(request, self.permission_denied_template, {"modal": True})
         pk = kwargs.get(self.pk_url_kwarg)
@@ -7027,6 +7079,7 @@ class HorillaMultiStepFormView(FormView):
         self.request.session.modified = True
 
     def get_form_class(self):
+        """Return DynamicMultiStepForm for the model when form_class is not set."""
         if self.form_class is None and self.model is not None:
 
             class DynamicMultiStepForm(HorillaMultiStepForm):
@@ -7094,6 +7147,7 @@ class HorillaMultiStepFormView(FormView):
             return None
 
     def get_form_kwargs(self):
+        """Pass request, step, instance, session form_data/files, and field_permissions to the form."""
         kwargs = super().get_form_kwargs()
         kwargs["request"] = self.request
         step = getattr(self, "current_step", self.get_initial_step())
@@ -7524,6 +7578,7 @@ class HorillaMultiStepFormView(FormView):
         return context
 
     def form_valid(self, form):
+        """Advance step and re-render form, or save on last step and redirect/cleanup."""
         step = self.get_initial_step()
 
         if step < self.total_steps:
@@ -7803,9 +7858,11 @@ class HorillaMultiStepFormView(FormView):
             return self.render_to_response(self.get_context_data(form=form))
 
     def form_invalid(self, form):
+        """Re-render the current step form with validation errors."""
         return self.render_to_response(self.get_context_data(form=form))
 
     def post(self, request, *args, **kwargs):
+        """Handle previous/next step or submit; delegate to parent post for normal submit."""
         if "previous" in request.POST:
             step = self.get_initial_step()
             if step > 1:
@@ -7849,6 +7906,7 @@ class HorillaMultiStepFormView(FormView):
         return super().post(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
+        """Reset session when requested; set current_step to 1 and render form."""
         if "reset" in request.GET or ("new" in request.GET and not self.object):
             self.cleanup_session_data()
         elif self.object:
@@ -7962,6 +8020,7 @@ class HorillaSingleFormView(FormView):
         return reverse(self.multi_step_url_name)
 
     def dispatch(self, request, *args, **kwargs):
+        """Set duplicate_mode from GET; check permission; handle add_condition_row; resolve object."""
         if "pk" in self.kwargs:
             self.duplicate_mode = (
                 request.GET.get("duplicate", "false").lower() == "true"
@@ -8080,6 +8139,7 @@ class HorillaSingleFormView(FormView):
             return False
 
     def get(self, request, *args, **kwargs):
+        """Clear session keys on edit and set condition_row_count; then delegate to parent get."""
         if self.kwargs.get("pk"):
             for key in self.session_keys_to_clear_on_edit:
                 if key in request.session:
@@ -8165,21 +8225,37 @@ class HorillaSingleFormView(FormView):
         return model_name
 
     def get_submitted_condition_data(self):
-        """Extract condition field data from submitted form data"""
+        """Extract condition field data from submitted form data.
+        For the value field, supports multiple values (e.g. ManyToMany multi-select)
+        via getlist and joins with comma for storage.
+        """
         condition_data = {}
         if self.condition_fields and self.request.method == "POST":
-            for key, value in self.request.POST.items():
-                # Check if this is a condition field with row_id
+            row_ids = set()
+            for key in self.request.POST:
                 for field_name in self.condition_fields:
                     if key.startswith(f"{field_name}_") and key != field_name:
-                        # Extract row_id from the key
                         try:
                             row_id = key.replace(f"{field_name}_", "")
-                            if row_id not in condition_data:
-                                condition_data[row_id] = {}
-                            condition_data[row_id][field_name] = value
+                            if row_id and (row_id.isdigit() or row_id == "0"):
+                                row_ids.add(row_id)
                         except Exception:
                             continue
+            for row_id in row_ids:
+                condition_data[row_id] = {}
+                for field_name in self.condition_fields:
+                    param_key = f"{field_name}_{row_id}"
+                    if field_name == "value":
+                        values = self.request.POST.getlist(param_key)
+                        condition_data[row_id][field_name] = (
+                            ",".join(str(v) for v in values if v)
+                            if values
+                            else self.request.POST.get(param_key, "")
+                        )
+                    else:
+                        condition_data[row_id][field_name] = self.request.POST.get(
+                            param_key, ""
+                        )
         return condition_data
 
     def add_condition_row(self, request):
@@ -8287,24 +8363,24 @@ class HorillaSingleFormView(FormView):
 
         # Update field select's hx-vals and initial value to include existing field and value for this row
         if existing_field_value is not None and "field" in form.fields:
-            from django.utils.html import escape
 
             field_widget = form.fields["field"].widget
             if hasattr(field_widget, "attrs"):
-                # Rebuild hx-vals string with existing field and value
-                hx_vals_parts = [
-                    f'"model_name": "{model_name or ""}"',
-                    f'"row_id": "{new_row_id}"',
-                ]
+                # Rebuild hx-vals with json.dumps so values are properly escaped for JSON
+                hx_vals_dict = {
+                    "model_name": model_name or "",
+                    "row_id": new_row_id,
+                }
+                condition_model = getattr(self, "condition_model", None)
+                if condition_model:
+                    hx_vals_dict["condition_model"] = (
+                        f"{condition_model._meta.app_label}.{condition_model._meta.model_name}"
+                    )
                 if existing_field_value:
-                    hx_vals_parts.append(
-                        f'"field_{new_row_id}": "{escape(str(existing_field_value))}"'
-                    )
+                    hx_vals_dict[f"field_{new_row_id}"] = str(existing_field_value)
                 if existing_value_value:
-                    hx_vals_parts.append(
-                        f'"value_{new_row_id}": "{escape(str(existing_value_value))}"'
-                    )
-                field_widget.attrs["hx-vals"] = "{" + ", ".join(hx_vals_parts) + "}"
+                    hx_vals_dict[f"value_{new_row_id}"] = str(existing_value_value)
+                field_widget.attrs["hx-vals"] = json.dumps(hx_vals_dict)
                 # Ensure hx-trigger includes "load" so it triggers on page load
                 if "hx-trigger" not in field_widget.attrs:
                     field_widget.attrs["hx-trigger"] = "change,load"
@@ -8358,6 +8434,7 @@ class HorillaSingleFormView(FormView):
         return HttpResponse(html)
 
     def get_form_class(self):
+        """Return dynamic form class with condition fields and readonly handling when form_class is None."""
         if self.form_class is None and self.model is not None:
             full_width_fields = self.full_width_fields or []
             dynamic_create_fields = self.dynamic_create_fields or []
@@ -8769,6 +8846,7 @@ class HorillaSingleFormView(FormView):
         return super().get_form_class()
 
     def get_form_kwargs(self):
+        """Pass full_width_fields, conditions, request, instance/initial, and field_permissions to the form."""
         kwargs = super().get_form_kwargs()
 
         kwargs["full_width_fields"] = self.full_width_fields or []
@@ -8845,6 +8923,7 @@ class HorillaSingleFormView(FormView):
         return kwargs
 
     def get_context_data(self, **kwargs):
+        """Add form_title, duplicate_mode, condition fields, and form options to context."""
         context = super().get_context_data(**kwargs)
         context["form_title"] = (
             self.form_title
@@ -8945,10 +9024,8 @@ class HorillaSingleFormView(FormView):
                                         value_value,
                                     )
                                     if widget_html:
-                                        from django.utils.safestring import mark_safe
-
                                         key = f"value_widget_html_{template_row_id}"
-                                        value_widget_htmls[key] = mark_safe(widget_html)
+                                        value_widget_htmls[key] = widget_html
 
                     context["submitted_condition_data"][row_id] = condition_dict
 
@@ -9168,12 +9245,6 @@ class HorillaSingleFormView(FormView):
                         else self.request.user.company
                     )
 
-                # Add created_at/updated_at if fields exist
-                if hasattr(self.condition_model, "created_at"):
-                    create_kwargs["created_at"] = timezone.now()
-                if hasattr(self.condition_model, "updated_at"):
-                    create_kwargs["updated_at"] = timezone.now()
-
                 # Add created_by/updated_by if fields exist
                 if hasattr(self.condition_model, "created_by"):
                     create_kwargs["created_by"] = self.request.user
@@ -9310,10 +9381,7 @@ class HorillaSingleFormView(FormView):
                         if hasattr(_thread_local, "request")
                         else self.request.user.company
                     )
-                if hasattr(self.model, "created_at"):
-                    create_kwargs["created_at"] = timezone.now()
-                if hasattr(self.model, "updated_at"):
-                    create_kwargs["updated_at"] = timezone.now()
+
                 if hasattr(self.model, "created_by"):
                     create_kwargs["created_by"] = self.request.user
                 if hasattr(self.model, "updated_by"):
@@ -9403,6 +9471,7 @@ class HorillaSingleFormView(FormView):
         return str(form_url_value)
 
     def form_valid(self, form):
+        """Save single or multiple instances; redirect or show errors."""
         if not self.request.user.is_authenticated:
             messages.error(
                 self.request, "You must be logged in to perform this action."
@@ -9445,12 +9514,9 @@ class HorillaSingleFormView(FormView):
                     setattr(self.object, field_name, None)
 
         if self.kwargs.get("pk") and not self.duplicate_mode:
-            self.object.updated_at = timezone.now()
             self.object.updated_by = self.request.user
         else:
-            self.object.created_at = timezone.now()
             self.object.created_by = self.request.user
-            self.object.updated_at = timezone.now()
             self.object.updated_by = self.request.user
         self.object.company = form.cleaned_data.get("company") or (
             getattr(_thread_local, "request", None).active_company
@@ -9609,10 +9675,12 @@ class HorillaSingleFormView(FormView):
             return self.form_invalid(form)
 
     def form_invalid(self, form):
+        """Re-render form with validation errors."""
         print(form.errors)
         return super().form_invalid(form)
 
     def get_success_url(self):
+        """Return success_url or default list URL for the model."""
         return self.success_url or reverse_lazy(f"{self.model._meta.model_name}-list")
 
 
@@ -9658,6 +9726,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
             return None, None
 
     def dispatch(self, request, *args, **kwargs):
+        """Resolve target model and fields; validate and check add permission; then dispatch."""
         # Initialize model + fields once
         self.target_model, self.field_names = self.get_model_and_fields()
 
@@ -9715,6 +9784,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_form_class(self):
+        """Return a dynamic ModelForm class for target_model and optional field_names."""
         target_model, field_names = self.target_model, self.field_names
 
         class DynamicCreateForm(HorillaModelForm):
@@ -9743,7 +9813,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         return DynamicCreateForm
 
     def get_full_width_fields(self):
-        """Get full width fields from URL parameter"""
+        """Get full width fields from URL parameter."""
         full_width_param = self.request.GET.get("full_width_fields", "")
         full_width_fields = []
         if full_width_param and full_width_param.lower() not in ["none", ""]:
@@ -9752,6 +9822,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         return full_width_fields
 
     def get_context_data(self, **kwargs):
+        """Add form_title, target_field, form_url, full_width_fields, and field_permissions to context."""
         context = super().get_context_data(**kwargs)
         if self.target_model:
             context["form_title"] = (
@@ -9818,6 +9889,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         return kwargs
 
     def form_valid(self, form):
+        """Save the new instance and return script to add option to target select and close modal."""
         if not self.request.user.is_authenticated:
             messages.error(
                 self.request, "You must be logged in to perform this action."
@@ -9825,8 +9897,6 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
             return self.form_invalid(form)
 
         instance = form.save(commit=False)
-        instance.created_at = timezone.now()
-        instance.updated_at = timezone.now()
         instance.created_by = self.request.user
         instance.updated_by = self.request.user
         instance.company = form.cleaned_data.get("company") or (
@@ -9859,6 +9929,7 @@ class HorillaDynamicCreateView(LoginRequiredMixin, FormView):
         )
 
     def form_invalid(self, form):
+        """Show error message and re-render form with validation errors."""
         messages.error(self.request, "Please correct the errors below.")
         return super().form_invalid(form)
 
@@ -10467,6 +10538,7 @@ class HorillaSingleDeleteView(DeleteView):
         return obj
 
     def post(self, request, *args, **kwargs):
+        """Resolve object and delegate to parent post; on error return reload/close script."""
         try:
             self.object = self.get_object()
         except Exception as e:

@@ -13,9 +13,9 @@ import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode, urlparse
+from zoneinfo import ZoneInfo
 
-# Third-party
-import pytz
+# Third-party imports (Django)
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -24,23 +24,25 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, models
 from django.db.models import CharField, Q, TextField
 from django.db.models.fields import Field
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
-from django.template.loader import render_to_string
+from django.template import Context, Template
 from django.utils import timezone, translation
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_str
-from django.utils.html import escape
+from django.utils.html import escape, format_html, format_html_join
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import FormView
 
+from horilla.decorator import htmx_required
 from horilla.exceptions import HorillaHttp404
-from horilla.utils.choices import FIELD_TYPE_MAP
 
 # First-party (Horilla)
+from horilla.http import HorillaRedirectResponse
+from horilla.utils.choices import FIELD_TYPE_MAP
 from horilla.utils.shortcuts import get_object_or_404
-from horilla_core.decorators import htmx_required
 from horilla_core.models import (
     DetailFieldVisibility,
     HorillaContentType,
@@ -60,6 +62,27 @@ from horilla_generics.views import (
 from .forms import ColumnSelectionForm, KanbanGroupByForm, SaveFilterListForm
 
 logger = logging.getLogger(__name__)
+
+
+def _is_allowed_import_module_path(module_path):
+    """
+    Return True only if module_path is an installed Django app or a submodule of one.
+    Uses each app's full Python path (app_config.name), so paths like
+    horilla_crm.campaigns.forms are allowed when horilla_crm.campaigns is installed.
+    Used to whitelist importlib.import_module() and prevent loading arbitrary code
+    from untrusted request parameters.
+    """
+    if not module_path or not isinstance(module_path, str):
+        return False
+    # Reject path traversal or obviously dangerous patterns
+    if ".." in module_path or module_path.startswith("."):
+        return False
+    for app_config in apps.get_app_configs():
+        name = app_config.name
+        if module_path == name or module_path.startswith(name + "."):
+            return True
+    return False
+
 
 # Condition form: operator values (from horilla.utils.choices) allowed per field type.
 # Mirrors filter operator logic so conditions use operators matching the field type.
@@ -122,6 +145,7 @@ CONDITION_OPERATORS_BY_FIELD_TYPE = {
         "is_not_empty",
     ],
     "foreignkey": ["equals", "not_equals", "is_empty", "is_not_empty"],
+    "manytomany": ["equals", "not_equals", "is_empty", "is_not_empty"],
     "choice": ["equals", "not_equals", "is_empty", "is_not_empty"],
     "other": ["equals", "not_equals", "contains", "is_empty", "is_not_empty"],
 }
@@ -338,6 +362,7 @@ class HorillaKanbanGroupByView(FormView):
     form_class = KanbanGroupByForm
 
     def get_form_kwargs(self):
+        """Pass model_name, app_label, exclude/include fields, and view_type to the form."""
         kwargs = super().get_form_kwargs()
         model_name = self.request.GET.get("model")
         app_label = self.request.GET.get("app_label")
@@ -378,6 +403,7 @@ class HorillaKanbanGroupByView(FormView):
         return kwargs
 
     def get_context_data(self, **kwargs):
+        """Add group_by_view_type and settings_title to template context."""
         context = super().get_context_data(**kwargs)
         view_type = self.request.GET.get("view_type") or self.request.POST.get(
             "view_type"
@@ -389,6 +415,7 @@ class HorillaKanbanGroupByView(FormView):
         return context
 
     def form_valid(self, form):
+        """Save group-by settings, set user and view_type, return close-modal script."""
         form.instance.user = self.request.user  # set the user server-side
         form.instance.view_type = form.cleaned_data.get("view_type")
         form.save()
@@ -408,6 +435,7 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
     form_class = ColumnSelectionForm
 
     def get_form_kwargs(self):
+        """Pass model, app_label, path_context, user, and url_name to the column selection form."""
         kwargs = super().get_form_kwargs()
         app_label = self.request.POST.get(
             "app_label", self.request.GET.get("app_label")
@@ -442,6 +470,7 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
         return kwargs
 
     def get_context_data(self, **kwargs):
+        """Add app_label, model_name, url_name, path_context, and column visibility data to context."""
         context = super().get_context_data(**kwargs)
         app_label = self.request.GET.get(
             "app_label", self.request.POST.get("app_label")
@@ -691,6 +720,7 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
         return context
 
     def form_valid(self, form):
+        """Save selected visible columns and return JSON/HTMX response."""
         with translation.override("en"):
             app_label = self.request.POST.get("app_label")
             model_name = self.request.POST.get("model_name")
@@ -903,6 +933,7 @@ class ListColumnSelectFormView(LoginRequiredMixin, FormView):
                 )
 
     def form_invalid(self, form):
+        """Render form with error message when column selection is invalid."""
         context = self.get_context_data(form=form)
         context["error"] = "Form submission failed. Please review the selected fields."
         return self.render_to_response(context)
@@ -968,10 +999,10 @@ class ResetColumnToDefaultView(LoginRequiredMixin, View):
             )
         except Exception as e:
             logger.error("Error resetting columns to default: %s", str(e))
-            return HttpResponse(
-                f"<div id='error-message'>Error resetting columns: {str(e)}</div>",
-                status=500,
-            )
+            msg = Template(
+                "<div id='error-message'>Error resetting columns: {{ message }}</div>"
+            ).render(Context({"message": str(e)}))
+            return HttpResponse(msg, status=500)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -981,6 +1012,7 @@ class DetailFieldSelectorView(LoginRequiredMixin, View):
     template_name = "add_field_to_detail.html"
 
     def get(self, request, *args, **kwargs):
+        """Load detail field selector form for the given model and url_name."""
         app_label = request.GET.get("app_label")
         model_name = request.GET.get("model_name")
         url_name = request.GET.get("url_name")
@@ -1166,6 +1198,7 @@ class ResetDetailFieldsView(LoginRequiredMixin, View):
     """Reset detail view fields to default."""
 
     def post(self, request, *args, **kwargs):
+        """Delete saved detail field visibility for the given model/url_name and return reload script."""
         app_label = request.POST.get("app_label")
         model_name = request.POST.get("model_name")
         url_name = request.POST.get("url_name")
@@ -1188,6 +1221,7 @@ class SaveDetailFieldsView(LoginRequiredMixin, View):
     """Save header and details field order in one request (no per-move requests)."""
 
     def post(self, request, *args, **kwargs):
+        """Save header and details field order and return reload script."""
         app_label = request.POST.get("app_label")
         model_name = request.POST.get("model_name")
         url_name = request.POST.get("url_name")
@@ -1247,6 +1281,7 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
     form_class = SaveFilterListForm
 
     def get_initial(self):
+        """Populate initial data from request or from saved_list_id when editing."""
         initial = super().get_initial()
         saved_list_id = self.request.GET.get("saved_list_id") or self.request.POST.get(
             "saved_list_id"
@@ -1279,6 +1314,7 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
         return initial
 
     def get_context_data(self, **kwargs):
+        """Add query_params, is_edit, and main_url for the save filter form template."""
         context = super().get_context_data(**kwargs)
         saved_list_id = self.request.GET.get("saved_list_id") or self.request.POST.get(
             "saved_list_id"
@@ -1310,6 +1346,7 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
         return context
 
     def form_valid(self, form):
+        """Save or update the filter list and redirect with view_type or show form errors."""
         list_name = form.cleaned_data["list_name"]
         model_name = form.cleaned_data["model_name"]
         make_public = form.cleaned_data.get("make_public", False)
@@ -1343,7 +1380,9 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
                 }
                 query_params["view_type"] = view_type
                 redirect_url = f"{main_url}?{urlencode(query_params)}"
-                return HttpResponseRedirect(redirect_url)
+                return HorillaRedirectResponse(
+                    request=self.request, redirect_to=redirect_url
+                )
             except (
                 ValueError,
                 self.request.user.saved_filter_lists.model.DoesNotExist,
@@ -1378,7 +1417,9 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
             query_params["view_type"] = view_type
 
             redirect_url = f"{main_url}?{urlencode(query_params)}"
-            return HttpResponseRedirect(redirect_url)
+            return HorillaRedirectResponse(
+                request=self.request, redirect_to=redirect_url
+            )
         except IntegrityError:
             form.add_error(
                 "list_name", "A list with this name already exists for this model."
@@ -1386,6 +1427,7 @@ class SaveFilterListView(LoginRequiredMixin, FormView):
             return self.form_invalid(form)
 
     def form_invalid(self, form):
+        """Re-render the save filter form with validation errors."""
         return self.render_to_response(self.get_context_data(form=form))
 
 
@@ -1418,8 +1460,7 @@ class PinView(LoginRequiredMixin, View):
                     "view_type": view_type,
                     "all_view_types": True,
                 }
-                html = render_to_string("navbar.html", context)
-                return HttpResponse(html)
+                return render(request, "navbar.html", context)
 
             # else:
             PinnedView.all_objects.update_or_create(
@@ -1434,8 +1475,7 @@ class PinView(LoginRequiredMixin, View):
                 "pinned_view": {"view_type": view_type},
                 "all_view_types": True,
             }
-            html = render_to_string("navbar.html", context)
-            return HttpResponse(html)
+            return render(request, "navbar.html", context)
         except Exception:
             return HttpResponse(status=500)
 
@@ -1457,7 +1497,7 @@ class DeleteSavedListView(LoginRequiredMixin, View):
 
         if not saved_list_id:
             messages.error(request, "Invalid saved list ID.")
-            response = HttpResponseRedirect(main_url)
+            response = HorillaRedirectResponse(request=request, redirect_to=main_url)
             response["HX-Push-Url"] = "true"  # Add HTMX header
             return response
 
@@ -1489,7 +1529,7 @@ class DeleteSavedListView(LoginRequiredMixin, View):
         view_type = pinned_view.view_type if pinned_view else "all"
         query_params["view_type"] = view_type
         redirect_url = f"{main_url}?{urlencode(query_params)}"
-        response = HttpResponseRedirect(redirect_url)
+        response = HorillaRedirectResponse(request=request, redirect_to=redirect_url)
         response["HX-Push-Url"] = "true"
         return response
 
@@ -1610,7 +1650,7 @@ class EditFieldView(LoginRequiredMixin, View):
                 # Convert to user's timezone if available
                 if user and hasattr(user, "time_zone") and user.time_zone:
                     try:
-                        user_tz = pytz.timezone(user.time_zone)
+                        user_tz = ZoneInfo(user.time_zone)
                         # Make aware if naive
                         if timezone.is_naive(dt_value):
                             dt_value = timezone.make_aware(
@@ -1729,7 +1769,10 @@ class UpdateFieldView(LoginRequiredMixin, View):
                 if values and values != [""]:  # Only add if there are selected values
                     related_manager.add(*values)
             except Exception as e:
-                return HttpResponse(f"Error updating field: {str(e)}", status=400)
+                msg = Template("Error updating field: {{ message }}").render(
+                    Context({"message": str(e)})
+                )
+                return HttpResponse(msg, status=400)
         else:
 
             value = request.POST.get(field_name)
@@ -1765,10 +1808,10 @@ class UpdateFieldView(LoginRequiredMixin, View):
                             try:
                                 setattr(obj, field_name, Decimal(value))
                             except InvalidOperation:
-                                return HttpResponse(
-                                    f"Invalid decimal value: {escape(value)}",
-                                    status=400,
-                                )
+                                msg = Template(
+                                    "Invalid decimal value: {{ value }}"
+                                ).render(Context({"value": value}))
+                                return HttpResponse(msg, status=400)
                         else:
                             setattr(obj, field_name, None)
 
@@ -1785,10 +1828,12 @@ class UpdateFieldView(LoginRequiredMixin, View):
                                 user = request.user
                                 if hasattr(user, "time_zone") and user.time_zone:
                                     try:
-                                        user_tz = pytz.timezone(user.time_zone)
-                                        # Make the parsed datetime aware in user's timezone
-                                        parsed_value = user_tz.localize(parsed_value)
                                         # Convert to UTC or default timezone for storage
+                                        user_tz = ZoneInfo(user.time_zone)
+                                        # Make the parsed datetime aware in user's timezone
+                                        parsed_value = parsed_value.replace(
+                                            tzinfo=user_tz
+                                        )
                                         parsed_value = parsed_value.astimezone(
                                             timezone.get_default_timezone()
                                         )
@@ -1806,10 +1851,10 @@ class UpdateFieldView(LoginRequiredMixin, View):
 
                                 setattr(obj, field_name, parsed_value)
                             except ValueError as e:
-                                return HttpResponse(
-                                    f"Invalid datetime format: {escape(value)}",
-                                    status=400,
-                                )
+                                msg = Template(
+                                    "Invalid datetime format: {{ value }}"
+                                ).render(Context({"value": value}))
+                                return HttpResponse(msg, status=400)
                         else:
                             setattr(obj, field_name, None)
 
@@ -1819,9 +1864,10 @@ class UpdateFieldView(LoginRequiredMixin, View):
                                 parsed_value = datetime.fromisoformat(value).date()
                                 setattr(obj, field_name, parsed_value)
                             except ValueError:
-                                return HttpResponse(
-                                    f"Invalid date format: {escape(value)}", status=400
-                                )
+                                msg = Template(
+                                    "Invalid date format: {{ value }}"
+                                ).render(Context({"value": value}))
+                                return HttpResponse(msg, status=400)
                         else:
                             setattr(obj, field_name, None)
 
@@ -1831,7 +1877,10 @@ class UpdateFieldView(LoginRequiredMixin, View):
                     obj.save()
 
                 except Exception as e:
-                    return HttpResponse(f"Error updating field: {str(e)}", status=400)
+                    msg = Template("Error updating field: {{ message }}").render(
+                        Context({"message": str(e)})
+                    )
+                    return HttpResponse(msg, status=400)
 
         # Get updated field info for display
         edit_view = EditFieldView()
@@ -2122,33 +2171,53 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
         if filter_path:
             try:
                 module_path, class_name = filter_path.rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                return getattr(module, class_name)
+                if not _is_allowed_import_module_path(module_path):
+                    logger.warning(
+                        "[Select2] Rejected disallowed filter_class module path: %s",
+                        module_path,
+                    )
+                else:
+                    module = importlib.import_module(module_path)
+                    return getattr(module, class_name)
             except Exception as e:
                 logger.error(
                     "[Select2] Could not import filter_class %s: %s", filter_path, e
                 )
 
-        # Search all FilterSet classes in the module and match by Meta.model
+        # Search all FilterSet classes in the module and match by Meta.model.
+        # Use the app's full Python path (app_config.name) so paths like
+        # horilla_crm.campaigns.filters are used when app_label is "campaigns".
         try:
-            filters_module = importlib.import_module(f"{app_label}.filters")
-            import django_filters
+            try:
+                app_config = apps.get_app_config(app_label)
+                filters_module_path = f"{app_config.name}.filters"
+            except LookupError:
+                filters_module_path = f"{app_label}.filters"
+            if not _is_allowed_import_module_path(filters_module_path):
+                logger.warning(
+                    "[Select2] Rejected disallowed filters module path: %s",
+                    filters_module_path,
+                )
+            else:
+                filters_module = importlib.import_module(filters_module_path)
+                import django_filters
 
-            model = apps.get_model(app_label=app_label, model_name=model_name)
+                model = apps.get_model(app_label=app_label, model_name=model_name)
 
-            for name, obj in inspect.getmembers(filters_module, inspect.isclass):
-                # Check if it's a FilterSet subclass (but not FilterSet itself)
-                if (
-                    issubclass(obj, django_filters.FilterSet)
-                    and obj is not django_filters.FilterSet
-                ):
-                    # Check if Meta.model matches the requested model
-                    if hasattr(obj, "Meta") and hasattr(obj.Meta, "model"):
-                        if obj.Meta.model == model:
-                            logger.info(
-                                "[Select2] Found filter class by model match: %s", name
-                            )
-                            return obj
+                for name, obj in inspect.getmembers(filters_module, inspect.isclass):
+                    # Check if it's a FilterSet subclass (but not FilterSet itself)
+                    if (
+                        issubclass(obj, django_filters.FilterSet)
+                        and obj is not django_filters.FilterSet
+                    ):
+                        # Check if Meta.model matches the requested model
+                        if hasattr(obj, "Meta") and hasattr(obj.Meta, "model"):
+                            if obj.Meta.model == model:
+                                logger.info(
+                                    "[Select2] Found filter class by model match: %s",
+                                    name,
+                                )
+                                return obj
         except Exception as e:
             logger.debug("[Select2] Could not auto-discover filter class: %s", e)
 
@@ -2181,6 +2250,12 @@ class HorillaSelect2DataView(LoginRequiredMixin, View):
             return None
         try:
             module_path, class_name = form_path.rsplit(".", 1)
+            if not _is_allowed_import_module_path(module_path):
+                logger.warning(
+                    "[Select2] Rejected disallowed form_class module path: %s",
+                    module_path,
+                )
+                return None
             module = importlib.import_module(module_path)
             return getattr(module, class_name)
         except Exception as e:
@@ -2233,15 +2308,19 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
             row_id, field_name, model_name, condition_model_str, existing_operator
         )
         if operator_oob:
-            widget_html = widget_html + operator_oob
+            widget_html = mark_safe(widget_html + operator_oob)
 
-        return HttpResponse(widget_html)
+        # Render via template engine to satisfy XSS defenses (content is built with format_html)
+        template = Template("{{ widget_html }}")
+        return HttpResponse(template.render(Context({"widget_html": widget_html})))
 
     def _get_field_type_for_condition(self, model_field):
         """Return field type string for operator matching (same logic as filter)."""
         field_class_name = model_field.__class__.__name__
         if field_class_name == "ForeignKey":
             return "foreignkey"
+        if field_class_name == "ManyToManyField":
+            return "manytomany"
         if hasattr(model_field, "choices") and model_field.choices:
             return "choice"
         if field_class_name == "DateTimeField":
@@ -2328,22 +2407,32 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                 (v, label) for v, label in full_choices if v in allowed_operators
             ]
 
-            options = []
-            for val, label in operator_choices:
-                selected = (
-                    ' selected="selected"' if str(val) == str(existing_operator) else ""
+            options_iter = (
+                (
+                    escape(force_str(val)),
+                    (
+                        ' selected="selected"'
+                        if str(val) == str(existing_operator)
+                        else ""
+                    ),
+                    escape(force_str(label)),
                 )
-                options.append(
-                    f'<option value="{force_str(val)}"{selected}>{force_str(label)}</option>'
-                )
-            options_html = "".join(options)
-            safe_row_id = force_str(row_id).replace('"', "&quot;")
-            return (
-                f'<div id="id_operator_{safe_row_id}_container" hx-swap-oob="true">'
-                f'<select name="operator_{safe_row_id}" id="id_operator_{safe_row_id}" '
-                f'class="js-example-basic-single headselect" '
-                f'data-placeholder="Select Operator">'
-                f"{options_html}</select></div>"
+                for val, label in operator_choices
+            )
+            options_html = format_html_join(
+                "",
+                '<option value="{}" {}>{}</option>',
+                options_iter,
+            )
+            return format_html(
+                '<div id="id_operator_{}_container" hx-swap-oob="true">'
+                '<select name="operator_{}" id="id_operator_{}" '
+                'class="js-example-basic-single headselect" '
+                'data-placeholder="Select Operator">{}</select></div>',
+                row_id,
+                row_id,
+                row_id,
+                options_html,
             )
         except Exception as e:
             logger.debug("GetFieldValueWidgetView operator OOB: %s", e)
@@ -2378,6 +2467,14 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
                 return self._render_text_input(row_id, existing_value)
 
             # Determine widget type based on field type
+            if isinstance(model_field, models.ManyToManyField):
+                related_model = model_field.related_model
+                queryset = related_model.objects.all()
+                choices = [(obj.pk, str(obj)) for obj in queryset]
+                existing_ids = [
+                    v.strip() for v in (existing_value or "").split(",") if v.strip()
+                ]
+                return self._render_multiselect_input(choices, row_id, existing_ids)
             if isinstance(model_field, models.ForeignKey):
                 related_model = model_field.related_model
                 # Get all objects for the select, but ensure existing_value is included
@@ -2427,102 +2524,138 @@ class GetFieldValueWidgetView(LoginRequiredMixin, View):
             return self._render_text_input(row_id, existing_value)
 
     def _render_text_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="text" name="value_{row_id}"  id="id_value_{row_id}" value="{existing_value}" placeholder="Enter Value"
-            class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
-        >
-        """
+        return format_html(
+            '<input type="text" name="value_{}" id="id_value_{}" value="{}" placeholder="Enter Value" '
+            'class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_select_input(self, choices, row_id, existing_value=""):
-        options = '<option value="">---------</option>'
-        for choice_value, choice_label in choices:
-            selected = "selected" if str(choice_value) == str(existing_value) else ""
-            options += (
-                f'<option value="{choice_value}" {selected}>{choice_label}</option>'
+        options_iter = (
+            (
+                choice_value,
+                "selected" if str(choice_value) == str(existing_value) else "",
+                choice_label,
             )
+            for choice_value, choice_label in choices
+        )
+        options_html = format_html(
+            '<option value="">---------{}</option>', ""
+        ) + format_html_join(
+            "",
+            '<option value="{}" {}>{}</option>',
+            options_iter,
+        )
+        return format_html(
+            '<select name="value_{}" id="id_value_{}" class="js-example-basic-single headselect">{}</select>',
+            row_id,
+            row_id,
+            options_html,
+        )
 
-        return f"""<select name="value_{row_id}" id="id_value_{row_id}" class="js-example-basic-single headselect">{options}</select>"""
+    def _render_multiselect_input(self, choices, row_id, existing_values=None):
+        """Render a multi-select for ManyToManyField; existing_values is a list of selected IDs (str or int)."""
+        existing_set = set(force_str(v) for v in (existing_values or []))
+        options_iter = (
+            (
+                choice_value,
+                "selected" if force_str(choice_value) in existing_set else "",
+                choice_label,
+            )
+            for choice_value, choice_label in choices
+        )
+        options_html = format_html_join(
+            "",
+            '<option value="{}" {}>{}</option>',
+            options_iter,
+        )
+        return format_html(
+            '<select name="value_{}" id="id_value_{}" multiple class="js-example-basic-multiple headselect w-full h-full" data-placeholder="{}">{}</select>',
+            row_id,
+            row_id,
+            _("Select value(s)"),
+            options_html,
+        )
 
     def _render_boolean_input(self, row_id, existing_value=""):
         true_selected = "selected" if existing_value == "True" else ""
         false_selected = "selected" if existing_value == "False" else ""
-
-        return f"""
-        <select name="value_{row_id}"
-                id="id_value_{row_id}"
-                class="js-example-basic-single headselect">
-            <option value="">---------</option>
-            <option value="True" {true_selected}>True</option>
-            <option value="False" {false_selected}>False</option>
-        </select>
-        """
+        return format_html(
+            '<select name="value_{}" id="id_value_{}" class="js-example-basic-single headselect">'
+            '<option value="">---------</option>'
+            '<option value="True" {}>True</option>'
+            '<option value="False" {}>False</option></select>',
+            row_id,
+            row_id,
+            true_selected,
+            false_selected,
+        )
 
     def _render_date_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="date"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
-        """
+        return format_html(
+            '<input type="date" name="value_{}" id="id_value_{}" value="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_datetime_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="datetime-local"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
-        """
+        return format_html(
+            '<input type="datetime-local" name="value_{}" id="id_value_{}" value="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_time_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="time"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">
-        """
+        return format_html(
+            '<input type="time" name="value_{}" id="id_value_{}" value="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_number_input(self, row_id, existing_value="", step="1"):
-        return f"""
-        <input type="number"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               step="{step}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
-               placeholder="Enter Number">
-        """
+        return format_html(
+            '<input type="number" name="value_{}" id="id_value_{}" value="{}" step="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" placeholder="Enter Number">',
+            row_id,
+            row_id,
+            existing_value,
+            step,
+        )
 
     def _render_email_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="email"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
-               placeholder="Enter Email">
-        """
+        return format_html(
+            '<input type="email" name="value_{}" id="id_value_{}" value="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" placeholder="Enter Email">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_url_input(self, row_id, existing_value=""):
-        return f"""
-        <input type="url"
-               name="value_{row_id}"
-               id="id_value_{row_id}"
-               value="{existing_value}"
-               class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md  focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600"
-               placeholder="Enter URL">
-        """
+        return format_html(
+            '<input type="url" name="value_{}" id="id_value_{}" value="{}" '
+            'class="text-color-600 p-2 placeholder:text-xs w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" placeholder="Enter URL">',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
     def _render_textarea_input(self, row_id, existing_value=""):
-        return f"""
-        <textarea name="value_{row_id}"
-                  id="id_value_{row_id}"
-                  rows="3"
-                  class="text-color-600 p-2 w-full border border-dark-50 rounded-md focus-visible:outline-0 text-sm transition focus:border-primary-600"
-                  placeholder="Enter Value">{existing_value}</textarea>
-        """
+        return format_html(
+            '<textarea name="value_{}" id="id_value_{}" rows="3" '
+            'class="text-color-600 p-2 w-full border border-dark-50 rounded-md focus-visible:outline-0 text-sm transition focus:border-primary-600" placeholder="Enter Value">{}</textarea>',
+            row_id,
+            row_id,
+            existing_value,
+        )
 
 
 @method_decorator(htmx_required, name="dispatch")

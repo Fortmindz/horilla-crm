@@ -11,19 +11,21 @@ import logging
 import re
 from datetime import date, datetime, time
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfo
+
+from dateutil import parser as dateutil_parser
 
 # Third-party imports
-import pytz
-from dateutil import parser as dateutil_parser
 from django import template
 from django.apps import apps
 from django.db import models
 from django.db.models import Manager, QuerySet
 from django.forms import BaseForm
 from django.templatetags.static import static
-from django.urls import NoReverseMatch, reverse
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_str
+from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
@@ -76,7 +78,7 @@ def format_datetime_value(value, user=None, company=None, convert_timezone=True)
             )
             if tz_str:
                 try:
-                    user_tz = pytz.timezone(tz_str)
+                    user_tz = ZoneInfo(tz_str)
                     if timezone.is_naive(value):
                         value = timezone.make_aware(
                             value, timezone.get_default_timezone()
@@ -325,31 +327,41 @@ def render_action_button(action, obj):
         other_classes = [c for c in classes if c not in size_classes]
         image_class = " ".join(other_classes)
 
-        return mark_safe(
-            f"""
-                <button {attrs} class='group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center'>
-                    <img src="{static_url}" alt="{tooltip}" width="16" class="{image_class}" />
-                    <div class="min-w-max z-40 absolute h-auto py-[3px] px-[15px] right-[40px] top-0 bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                        <p>{tooltip}</p>
-                    </div>
-                </button>
-        """
+        return format_html(
+            "<button {} class='group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center'>"
+            '<img src="{}" alt="{}" width="16" class="{}" />'
+            '<div class="min-w-max z-40 absolute h-auto py-[3px] px-[15px] right-[40px] top-0 bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">'
+            "<p>{}</p>"
+            "</div>"
+            "</button>",
+            mark_safe(attrs),
+            escape(static_url),
+            escape(tooltip),
+            escape(image_class),
+            escape(tooltip),
         )
 
     if "icon" in action:
         icon_name = action.get("icon", "")
         icon_class = action.get("icon_class", "")
-        button_class = action.get("class", "")
-        return mark_safe(
-            f'<button class="w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center" {attrs} title="{tooltip}">'
-            f'<i class="{icon_name} {icon_class}"></i>'
-            f"</button>"
+        return format_html(
+            '<button class="w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center" {} title="{}">'
+            '<i class="{} {}"></i>'
+            "</button>",
+            mark_safe(attrs),
+            escape(tooltip),
+            escape(icon_name),
+            escape(icon_class),
         )
 
     # else:
     button_class = action.get("class", "")
-    return mark_safe(
-        f'<button class="{button_class}" {attrs} title="{tooltip}">{tooltip}</button>'
+    return format_html(
+        '<button class="{}" {} title="{}">{}</button>',
+        escape(button_class),
+        mark_safe(attrs),
+        escape(tooltip),
+        escape(tooltip),
     )
 
 
@@ -591,15 +603,6 @@ def get_view_all_url(obj, related_list):
     return ""
 
 
-@register.simple_tag
-def safe_url(viewname, *args, **kwargs):
-    """Safely reverse a view name; return '#' if reversing the URL fails."""
-    try:
-        return reverse(viewname, args=args, kwargs=kwargs)
-    except NoReverseMatch:
-        return "#"
-
-
 @register.filter
 def sanitize_id(value):
     """
@@ -664,12 +667,14 @@ def render_field_with_name(context, form, field_name, row_id=None, selected_valu
         # If value widget HTML not found, fall back to default text input
         # This ensures the value field always appears
         if not form or field_name not in form.fields:
-            return mark_safe(
-                f'<input type="text" '
-                f'name="value_{row_id}" '
-                f'id="id_value_{row_id}" '
-                f'class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" '
-                f'placeholder="Enter Value">'
+            return format_html(
+                '<input type="text" '
+                'name="value_{}" '
+                'id="id_value_{}" '
+                'class="text-color-820 p-2 placeholder:text-xs pr-[40px] w-full border border-dark-50 rounded-md focus-visible:outline-0 placeholder:text-dark-100 text-sm [transition:.3s] focus:border-primary-600" '
+                'placeholder="Enter Value">',
+                row_id,
+                row_id,
             )
 
     if form and field_name in form.fields:
@@ -677,13 +682,16 @@ def render_field_with_name(context, form, field_name, row_id=None, selected_valu
         field_html = str(field)
 
         if row_id:
+            safe_name = escape(field_name)
+            safe_row_id = escape(str(row_id))
             field_html = field_html.replace(
-                f'name="{field_name}"', f'name="{field_name}_{row_id}"'
+                f'name="{field_name}"',
+                format_html('name="{}_{}"', safe_name, safe_row_id),
             )
 
             field_html = re.sub(
-                rf'id="id_{field_name}(_\d*)?"',
-                f'id="id_{field_name}_{row_id}"',
+                rf'id="id_{re.escape(field_name)}(_\d*)?"',
+                f'id="id_{safe_name}_{safe_row_id}"',
                 field_html,
             )
 
@@ -704,12 +712,16 @@ def render_field_with_name(context, form, field_name, row_id=None, selected_valu
                 if hasattr(selected_value, "pk"):
                     selected_value = selected_value.pk
 
+                safe_value = escape(str(selected_value))
                 field_html = re.sub(r' value="[^"]*"', "", field_html)
                 field_html = re.sub(
-                    r"(<input[^>]*?)>", rf'\1 value="{selected_value}">', field_html
+                    r"(<input[^>]*?)>",
+                    format_html(r'\1 value="{}">', safe_value),
+                    field_html,
                 )
 
-        return mark_safe(field_html)
+        # field_html is from Django's form widget (safe) and we escaped dynamic parts
+        return format_html("{}", mark_safe(field_html))
 
     return ""
 
