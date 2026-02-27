@@ -1,3 +1,7 @@
+"""
+This module provides helper methods for creating notifications and limiting content types for notifications in the Horilla framework. It includes a function to create notifications with optional linking to related objects, and a function to limit
+"""
+
 # Notification helper methods
 
 from django.contrib.contenttypes.models import ContentType
