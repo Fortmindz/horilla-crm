@@ -77,10 +77,10 @@
                             {% for field_name in form_data.selected_fields %}
                                 {% for field in lead_fields %}
                                     {% if field.name == field_name %}
-                                    <div class="selected-field mb-1 bg-primary-100 rounded-md px-1.5 py-2 text-xs font-medium flex justify-between items-center">
+                                    <div class="selected-field mb-1 bg-primary-100 border border-dark-50 rounded-md px-1.5 py-2 text-xs font-medium flex justify-between items-center shadow-sm">
                                         <span>{{ field.verbose_name }}</span>
                                         <input type="hidden" name="selected_fields[]" value="{{ field.name }}">
-                                        <button type="button" class="text-red-500 hover:text-red-700" onclick="this.closest('.selected-field').remove(); document.body.dispatchEvent(new Event('updatePreview'));">×</button>
+                                        <button type="button" class="shrink-0 w-6 h-6 flex items-center justify-center p-0 text-red-500 hover:text-red-700 text-base leading-none" onclick="this.closest('.selected-field').remove(); document.body.dispatchEvent(new Event('updatePreview'));">×</button>
                                     </div>
                                     {% endif %}
                                 {% endfor %}
