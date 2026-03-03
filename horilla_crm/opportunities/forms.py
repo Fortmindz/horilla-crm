@@ -7,10 +7,11 @@ import logging
 from django import forms
 from django.db import models
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+
+from horilla.auth.models import User
 
 # Horilla / first-party imports
-from horilla.auth.models import User
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_crm.opportunities.models import (
     DefaultOpportunityMember,
@@ -442,6 +443,8 @@ class AddDefaultTeamForm(forms.Form):
         kwargs.pop("condition_fields", None)
         kwargs.pop("condition_model", None)
         kwargs.pop("condition_field_choices", None)
+        kwargs.pop("condition_related_name", None)
+        kwargs.pop("condition_related_name_candidates", None)
         kwargs.pop("hidden_fields", None)
         kwargs.pop("row_id", None)
         self.request = kwargs.pop("request", None)

@@ -3,10 +3,13 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the horilla_automations app
 """
 
+# Third party imports (Django)
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.menu import settings_menu
+
+# First party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 
 # Define your menu registration logic here
 

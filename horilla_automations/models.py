@@ -8,11 +8,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse_lazy
 from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
 
 from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.registry.permission_registry import permission_exempt_model
 from horilla.utils.choices import OPERATOR_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla core imports
 from horilla_core.models import HorillaContentType, HorillaCoreModel

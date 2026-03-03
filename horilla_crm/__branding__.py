@@ -1,6 +1,7 @@
 """Branding configuration constants for Horilla CRM."""
 
-from django.utils.translation import gettext_lazy as _
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 
 TITLE = "Horilla CRM"
 LOGIN_WELCOME_LINE = "Welcome to Horilla CRM"

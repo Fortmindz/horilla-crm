@@ -13,11 +13,12 @@ from django.db import transaction
 from django.db.models import Case, F, IntegerField, Q, When
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import Signal, receiver
-from django.shortcuts import render
 from django.urls import reverse_lazy
 
-# First-party / Horilla imports
 from horilla.auth.models import User
+
+# First-party / Horilla imports
+from horilla.shortcuts import render
 from horilla_core.signals import company_created, company_currency_changed
 from horilla_crm.leads.models import (
     Lead,

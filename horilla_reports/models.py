@@ -4,13 +4,17 @@ Includes `Report` and `ReportFolder` models with helper properties
 for presentation and serialization used by the reports UI.
 """
 
+# Standard library imports
 import json
 
 from django.conf import settings
+
+# Third-party imports (Django)
 from django.db import models
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_reports.methods import limit_content_types
 from horilla_utils.methods import render_template

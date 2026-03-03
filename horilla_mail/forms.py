@@ -5,14 +5,16 @@ This module contains Django forms for managing email templates,
 mail configurations, and mail-related functionality.
 """
 
+# Third-party imports (Django)
 from django import forms
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db.models import Q
 from django.utils.html import strip_tags
-from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.forms import HorillaModelForm, PasswordInputWithEye
 from horilla_mail.models import HorillaMailConfiguration, HorillaMailTemplate
 

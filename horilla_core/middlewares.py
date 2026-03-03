@@ -11,14 +11,15 @@ import logging
 
 # Django imports
 from django.http import HttpResponse, HttpResponseNotAllowed
-from django.shortcuts import redirect, render
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
-# Local application imports
 from horilla.exceptions import HorillaHttp404
 from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
+
+# Local application imports
+from horilla.shortcuts import redirect, render
 
 from .models import Company
 
@@ -216,7 +217,8 @@ class EnsureSectionMiddleware(MiddlewareMixin):
         # Get current section value
         current_section = request.GET.get("section", "").strip()
 
-        # Check if section parameter is missing or empty
+        # If a section is already present in the request, do not modify it.
+        # Only when the section parameter is missing or empty, derive it from the path.
         if not current_section:
             section = self.get_section_from_path(request.path)
 
@@ -227,20 +229,6 @@ class EnsureSectionMiddleware(MiddlewareMixin):
 
                 new_url = f"{request.path}?{query_params.urlencode()}"
                 return redirect(new_url)
-        else:
-            # Validate if the current section exists in menu_registry
-            valid_sections = self.get_valid_sections()
-
-            # If current section is invalid, try to get the correct one
-            if current_section not in valid_sections:
-                section = self.get_section_from_path(request.path)
-
-                if section:
-                    query_params = request.GET.copy()
-                    query_params["section"] = section
-
-                    new_url = f"{request.path}?{query_params.urlencode()}"
-                    return redirect(new_url)
 
         return None
 
@@ -260,6 +248,16 @@ class EnsureSectionMiddleware(MiddlewareMixin):
     def get_section_from_path(self, path):
         """Extract section by matching path with menu_registry URLs"""
         try:
+            # Special case: root path mapped to home view
+            # If the resolved URL name is 'home_view', we want section to be 'home'
+            try:
+                resolved_root = resolve(path)
+                if getattr(resolved_root, "url_name", None) == "home_view":
+                    return "home"
+            except Resolver404:
+                # If root cannot be resolved, fall back to normal logic
+                pass
+
             # First, try to match by URL
             for menu_cls in menu_registry:
                 menu_url = str(getattr(menu_cls, "url", ""))

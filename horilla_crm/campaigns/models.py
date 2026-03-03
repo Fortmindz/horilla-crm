@@ -13,9 +13,11 @@ from django.conf import settings
 from django.db import models
 from django.forms import ValidationError
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 # First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.models import HorillaCoreModel
 from horilla_utils.middlewares import _thread_local
 

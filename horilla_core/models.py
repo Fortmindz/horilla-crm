@@ -34,7 +34,6 @@ from django.utils import timezone
 from django.utils.formats import time_format
 from django.utils.html import format_html, format_html_join
 from django.utils.text import slugify
-from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 from djmoney.settings import CURRENCY_CHOICES
 from multiselectfield import MultiSelectField
@@ -52,6 +51,7 @@ from horilla.utils.choices import (
     TIME_FORMAT_CHOICES,
     TIMEZONE_CHOICES,
 )
+from horilla.utils.translation import gettext_lazy as _
 from horilla_utils.methods import render_template
 from horilla_utils.middlewares import _thread_local
 

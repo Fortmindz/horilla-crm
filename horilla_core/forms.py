@@ -13,10 +13,11 @@ from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_generics.forms import (
     HorillaModelForm,

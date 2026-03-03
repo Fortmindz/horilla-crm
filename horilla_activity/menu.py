@@ -3,10 +3,13 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla  Activities app
 """
 
+# Third party imports (Django)
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.menu import sub_section_menu
+
+# First party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 
 
 @sub_section_menu.register
@@ -19,7 +22,7 @@ class ActivitySubSection:
     verbose_name = _("Activities")
     icon = "assets/icons/activity.svg"
     url = reverse_lazy("horilla_activity:activity_view")
-    app_label = "activity"
+    app_label = "horilla_activity"
     position = 2
     attrs = {
         "hx-boost": "true",

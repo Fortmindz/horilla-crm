@@ -13,15 +13,16 @@ from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.html import strip_tags
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views import View
 
-# First-party / Horilla imports
 from horilla.auth.models import User
+
+# First-party / Horilla imports
+from horilla.shortcuts import redirect, render
 from horilla_core.models import Company
 from horilla_mail.models import HorillaMailConfiguration
 

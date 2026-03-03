@@ -23,7 +23,6 @@ from django.apps import apps
 from django.core.mail import get_connection
 from django.db import models
 from django.utils import timezone
-from django.utils.translation import gettext as _
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from reportlab.lib import colors
@@ -31,6 +30,9 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 # First-party / Horilla imports
+from horilla.utils.translation import gettext as _
+
+# First-party / Horilla core imports
 from horilla_core.views.export_data import get_export_cell_value
 from horilla_utils.middlewares import _thread_local
 

@@ -21,12 +21,12 @@ from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
 from django.urls import reverse_lazy
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
 # First-party / Horilla imports
 from horilla.registry.permission_registry import permission_exempt_model
 from horilla.utils.choices import OPERATOR_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import Company, HorillaCoreModel
 from horilla_mail.models import HorillaMailConfiguration
 from horilla_utils.methods import render_template

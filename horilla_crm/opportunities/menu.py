@@ -3,8 +3,8 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla CRM Opportunities app
 """
 
+# Third-party imports (Django)
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.menu import (
     floating_menu,
@@ -12,6 +12,9 @@ from horilla.menu import (
     settings_menu,
     sub_section_menu,
 )
+
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_crm.opportunities.models import (
     Opportunity,
     OpportunitySettings,

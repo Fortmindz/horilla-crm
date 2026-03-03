@@ -1,20 +1,25 @@
 """Custom email backend supporting SMTP and Outlook via Microsoft Graph API."""
 
+# Third-party imports
 import logging
 import re
 from datetime import datetime, timedelta
 from email.utils import formataddr
 
+# Standard library imports
 import requests
+
+# Third party imports (Django)
 from django.conf import settings
 from django.contrib import messages
 from django.core.cache import cache
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from requests_oauthlib import OAuth2Session
 
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_mail.models import HorillaMailConfiguration
 from horilla_utils.middlewares import _thread_local
 

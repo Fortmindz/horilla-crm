@@ -12,14 +12,15 @@ from django.contrib import messages
 from django.core.management import call_command
 from django.db import connection, transaction
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from django.views import View
 
-# First-party / Horilla imports
 from horilla.auth.models import User
 from horilla.http import safe_url
+
+# First-party / Horilla imports
+from horilla.shortcuts import redirect, render
+from horilla.utils.translation import gettext_lazy as _
 
 
 def set_sqlite_foreign_keys(enabled: bool):

@@ -9,9 +9,9 @@ from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.utils.choices import LANGUAGE_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla imports
 from horilla_core.models import HorillaCoreModel

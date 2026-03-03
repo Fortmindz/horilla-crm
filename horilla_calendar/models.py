@@ -1,16 +1,20 @@
 """Models for user calendar preferences and availability in Horilla"""
 
+# Third party imports (Django)
 from django.conf import settings
 from django.db import models
 from django.urls import reverse_lazy
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 
+# First party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.models import HorillaCoreModel
 
 
 class UserCalendarPreference(HorillaCoreModel):
-    """Model to store user calegit ndar preferences."""
+    """Model to store user calendar preferences."""
 
     CALENDAR_TYPES = (
         ("task", _("Task")),

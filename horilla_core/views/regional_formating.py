@@ -5,11 +5,13 @@ This view handles the methods for regional Formating view
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import render
-from django.utils.translation import gettext_lazy as _
 from django.views.generic import FormView
 
 # First-party / Horilla imports
+from horilla.shortcuts import render
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.forms import RegionalFormattingForm
 
 

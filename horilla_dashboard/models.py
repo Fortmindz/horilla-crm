@@ -10,12 +10,12 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.registry.permission_registry import permission_exempt_model
+from horilla.utils.choices import OPERATOR_CHOICES
 
 # First-party / Horilla imports
-from horilla.utils.choices import OPERATOR_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
 from horilla_dashboard.methods import limit_content_types
 from horilla_reports.models import Report

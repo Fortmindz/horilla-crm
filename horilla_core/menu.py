@@ -3,11 +3,16 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla Core app.
 """
 
+# Third party imports (Django)
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
 from horilla.auth.models import User
 from horilla.menu import my_settings_menu, settings_menu
+
+# First party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.models import CustomerRole, Department, PartnerRole, Role, TeamRole
 
 

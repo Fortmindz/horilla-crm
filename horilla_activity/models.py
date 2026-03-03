@@ -10,9 +10,14 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
+# Third party imports (Django)
+from django.urls import reverse_lazy
+
+# First party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.models import HorillaCoreModel
 
 

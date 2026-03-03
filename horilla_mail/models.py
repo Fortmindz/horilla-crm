@@ -1,16 +1,19 @@
 """Models for Horilla Mail App"""
 
+# Standard library imports
 import mimetypes
 import re
 
+# Third party imports (Django)
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.template import engines
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
 from horilla_mail.encryption_utils import decrypt_password
 from horilla_mail.fields import EncryptedCharField
