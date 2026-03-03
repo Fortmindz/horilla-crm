@@ -80,6 +80,8 @@
   border: unset !important;
   padding: 15px;
   font-size: 0.85rem;
+  /* Above FullCalendar's "more" list popover (z-index 9999) so detail shows on top */
+  z-index: 10050;
 }
 #popupContent button {
   text-align: left;

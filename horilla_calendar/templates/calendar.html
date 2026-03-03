@@ -11,6 +11,13 @@
         hx-swap="innerHTML">
         {% trans "Mark Unavailable" %}
     </button>
+    <button id="newActivityBtn" style="display: none;"
+        hx-get="{% url 'horilla_activity:activity_create_form' %}"
+        hx-vals="{}"
+        hx-target="#modalBox"
+        hx-swap="innerHTML">
+        {% trans "New Activity" %}
+    </button>
     <div id="mainContent" class="flex-[1_0] leftspace transition-all duration-300 ease-in-out pt-0">
         <button id="reloadMainContent" style="display: none;" hx-get="{% url 'horilla_calendar:calendar_view' %}{% if request.GET.display_only %}?display_only={{ request.GET.display_only }}{% endif %}" hx-target="#mainContent" hx-select="#mainContent"  hx-swap="outerHTML">
             Reload Content
@@ -105,7 +112,7 @@
                 .then(data => {
                     if (data.status === 'success') {
                         $('#reloadMainContent').click();
-                        $("#calendarPopup").addClass("hidden");
+                        if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                     } else {
                         alert('Error updating status: ' + (data.message || 'Unknown error'));
                     }
@@ -125,7 +132,7 @@
                     if (typeof openModal === 'function') {
                         openModal();
                     }
-                    $("#calendarPopup").addClass("hidden");
+                    if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                 }).catch(error => {
                     console.error('Error editing event:', error);
                     alert('Failed to load edit form');
@@ -152,7 +159,7 @@
                     if (typeof openDeleteModeModal === 'function') {
                         openDeleteModeModal();
                     }
-                    $("#calendarPopup").addClass("hidden");
+                    if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                 }).catch(error => {
                     console.error('Error deleting event:', error);
                     alert('Failed to delete event');
@@ -174,41 +181,37 @@
                         'X-CSRFToken': '{{ csrf_token }}'
                     }
                 }).then(() => {
-                    $("#calendarPopup").addClass("hidden");
+                    if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                 }).catch(error => {
                     console.error('Error loading event details:', error);
                     alert('Failed to load event details');
                 });
             }
 
-            function createNewActivity(date) {
-                htmx.ajax('GET', '{% url "horilla_activity:activity_create_form" %}?date=' + date + '&view=calendar', {
-                    target: '#modalBox',
-                    swap: 'innerHTML'
-                }).then(() => {
-                    if (typeof openModal === 'function') {
-                        openModal();
-                    }
-                    $("#calendarPopup").addClass("hidden");
-                }).catch(error => {
-                    console.error('Error creating new activity:', error);
-                    alert('Failed to load new activity form');
-                });
+            function createNewActivity(clickedDate) {
+                const hiddenBtn = document.getElementById('newActivityBtn');
+                const data = {
+                    start_date_time: clickedDate,
+                    view: 'calendar'
+                };
+                hiddenBtn.setAttribute('hx-vals', JSON.stringify(data));
+                hiddenBtn.click();
+                if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
             }
 
             function markDateUnavailable(clickedDate) {
                 const hiddenBtn = document.getElementById('markUnavailableBtn');
                 const data = {
                     start_date_time: clickedDate,
-
                 };
                 hiddenBtn.setAttribute('hx-vals', JSON.stringify(data));
                 hiddenBtn.click();
-                $("#calendarPopup").addClass("hidden");
+                if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
             }
 
             document.addEventListener('htmx:afterRequest', function(event) {
-                if (event.detail.elt.id === 'markUnavailableBtn' && event.detail.xhr.status === 200) {
+                const elId = event.detail.elt.id;
+                if (event.detail.xhr.status === 200 && (elId === 'markUnavailableBtn' || elId === 'newActivityBtn')) {
                     if (typeof openModal === 'function') {
                         openModal();
                     }
@@ -473,15 +476,12 @@
                     },
                     ...( (window.hasActivityCreatePerm || window.hasUnavailabilityCreatePerm) ? {
                         dateClick: function (info) {
-                            // Use click position so the popup appears at the clicked cell (dayEl is the
-                            // whole day column in week/day view, so its top would always be the first cell).
+
                             const containerEl = document.getElementById('calendar-container') || calendarEl;
                             const containerRect = containerEl.getBoundingClientRect();
                             const x = info.jsEvent.clientX - containerRect.left;
                             const y = info.jsEvent.clientY - containerRect.top;
                             const clickedDate = info.dateStr;
-
-                            // Escape the date to prevent XSS (for JavaScript context)
                             const safeClickedDate = escapeJsString(clickedDate);
 
                             let content = '<div class="flex flex-col gap-2">';
@@ -492,7 +492,7 @@
                                         onclick="createNewActivity('${safeClickedDate}')"
                                         class="text-blue-600 hover:underline text-sm"
                                     >
-{% trans 'New Activity' %}
+                                        {% trans 'New Activity' %}
                                     </button>
                                 `;
                             }
@@ -660,7 +660,15 @@
                                 if (data.status === 'success') {
                                     calendar.getEventSources().forEach(source => source.remove());
                                     calendar.addEventSource(data.events);
-                                    $('#reloadMainContent').click();
+
+                                    const calendarUrl = '{% url "horilla_calendar:calendar_view" %}';
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.delete('display_only');
+                                    if (window.history.replaceState) {
+                                        window.history.replaceState(null, '', url.toString());
+                                    }
+                                    window.currentDisplayOnly = '';
+                                    htmx.ajax('GET', calendarUrl, { target: '#mainContent', swap: 'outerHTML', select: '#mainContent' });
                                 } else {
                                     console.error('Error fetching events:', data.message);
                                 }
@@ -718,7 +726,15 @@
                                         success: function(data) {
                                             if (data.status === 'success') {
                                                 calendar.addEventSource(data.events);
-                                                $('#reloadMainContent').click();
+                                                // Reload without display_only; clear URL so checkboxes stay in sync
+                                                const calendarUrl = '{% url "horilla_calendar:calendar_view" %}';
+                                                const url = new URL(window.location.href);
+                                                url.searchParams.delete('display_only');
+                                                if (window.history.replaceState) {
+                                                    window.history.replaceState(null, '', url.toString());
+                                                }
+                                                window.currentDisplayOnly = '';
+                                                htmx.ajax('GET', calendarUrl, { target: '#mainContent', swap: 'outerHTML', select: '#mainContent' });
                                             } else {
                                                 console.error('Error fetching events:', data.message);
                                             }
@@ -759,9 +775,9 @@
                     }
                 }
 
-                // Sync checkbox state with "Display This Only" after HTMX settle
+                // Sync checkbox state with "Display This Only" after HTMX settle.
                 $(document).on('htmx:afterSettle', function() {
-                    const displayOnly = '{{ request.GET.display_only|default:"" }}';
+                    const displayOnly = new URLSearchParams(window.location.search).get('display_only') || '';
                     if (displayOnly) {
                         $('.calendar-checkbox').each(function() {
                             const type = this.dataset.calendarType;
@@ -782,20 +798,28 @@
                     popupContent.innerHTML = content;
                     popup.style.left = `${x}px`;
                     popup.style.top = `${y}px`;
-                    $(popup).removeClass("hidden");
+                    $(popup).removeClass("hidden").addClass("fc-popover");
+                }
+                function hideDetailPopup() {
+                    $(popup).addClass("hidden").removeClass("fc-popover");
                 }
 
-                $("#closePopupBtn").on("click", () => {
-                    $(popup).addClass("hidden");
+                $("#closePopupBtn").on("click", function (e) {
+                    e.stopPropagation();
+                    hideDetailPopup();
                 });
 
-                $(document).on("click", function (e) {
-                    if (!$(popup).has(e.target).length && !$(e.target).closest(".fc-event").length) {
-                        $(popup).addClass("hidden");
-                    }
-                });
+                // Use capture phase so we run before FullCalendar removes the list popover from DOM
+                document.addEventListener("click", function (e) {
+                    if ($(popup).hasClass("hidden")) return;
+                    if ($(popup).has(e.target).length) return;
+                    if ($(e.target).closest(".fc-event").length) return;
+                    if ($(e.target).closest(".fc-popover").length) return;
+                    hideDetailPopup();
+                }, true);
 
                 window.showPopup = showPopup;
+                window.hideDetailPopup = hideDetailPopup;
             }
 
 

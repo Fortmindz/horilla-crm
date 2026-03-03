@@ -7225,7 +7225,8 @@ var FullCalendar = (function (exports) {
             this.handleDocumentMouseDown = (ev) => {
                 // only hide the popover if the click happened outside the popover
                 const target = getEventTargetViaRoot(ev);
-                if (!this.rootEl.contains(target)) {
+                // do not close when click is inside the calendar detail popup (#calendarPopup)
+                if (!this.rootEl.contains(target) && !elementClosest(target, '#calendarPopup')) {
                     this.handleCloseClick();
                 }
             };
