@@ -284,6 +284,12 @@ const SidebarManager = {
         return pathParts[0] || 'horilla_core';
     },
 
+    /**
+     * Prefer app label from the page (server-rendered) so subsection active state
+     * matches menu app_label (e.g. horilla_dashboard, horilla_reports) when it
+     * differs from the first URL path segment (e.g. dashboard, reports).
+     */
+
     getSectionFromAppLabel(appLabel) {
         const APP_SECTION_MAPPING = window.APP_SECTION_MAPPING || {};
         for (const [section, apps] of Object.entries(APP_SECTION_MAPPING)) {
