@@ -192,7 +192,6 @@ function openContentModalSecond() { ModalManager.open("contentModalSecond", "con
 function closeContentModalSecond() { ModalManager.close("contentModalSecond", "contentModalBoxSecond"); }
 function openDetailModal() { ModalManager.open("detailModal", "detailModalBox"); }
 function closeDetailModal() { ModalManager.close("detailModal", "detailModalBox"); }
-document.body.addEventListener("openNotificationDetailModal", function () { openModal(); });
 function openModal() { ModalManager.open("dbmodal", "modalBox"); }
 function closeModal() { ModalManager.close("dbmodal", "modalBox"); }
 function openhorillaModal() { ModalManager.open("horillaModal", "horillaModalBox"); }
@@ -205,6 +204,7 @@ function openDeleteModeModal() { ModalManager.open("deleteModeModal", "deleteMod
 function closeDeleteModeModal() { ModalManager.close("deleteModeModal", "deleteModeBox"); }
 function openExport() { ModalManager.open("exportModal", "exportBox"); }
 function closeExport() { ModalManager.close("exportModal", "exportBox", false); }
+document.body.addEventListener("openNotificationDetailModal", function () { openModal(); });
 
 function closeConfirm(button) {
     const modal = button.closest(".modal-wrapper");
@@ -284,11 +284,41 @@ const SidebarManager = {
         return pathParts[0] || 'horilla_core';
     },
 
-    /**
-     * Prefer app label from the page (server-rendered) so subsection active state
-     * matches menu app_label (e.g. horilla_dashboard, horilla_reports) when it
-     * differs from the first URL path segment (e.g. dashboard, reports).
-     */
+    /** Find a subsection link whose href path matches or is a prefix of the current path, or whose first path segment matches (e.g. detail view under same app as list link). */
+    getSubsectionLinkMatchingUrl() {
+        const currentPath = window.location.pathname;
+        const currentNorm = currentPath.replace(/\/+$/, "") || "/";
+        const currentFirst = (currentNorm.split("/").filter(Boolean))[0] || "";
+        let $exactFound = null;
+        let exactLongest = 0;
+        let $segmentFound = null;
+        let segmentLongest = 0;
+        $("ul a.sidebar-link").each(function () {
+            const href = $(this).attr("href");
+            if (!href) return;
+            const linkPath = href.indexOf("?") >= 0 ? href.split("?")[0] : href;
+            const path = linkPath.startsWith("http") ? new URL(linkPath).pathname : (linkPath.startsWith("/") ? linkPath : "/" + linkPath);
+            const pathNorm = path.replace(/\/+$/, "") || "/";
+            const linkFirst = (pathNorm.split("/").filter(Boolean))[0] || "";
+            const exactMatch = currentNorm === pathNorm || (currentNorm.length > pathNorm.length && currentNorm.indexOf(pathNorm) === 0 && (pathNorm === "/" || currentNorm.charAt(pathNorm.length) === "/"));
+            const firstSegmentMatch = linkFirst && currentFirst === linkFirst;
+            if (exactMatch && pathNorm.length >= exactLongest) {
+                exactLongest = pathNorm.length;
+                $exactFound = $(this);
+            } else if (firstSegmentMatch && pathNorm.length >= segmentLongest) {
+                segmentLongest = pathNorm.length;
+                $segmentFound = $(this);
+            }
+        });
+        return ($exactFound && $exactFound.length ? $exactFound : null) || ($segmentFound && $segmentFound.length ? $segmentFound : null);
+    },
+
+    /** App label for sidebar logic; from DOM (URL-matching link) so it works after full load and HTMX. */
+    getResolvedAppLabel() {
+        const $link = this.getSubsectionLinkMatchingUrl();
+        if ($link && $link.length) return $link.attr("id") || this.getAppLabelFromUrl();
+        return this.getAppLabelFromUrl();
+    },
 
     getSectionFromAppLabel(appLabel) {
         const APP_SECTION_MAPPING = window.APP_SECTION_MAPPING || {};
@@ -297,19 +327,22 @@ const SidebarManager = {
                 return section;
             }
         }
-        return 'home';
+        const $link = $(`ul a.sidebar-link#${CSS.escape(appLabel)}`);
+        if ($link.length) return $link.attr("data-section") || "home";
+        return "home";
     },
 
     getActiveSection() {
         const urlParams = new URLSearchParams(window.location.search);
-        const sectionFromUrl = urlParams.get('section');
-
+        const sectionFromUrl = urlParams.get("section");
         if (sectionFromUrl) return sectionFromUrl;
 
-        const appLabel = this.getAppLabelFromUrl();
-        const sectionFromApp = this.getSectionFromAppLabel(appLabel);
+        const $link = this.getSubsectionLinkMatchingUrl();
+        if ($link && $link.length) return $link.attr("data-section") || "home";
 
-        return sectionFromApp || localStorage.getItem("currentActiveSection") || 'home';
+        const appLabel = this.getResolvedAppLabel();
+        const sectionFromApp = this.getSectionFromAppLabel(appLabel);
+        return sectionFromApp || localStorage.getItem("currentActiveSection") || "home";
     },
 
     getSectionSpecificSubsectionId(sectionId) {
@@ -353,7 +386,7 @@ const SidebarManager = {
         const sidebarClicked = localStorage.getItem("sidebarClicked") === "true";
         const activeSubItemId = this.getSectionSpecificSubsectionId(sectionId);
         const lastActiveSection = localStorage.getItem("lastActiveSection");
-        const appLabel = this.getAppLabelFromUrl();
+        const appLabel = this.getResolvedAppLabel();
 
         const isSectionSwitch = lastActiveSection && lastActiveSection !== sectionId;
 
