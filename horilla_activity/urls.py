@@ -3,7 +3,7 @@ Defines URL patterns for the Activity app, mapping various activity-related view
 such as list, detail, create, update, delete, and Kanban views to their respective endpoints.
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 

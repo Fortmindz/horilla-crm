@@ -4,20 +4,19 @@ Models for the horilla_automations app
 
 # Third-party imports (Django)
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models
-from django.urls import reverse_lazy
 from django.utils.html import format_html
 
+# First-party imports (Horilla)
+from horilla.core.exceptions import ValidationError
 from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.registry.permission_registry import permission_exempt_model
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
 from horilla.utils.translation import gettext_lazy as _
 
-# First-party / Horilla core imports
+# First-party / Horilla apps
 from horilla_core.models import HorillaContentType, HorillaCoreModel
-
-# First-party / Horilla app imports
 from horilla_mail.models import HorillaMailConfiguration, HorillaMailTemplate
 from horilla_notifications.models import NotificationTemplate
 

@@ -2,7 +2,7 @@
 URL configuration for the Contacts app.
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 

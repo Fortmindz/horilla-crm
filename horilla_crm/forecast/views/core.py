@@ -14,16 +14,16 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
 from django.utils.functional import cached_property
 from django.views import View
 from django.views.generic import TemplateView
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
 
 # First-party / Horilla imports
+from horilla.http import HttpNotFound
 from horilla.shortcuts import get_object_or_404, render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -1710,7 +1710,7 @@ class ForecastOpportunitiesView(LoginRequiredMixin, View):
             return render(request, "forecast_opportunities_modal_content.html", context)
 
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
 
     def get_forecast_object(self, forecast_id):
         """
@@ -1752,7 +1752,7 @@ class ForecastOpportunitiesView(LoginRequiredMixin, View):
                 Forecast, id=forecast_id, fiscal_year=fiscal_year
             )
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
 
         return forecast
 

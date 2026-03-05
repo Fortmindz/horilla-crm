@@ -11,14 +11,15 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import cache
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
 from requests_oauthlib import OAuth2Session
 
-# First-party / Horilla imports
 from horilla.http import HorillaRedirectResponse
 from horilla.shortcuts import redirect
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

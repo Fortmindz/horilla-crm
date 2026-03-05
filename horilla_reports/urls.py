@@ -1,7 +1,6 @@
 """URL patterns for the `horilla_reports` app."""
 
-from django.urls import path
-
+from horilla.urls import path
 from horilla_reports import views
 
 app_name = "horilla_reports"

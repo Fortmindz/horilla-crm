@@ -9,13 +9,13 @@ from django.conf import settings
 
 # Third party imports (Django)
 from django.db import models
-from django.urls import reverse_lazy
 
 from horilla.registry.permission_registry import permission_exempt_model
-from horilla.utils.choices import OPERATOR_CHOICES
-from horilla.utils.translation import gettext_lazy as _
 
 # First party / Horilla imports
+from horilla.urls import reverse_lazy
+from horilla.utils.choices import OPERATOR_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import (
     FiscalYearInstance,
     HorillaCoreModel,

@@ -1,7 +1,6 @@
 """URL configuration for opportunities module."""
 
-from django.urls import path
-
+from horilla.urls import path
 from horilla_crm.opportunities import views
 
 app_name = "opportunities"

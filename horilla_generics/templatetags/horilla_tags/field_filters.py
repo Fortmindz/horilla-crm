@@ -1,21 +1,25 @@
 """Template filters for object/field lookups, formatting, and model helpers."""
 
+# Standard library imports
 import json as json_module
 import re
 
-from django.apps import apps
+# Third-party imports (Django)
 from django.db import models
 from django.db.models import Manager, QuerySet
 from django.forms import BaseForm
 from django.templatetags.static import static
-from django.urls import reverse
 from django.utils.encoding import force_str
 from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
 
+# First-party / Horilla imports
+from horilla.apps import apps
+from horilla.urls import reverse
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.utils import get_currency_display_value
 
+# Local imports
 from ._registry import register
 from ._shared import _get_request_user_company, display_fk, format_datetime_value
 

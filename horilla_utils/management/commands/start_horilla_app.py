@@ -120,7 +120,7 @@ class Command(BaseCommand):
         with open(os.path.join(target_dir, "__init__.py"), "w", encoding="utf-8") as f:
             f.write(f'"""\nPackage initialization for the {app_name} app\n"""\n')
 
-        # apps.py
+        # apps.py - use Horilla AppLauncher for auto URL registration and module imports
         # Convert app_name to proper class name (e.g., 'my_app' -> 'MyAppConfig')
         class_name = (
             "".join(word.capitalize() for word in app_name.split("_")) + "Config"
@@ -129,33 +129,38 @@ class Command(BaseCommand):
         # Convert app_name to verbose name with spaces (e.g., 'my_app' -> 'My App')
         verbose_name = " ".join(word.capitalize() for word in app_name.split("_"))
 
+        apps_py_content = f'''"""
+                            App configuration for the {app_name} app.
+                            """
+
+                            from horilla.apps import AppLauncher
+                            from horilla.utils.translation import gettext_lazy as _
+
+
+                            class {class_name}(AppLauncher):
+                                """
+                                Configuration class for the {app_name} app in Horilla.
+                                """
+
+                                default = True
+
+                                default_auto_field = "django.db.models.BigAutoField"
+                                name = "{app_name}"
+                                verbose_name = _("{verbose_name}")
+
+                                url_prefix = "{app_name}/"
+                                url_module = "{app_name}.urls"
+                                url_namespace = "{app_name}"
+
+                                auto_import_modules = [
+                                    "registration",
+                                    "signals",
+                                    "menu",
+                                ]
+                            '''
+
         with open(os.path.join(target_dir, "apps.py"), "w", encoding="utf-8") as f:
-            f.write(
-                f'"""\nAppConfig for the {app_name} app\n"""\n\n'
-                "from django.apps import AppConfig\n"
-                "from django.utils.translation import gettext_lazy as _\n\n\n"
-                f"class {class_name}(AppConfig):\n"
-                f'    """App configuration class for {app_name}."""\n\n'
-                '    default_auto_field = "django.db.models.BigAutoField"\n'
-                f'    name = "{app_name}"\n'
-                f'    verbose_name = _("{verbose_name}")\n\n'
-                "    def ready(self):\n"
-                '        """Run app initialization logic (executed after Django setup).\n'
-                "        Used to auto-register URLs and connect signals if required.\n"
-                '        """\n'
-                "        try:\n"
-                "            # Auto-register this app's URLs and add to installed apps\n"
-                "            from django.urls import include, path\n"
-                f"            from {project_name}.urls import urlpatterns\n\n"
-                "            # Add app URLs to main urlpatterns\n"
-                f"            urlpatterns.append(\n"
-                f"                path('{app_name}/', include('{app_name}.urls')),\n"
-                "            )\n"
-                "        except Exception as e:\n"
-                "            import logging\n\n"
-                f'            logging.warning("{class_name}.ready failed: %s", e)\n'
-                "        super().ready()\n"
-            )
+            f.write(apps_py_content)
 
         # models.py
         with open(os.path.join(target_dir, "models.py"), "w", encoding="utf-8") as f:
@@ -196,10 +201,6 @@ class Command(BaseCommand):
         verbose_name = " ".join(word.capitalize() for word in app_name.split("_"))
 
         additional_files = {
-            "scheduler.py": (
-                f'"""\nScheduler for the {app_name} app\n"""\n\n'
-                f"# Define your {app_name} scheduled tasks here\n"
-            ),
             "signals.py": (
                 f'"""\nSignals for the {app_name} app\n"""\n\n'
                 f"# Define your {app_name} signals here\n"
@@ -222,8 +223,8 @@ class Command(BaseCommand):
             "menu.py": (
                 f'"""\nThis module registers Floating, Settings, My Settings, and Main Section menus\n'
                 f'for the {app_name} app\n"""\n\n'
-                "from django.urls import reverse_lazy\n"
-                "from django.utils.translation import gettext_lazy as _\n\n"
+                "from horilla.urls import reverse_lazy\n"
+                "from horilla.utils.translation import gettext_lazy as _\n\n"
                 "from horilla.menu import (\n"
                 "    floating_menu,\n"
                 "    main_section_menu,\n"

@@ -22,7 +22,6 @@ from io import BytesIO, StringIO
 import pandas as pd
 
 # Django imports (third-party)
-from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
@@ -30,7 +29,6 @@ from django.core.files.storage import default_storage
 from django.db import connection, transaction
 from django.db.models import CharField, EmailField, ForeignKey, URLField
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.generic import TemplateView, View
@@ -38,9 +36,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 # First-party (Horilla)
-from horilla.exceptions import HorillaHttp404
+from horilla.apps import apps
+from horilla.http import HttpNotFound
 from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.shortcuts import redirect, render
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla.utils.decorators import (
     htmx_required,
@@ -2372,7 +2372,7 @@ class GetModelFieldsView(View):
                 ]
                 if not value
             ]
-            raise HorillaHttp404(f"Missing parameters: {', '.join(missing_params)}")
+            raise HttpNotFound(f"Missing parameters: {', '.join(missing_params)}")
 
         try:
 
@@ -2496,7 +2496,7 @@ class GetUniqueValuesView(View):
                 ]
                 if not value
             ]
-            raise HorillaHttp404(f"Missing parameters: {', '.join(missing_params)}")
+            raise HttpNotFound(f"Missing parameters: {', '.join(missing_params)}")
 
         try:
 
@@ -2649,7 +2649,7 @@ class DownloadErrorFileView(LoginRequiredMixin, View):
         """Download the error CSV file"""
         file_path = request.GET.get("file_path")
         if not file_path:
-            raise HorillaHttp404("File path not provided")
+            raise HttpNotFound("File path not provided")
 
         try:
             if not default_storage.exists(file_path):
@@ -2719,7 +2719,7 @@ class DownloadImportedFileView(LoginRequiredMixin, View):
         file_path = request.GET.get("file_path")
 
         if not file_path:
-            raise HorillaHttp404("File path not provided")
+            raise HttpNotFound("File path not provided")
 
         try:
             if not default_storage.exists(file_path):

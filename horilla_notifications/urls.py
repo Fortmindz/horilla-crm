@@ -7,8 +7,8 @@ This module defines URL patterns for notification-related views, including:
 - Opening/redirecting to notification URLs
 """
 
-# Third party imports (Django)
-from django.urls import path
+# First-party / Horilla imports
+from horilla.urls import path
 
 # Local application imports
 from horilla_notifications import views

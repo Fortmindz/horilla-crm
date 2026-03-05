@@ -2,24 +2,24 @@
 
 # Standard library imports
 import logging
+from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cached_property
-
-# Third-party imports
-import requests
 
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseBadRequest
-from django.urls import reverse_lazy
 from django.utils.dateparse import parse_date
 from django.views import View
+from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
-# First-party / Horilla imports
 from horilla.shortcuts import render
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -30,6 +30,7 @@ from horilla_core.forms import ConversionRateForm, CurrencyForm, DatedConversion
 
 # Local app imports
 from horilla_core.models import DatedConversionRate, MultipleCurrency
+from horilla_core.utils import fetch_exchange_rate_from_api
 from horilla_generics.views import (
     HorillaListView,
     HorillaSingleDeleteView,
@@ -39,44 +40,87 @@ from horilla_generics.views import (
 logger = logging.getLogger(__name__)
 
 
-def fetch_exchange_rate_from_api(base_currency, target_currency):
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_multiplecurrency"), name="dispatch"
+)
+class CompanyMultipleCurrency(LoginRequiredMixin, TemplateView):
     """
-    Fetch exchange rate from Frankfurter API (free, no API key required).
-    Falls back to exchangerate.host if Frankfurter fails.
-
-    Args:
-        base_currency: The base currency code (e.g., 'USD')
-        target_currency: The target currency code (e.g., 'INR')
-
-    Returns:
-        Decimal: The exchange rate, or None if fetch fails
+    TemplateView for multiple currency view.
     """
-    # Primary: Frankfurter API (free, open-source, uses ECB data)
-    try:
-        url = f"https://api.frankfurter.app/latest?from={base_currency}&to={target_currency}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            rate = data.get("rates", {}).get(target_currency)
-            if rate:
-                return Decimal(str(rate)).quantize(Decimal("0.0001"))
-    except Exception as e:
-        logger.warning("Frankfurter API failed: %s", e)
 
-    # Fallback: exchangerate-api.com (free tier, no key for basic usage)
-    try:
-        url = f"https://open.er-api.com/v6/latest/{base_currency}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("result") == "success":
-                rate = data.get("rates", {}).get(target_currency)
-                if rate:
-                    return Decimal(str(rate)).quantize(Decimal("0.0001"))
-    except Exception as e:
-        logger.warning("Fallback exchange rate API failed: %s", e)
+    template_name = "settings/multiple_currency.html"
 
-    return None
+    def get_context_data(self, **kwargs):
+        """
+        Get context data for multiple currency view.
+        """
+        context = super().get_context_data(**kwargs)
+        company = getattr(self.request, "active_company", None)
+        if company:
+            cmp = company
+        else:
+            cmp = self.request.user.company
+        context["has_company"] = bool(cmp)
+        if not cmp:
+            return context
+        currencies = MultipleCurrency.objects.filter(company=cmp)
+        obj = currencies.filter(company=cmp, is_default=True).first()
+        context["obj"] = obj
+        context["cmp"] = cmp
+        context["currencies"] = currencies
+        start_dates = (
+            DatedConversionRate.objects.values_list("start_date", flat=True)
+            .distinct()
+            .order_by("start_date")
+        )
+        date_ranges = []
+        current_date = datetime.now().date()
+        selected_start_date = None
+
+        for i, start_date in enumerate(start_dates):
+            end_date = None
+            if i < len(start_dates) - 1:
+                end_date = start_dates[i + 1] - timedelta(days=1)
+                date_ranges.append(
+                    {
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "display": f"{start_date.strftime('%d-%m-%Y')} to {end_date.strftime('%d-%m-%Y')}",
+                    }
+                )
+                if start_date <= current_date <= end_date:
+                    selected_start_date = start_date
+            else:
+                date_ranges.append(
+                    {
+                        "start_date": start_date,
+                        "end_date": None,
+                        "display": f"{start_date.strftime('%d-%m-%Y')} and After",
+                    }
+                )
+                if start_date <= current_date:
+                    selected_start_date = start_date
+
+        context["date_ranges"] = date_ranges
+        context["selected_start_date"] = selected_start_date
+        return context
+
+    def post(self, request, *args, **kwargs):
+        """Handle HTMX toggle for multiple currency activation"""
+        company = getattr(request, "active_company", None)
+        if company:
+            cmp = company
+        else:
+            cmp = request.user.company
+
+        if not request.user.has_perm("horilla_core.change_company"):
+            return render(request, "error/403.html")
+
+        cmp.activate_multiple_currencies = not cmp.activate_multiple_currencies
+        cmp.save()
+        context = self.get_context_data(**kwargs)
+        return render(request, self.template_name, context)
 
 
 @method_decorator(htmx_required, name="dispatch")

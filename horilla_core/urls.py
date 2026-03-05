@@ -2,10 +2,8 @@
 URL configuration for Horilla Core app.
 """
 
-# Third-party imports (Django)
-from django.urls import include, path, re_path
-
 # First-party / Horilla core imports
+from horilla.urls import include, path, re_path
 from horilla_core import views
 
 app_name = "horilla_core"
@@ -27,12 +25,12 @@ urlpatterns = [
     ),
     path(
         "company-information/",
-        views.ConmpanyInformationView.as_view(),
+        views.CompanyInformationView.as_view(),
         name="company_information",
     ),
     path(
         "company-tab-view/",
-        views.ConmpanyInformationTabView.as_view(),
+        views.CompanyInformationTabView.as_view(),
         name="company_tab_view",
     ),
     path(

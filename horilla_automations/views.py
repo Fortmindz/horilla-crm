@@ -7,21 +7,20 @@ import json
 from functools import cached_property
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Q
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils.html import escape
 from django.views import View
 
-from horilla.auth.models import User
-
 # First-party / Horilla imports
+from horilla.apps import apps
+from horilla.auth.models import User
 from horilla.shortcuts import render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

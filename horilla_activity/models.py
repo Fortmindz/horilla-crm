@@ -7,14 +7,14 @@ relationships, constraints, and behaviors.
 """
 
 from django.conf import settings
+
+# Third party imports (Django)
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
-# Third party imports (Django)
-from django.urls import reverse_lazy
-
 # First party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla core imports
@@ -33,8 +33,13 @@ class Activity(HorillaCoreModel):
         ("log_call", _("Log Call")),
     ]
     STATUS_CHOICES = [
-        ("pending", _("Pending")),
+        ("not_started", _("Not Started")),
+        ("scheduled", _("Scheduled")),
+        ("in_progress", _("In Progress")),
+        ("waiting", _("Waiting on Someone")),
         ("completed", _("Completed")),
+        ("cancelled", _("Cancelled")),
+        ("deferred", _("Deferred")),
     ]
     TASK_PRIORITY_CHOICES = [
         ("high", _("High")),

@@ -15,11 +15,11 @@ from django.contrib import messages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import models
 from django.http import HttpResponse
-from django.urls import reverse
 from django.utils.dateparse import parse_date, parse_datetime
 from django.views.generic import FormView
 
 # First-party (Horilla)
+from horilla.urls import reverse
 from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.forms import HorillaMultiStepForm
 from horilla_generics.views.toolkit.form_mixin import FormViewCommonMixin

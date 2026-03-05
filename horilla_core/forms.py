@@ -11,12 +11,13 @@ import logging
 import pycountry
 from django import forms
 from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
-from django.urls import reverse_lazy
 
+# First-party / Horilla apps
 from horilla.auth.models import User
 
-# First-party / Horilla imports
+# First-party imports (Horilla)
+from horilla.core.exceptions import ValidationError
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_generics.forms import (

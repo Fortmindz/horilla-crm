@@ -6,10 +6,10 @@ This view handles the methods for team role view
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils.functional import cached_property
 
 # First-party imports (Horilla core & apps)
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

@@ -11,7 +11,6 @@ import re
 from urllib.parse import urlparse
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
 from django.db.models.fields import Field
@@ -22,9 +21,9 @@ from django.utils.encoding import force_str
 from django.views import View
 from django.views.generic import FormView
 
-from horilla.utils.decorators import htmx_required, method_decorator
-
 # First-party (Horilla)
+from horilla.apps import apps
+from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import ListColumnVisibility
 from horilla_core.utils import filter_hidden_fields
@@ -47,8 +46,7 @@ def get_default_columns_from_view(url_name, app_label, model_name, request):
         List of default column field names, or None if view cannot be resolved
     """
     try:
-        from django.urls import get_resolver
-
+        from horilla.urls import get_resolver
         from horilla_generics.views.list import HorillaListView
 
         # Get the URL resolver

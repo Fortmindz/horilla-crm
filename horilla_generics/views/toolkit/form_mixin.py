@@ -9,10 +9,11 @@ from django.contrib import messages
 # Third-party imports (Django)
 from django.db import models
 from django.http import HttpResponse
-from django.urls import reverse
+
+from horilla.shortcuts import get_object_or_404, render
 
 # First-party imports (Horilla)
-from horilla.shortcuts import get_object_or_404, render
+from horilla.urls import reverse
 from horilla_core.utils import get_field_permissions_for_model
 
 

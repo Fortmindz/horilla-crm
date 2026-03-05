@@ -6,16 +6,16 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
-from django.urls import reverse_lazy
 from django.utils.functional import cached_property  # type: ignore
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
 
 # First party / Horilla imports
+from horilla.http import HttpNotFound
 from horilla.shortcuts import get_object_or_404, redirect, render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -347,7 +347,7 @@ class LoadLeadStagesView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         initialization = request.GET.get("initialization") == "true"
         default_stages = [
             {"name": "New", "order": 1, "probability": 10, "is_final": False},
@@ -453,7 +453,7 @@ class CustomStagesFormView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
 
         initialization = request.GET.get("initialization") == "True"
         all_stages_from_db = LeadStatus.all_objects.values(
@@ -561,7 +561,7 @@ class SaveCustomStagesView(LoginRequiredMixin, View, ProgressStepsMixin):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         stage_names = request.POST.getlist("stage_name_custom[]")
         stage_orders = request.POST.getlist("stage_order_custom[]")
         stage_probabilities = request.POST.getlist("stage_probability_custom[]")
@@ -655,7 +655,7 @@ class AddStageView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
 
         stage_orders = request.GET.getlist("stage_order_custom[]", [])
         max_order = (
@@ -692,7 +692,7 @@ class RemoveStageView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         stage_names = request.POST.getlist("stage_name_custom[]")
         stage_orders = request.POST.getlist("stage_order_custom[]")
         stage_probabilities = request.POST.getlist("stage_probability_custom[]")
@@ -757,7 +757,7 @@ class CreateStageGroupView(LoginRequiredMixin, View, ProgressStepsMixin):
         try:
             company = get_object_or_404(Company, pk=pk)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
 
         initialization = request.GET.get("initialization") == "True"
         stage_names = request.POST.getlist("stage_name")

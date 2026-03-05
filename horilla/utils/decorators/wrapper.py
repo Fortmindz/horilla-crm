@@ -3,13 +3,17 @@ Custom decorators used across Horilla for permission handling,
 HTMX validation, and database initialization checks.
 """
 
+# Standard library imports
 from functools import wraps
 
 from django.conf import settings
 from django.http import HttpResponse
+
+# Third-party imports (Django)
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 
+# First-party / Horilla imports
 from horilla.http import safe_url
 
 

@@ -1,6 +1,6 @@
 """URL configuration for horilla_dashboard app."""
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 

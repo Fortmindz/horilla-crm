@@ -7,18 +7,19 @@ Handles automatic updates when company-related events occur, e.g., currency chan
 import logging
 
 # Third-party imports (Django)
-from django.apps import apps
-from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models import Case, F, IntegerField, Q, When
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import Signal, receiver
-from django.urls import reverse_lazy
-
-from horilla.auth.models import User
 
 # First-party / Horilla imports
+from horilla.apps import apps
+from horilla.auth.models import User
+from horilla.core.exceptions import FieldDoesNotExist
 from horilla.shortcuts import render
+from horilla.urls import reverse_lazy
+
+# First-party / Horilla apps
 from horilla_core.signals import company_created, company_currency_changed
 from horilla_crm.leads.models import (
     Lead,

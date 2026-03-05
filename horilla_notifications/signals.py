@@ -9,7 +9,9 @@ from channels.layers import get_channel_layer
 # Third party imports (Django)
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.urls import reverse
+
+# First-party / Horilla imports
+from horilla.urls import reverse
 
 # Local application imports
 from .models import Notification

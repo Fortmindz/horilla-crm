@@ -14,21 +14,24 @@ from colorfield.fields import ColorField
 
 # Third-party imports (Django)
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator
 from django.db import models, transaction
 from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django_countries.fields import CountryField
 
-# First-party / Horilla imports
+from horilla.core.exceptions import ValidationError
 from horilla.registry.permission_registry import permission_exempt_model
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import Company, HorillaCoreModel
 from horilla_mail.models import HorillaMailConfiguration
+
+# First-party / Horilla apps
 from horilla_utils.methods import render_template
 
 logger = logging.getLogger(__name__)

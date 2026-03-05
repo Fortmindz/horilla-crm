@@ -8,10 +8,10 @@ from functools import cached_property
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 
 # First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

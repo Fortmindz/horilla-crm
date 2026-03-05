@@ -9,15 +9,16 @@ from django.contrib import messages
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse, JsonResponse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.functional import cached_property  # type: ignore
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
-# First-party / Horilla imports
 from horilla.shortcuts import render
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -26,6 +27,7 @@ from horilla.utils.decorators import (
 from horilla.utils.translation import gettext as _
 from horilla_activity.models import Activity
 from horilla_core.utils import get_user_field_permission
+from horilla_generics.templatetags.horilla_tags._shared import format_datetime_value
 from horilla_generics.views import HorillaSingleDeleteView, HorillaSingleFormView
 from horilla_utils.middlewares import _thread_local
 
@@ -192,20 +194,37 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                     )
 
                     for activity in activities.distinct():
+                        start_dt = activity.get_start_date()
+                        end_dt = activity.get_end_date()
+                        start_display = (
+                            format_datetime_value(start_dt, user=request.user)
+                            if not isinstance(start_dt, str)
+                            else start_dt
+                        )
+                        end_display = (
+                            format_datetime_value(end_dt, user=request.user)
+                            if not isinstance(end_dt, str) and end_dt
+                            else None
+                        )
+                        due_date_display = None
+                        if activity.activity_type == "task" and activity.due_datetime:
+                            due_date_display = format_datetime_value(
+                                activity.due_datetime, user=request.user
+                            )
                         event = {
                             "title": activity.title or activity.subject,
                             "start": (
-                                activity.get_start_date().isoformat()
-                                if not isinstance(activity.get_start_date(), str)
+                                start_dt.isoformat()
+                                if not isinstance(start_dt, str)
                                 else activity.created_at.isoformat()
                             ),
                             "end": (
-                                activity.get_end_date().isoformat()
-                                if not isinstance(activity.get_end_date(), str)
-                                and activity.get_end_date()
+                                end_dt.isoformat()
+                                if not isinstance(end_dt, str) and end_dt
                                 else None
                             ),
                             "calendarType": activity.activity_type,
+                            "activity_type_display": activity.get_activity_type_display(),
                             "description": activity.description or "",
                             "subject": activity.subject or "",
                             "assignedTo": list(
@@ -214,6 +233,10 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                                 )
                             ),
                             "status": activity.status,
+                            "status_display": activity.get_status_display(),
+                            "start_display": start_display,
+                            "end_display": end_display,
+                            "due_date_display": due_date_display,
                             "id": activity.id,
                             "url": (
                                 activity.get_activity_edit_url()
@@ -228,6 +251,12 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                             "detailUrl": (
                                 activity.get_detail_url()
                                 if activity.activity_type != "email"
+                                else None
+                            ),
+                            "dueDate": (
+                                activity.due_datetime.isoformat()
+                                if activity.activity_type == "task"
+                                and activity.due_datetime
                                 else None
                             ),
                             "textColor": "#FFFFFF",
@@ -245,6 +274,16 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                         user=self.request.user
                     )
                     for unavailability in unavailabilities:
+                        start_display = format_datetime_value(
+                            unavailability.from_datetime, user=request.user
+                        )
+                        end_display = (
+                            format_datetime_value(
+                                unavailability.to_datetime, user=request.user
+                            )
+                            if unavailability.to_datetime
+                            else None
+                        )
                         event = {
                             "title": "User Unavailable",
                             "start": unavailability.from_datetime.isoformat(),
@@ -253,6 +292,8 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                                 if unavailability.to_datetime
                                 else None
                             ),
+                            "start_display": start_display,
+                            "end_display": end_display,
                             "calendarType": "unavailability",
                             "description": unavailability.reason
                             or "No reason provided",

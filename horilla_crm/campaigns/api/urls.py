@@ -2,9 +2,9 @@
 URL patterns for horilla_crm.campaigns API
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_crm.campaigns.api.views import CampaignViewSet
 
 router = DefaultRouter()

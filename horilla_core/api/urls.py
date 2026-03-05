@@ -2,7 +2,6 @@
 URL patterns for horilla_core API
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -10,6 +9,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 
+from horilla.urls import include, path
 from horilla_core.api.views import (
     BusinessHourViewSet,
     CompanyViewSet,

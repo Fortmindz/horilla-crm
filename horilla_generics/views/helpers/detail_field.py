@@ -8,7 +8,6 @@ HTMX views for detail field visibility and column selector modals.
 import logging
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models.fields import Field
 from django.http import HttpResponse
@@ -16,7 +15,9 @@ from django.utils.encoding import force_str
 from django.views import View
 
 # First-party (Horilla)
+from horilla.apps import apps
 from horilla.shortcuts import render
+from horilla.urls import resolve, reverse
 from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import DetailFieldVisibility
@@ -82,7 +83,6 @@ def _get_detail_field_defaults(model, request):
             details_url = request.GET.get("details_section_url") or None
         if details_url:
             try:
-                from django.urls import resolve, reverse
 
                 resolved = resolve(reverse(details_url, kwargs={"pk": 1}))
                 section_view = getattr(resolved.func, "view_class", None)
@@ -193,8 +193,6 @@ class DetailFieldSelectorView(LoginRequiredMixin, View):
             )
             if details_url:
                 try:
-                    from django.urls import resolve, reverse
-
                     resolved = resolve(reverse(details_url, kwargs={"pk": 1}))
                     section_view = getattr(resolved.func, "view_class", None)
                     if section_view:

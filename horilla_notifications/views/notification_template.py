@@ -4,21 +4,21 @@
 import logging
 from functools import cached_property
 
-# Third-party imports (Django)
-from django.apps import apps
 from django.contrib import messages
+
+# Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.contenttypes.models import ContentType
 from django.forms import ValidationError
 from django.http import HttpResponse
-from django.urls import reverse, reverse_lazy
 from django.views.generic import DetailView, FormView, TemplateView
 
 # First-party / Horilla imports
-from horilla.exceptions import HorillaHttp404
-from horilla.http import HorillaRefreshResponse
+from horilla.apps import apps
+from horilla.http import HorillaRefreshResponse, HttpNotFound
 from horilla.shortcuts import get_object_or_404
+from horilla.urls import reverse, reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -302,7 +302,7 @@ class NotificationTemplateDetailView(LoginRequiredMixin, DetailView):
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
                 return HorillaRefreshResponse(request)
-            raise HorillaHttp404(e)
+            raise HttpNotFound(e)
         return super().dispatch(request, *args, **kwargs)
 
     model = NotificationTemplate

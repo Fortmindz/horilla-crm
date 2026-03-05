@@ -3,10 +3,10 @@
 # Third party imports (Django)
 from django.conf import settings
 from django.db import models
-from django.urls import reverse_lazy
 from django.utils import timezone
 
 # First party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla core imports

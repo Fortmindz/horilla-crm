@@ -7,22 +7,23 @@ import json
 import logging
 
 # Django / third-party imports
-from django.apps import apps
 from django.contrib import messages
-from django.core.exceptions import FieldDoesNotExist, FieldError, ImproperlyConfigured
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import ForeignKey, Max
 from django.http import HttpResponse, QueryDict
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
-
-from horilla.exceptions import HorillaHttp404
 
 # First-party (Horilla)
+from horilla.apps import apps
+from horilla.core.exceptions import FieldDoesNotExist, FieldError, ImproperlyConfigured
+from horilla.http import HttpNotFound
 from horilla.shortcuts import redirect
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
 from horilla_core.models import KanbanGroupBy
 from horilla_core.utils import get_user_field_permission
 from horilla_generics.views.list import HorillaListView
@@ -63,7 +64,7 @@ class HorillaKanbanView(HorillaListView):
                 self.model = apps.get_model(app_label=app_label, model_name=model_name)
             except Exception as e:
                 logger.error("Error fetching model: %s", str(e))
-                raise HorillaHttp404(
+                raise HttpNotFound(
                     f"Invalid app_label/model_name: {app_label}/{model_name}"
                 )
 

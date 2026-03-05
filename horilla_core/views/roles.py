@@ -10,14 +10,14 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import TemplateView
 
 from horilla.auth.models import User
+from horilla.shortcuts import get_object_or_404
 
 # First-party / Horilla imports
-from horilla.shortcuts import get_object_or_404
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -34,7 +34,19 @@ from horilla_generics.views import (
     HorillaSingleDeleteView,
     HorillaSingleFormView,
 )
+from horilla_generics.views.core import HorillaView
 from horilla_utils.middlewares import _thread_local
+
+
+class RolesView(LoginRequiredMixin, HorillaView):
+    """
+    Template view for team role page
+    """
+
+    template_name = "role/role_view.html"
+    nav_url = reverse_lazy("horilla_core:roles_nav_bar")
+    list_url = reverse_lazy("horilla_core:role_list_view")
+    kanban_url = reverse_lazy("horilla_core:roles_hierarchy_view")
 
 
 @method_decorator(htmx_required, name="dispatch")

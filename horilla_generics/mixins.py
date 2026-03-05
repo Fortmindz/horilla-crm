@@ -10,16 +10,19 @@ from urllib.parse import urlparse
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
-from django.core.exceptions import FieldDoesNotExist
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.http import HttpResponse, QueryDict
-from django.urls import resolve
 from django.utils import translation
 
-# First-party / Horilla imports
 from horilla.auth.models import User
+from horilla.core.exceptions import FieldDoesNotExist
 from horilla.shortcuts import redirect, render
+
+# First-party / Horilla imports
+from horilla.urls import resolve
 from horilla.utils.choices import FIELD_TYPE_MAP
+
+# First-party / Horilla apps
 from horilla_core.mixins import get_allowed_users_queryset_for_model
 from horilla_core.models import ListColumnVisibility, RecentlyViewed
 from horilla_core.utils import filter_hidden_fields

@@ -8,10 +8,11 @@ events (e.g., pre/post-save behavior).
 # Third-party imports
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.urls import reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party imports
-from horilla.auth.models import User
+from horilla.urls import reverse_lazy
 from horilla_keys.models import ShortcutKey
 
 

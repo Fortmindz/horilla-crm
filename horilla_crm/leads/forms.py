@@ -8,10 +8,11 @@ import pycountry
 
 # Third-party imports (Django)
 from django import forms
-from django.urls import reverse, reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.urls import reverse, reverse_lazy
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_crm.accounts.models import Account
 from horilla_crm.contacts.models import Contact

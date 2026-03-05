@@ -7,18 +7,21 @@ Groups rows by a selected field (ChoiceField or ForeignKey) and displays.
 import logging
 
 # Django / third-party imports
-from django.core.exceptions import FieldError
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import ForeignKey
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.urls import reverse
 from django.utils.text import slugify
 
-# First-party (Horilla)
+from horilla.core.exceptions import FieldError
 from horilla.shortcuts import render
+
+# First-party (Horilla)
+from horilla.urls import reverse
 from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
 from horilla_core.models import KanbanGroupBy
 from horilla_core.utils import get_user_field_permission
 from horilla_generics.views.list import HorillaListView

@@ -5,9 +5,9 @@ This module mirrors the URL structure of horilla_crm.accounts API
 using DefaultRouter for consistent endpoint patterns.
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_crm.leads.api.views import (
     LeadStatusViewSet,
     LeadViewSet,

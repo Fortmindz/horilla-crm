@@ -9,10 +9,10 @@ from functools import cached_property
 from django.db.models import Q
 
 # Django / third-party imports
-from django.urls import resolve, reverse_lazy
 from django.views.generic import TemplateView
 
 # First-party (Horilla)
+from horilla.urls import resolve, reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import PinnedView, SavedFilterList
 

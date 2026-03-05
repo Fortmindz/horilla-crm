@@ -4,16 +4,16 @@
 from urllib.parse import urlencode
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import ForeignKey
 from django.http import Http404, HttpResponse
-from django.urls import reverse_lazy
 from django.utils.functional import cached_property  # type: ignore
 from django.views import View
 
 # First-party / Horilla imports
+from horilla.apps import apps
 from horilla.shortcuts import get_object_or_404, render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

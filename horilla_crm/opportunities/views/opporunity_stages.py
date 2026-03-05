@@ -15,16 +15,16 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import models, transaction
 from django.http import HttpResponse, JsonResponse
-from django.urls import reverse_lazy
 from django.utils.html import format_html
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView, View
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
 
 # First-party / Horilla imports
+from horilla.http import HttpNotFound
 from horilla.shortcuts import get_object_or_404, redirect, render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -429,7 +429,7 @@ class LoadOpportunityStagesView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         initialization = request.GET.get("initialization") == "true"
         default_stages = [
             {
@@ -582,7 +582,7 @@ class CustomOppStagesFormView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         initialization = request.GET.get("initialization") == "True"
         all_stages_from_db = OpportunityStage.all_objects.values(
             "name", "order", "probability", "is_final", "company__name", "company_id"
@@ -734,7 +734,7 @@ class SaveCustomOppStagesView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, id=company_id)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         stage_names = request.POST.getlist("stage_name_custom[]")
         stage_orders = request.POST.getlist("stage_order_custom[]")
         stage_probabilities = request.POST.getlist("stage_probability_custom[]")
@@ -871,7 +871,7 @@ class CreateOppStageGroupView(LoginRequiredMixin, View):
         try:
             company = get_object_or_404(Company, pk=pk)
         except Exception as e:
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         stage_names = request.POST.getlist("stage_name")
         stage_orders = request.POST.getlist("stage_order")
         stage_probabilities = request.POST.getlist("stage_probability")

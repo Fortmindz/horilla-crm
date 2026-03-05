@@ -9,22 +9,22 @@ from typing import Any
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 # Django / third-party imports
-from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
-from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db.models import ForeignKey
 from django.http import Http404, HttpResponse, QueryDict
 from django.template.loader import render_to_string
-from django.urls import resolve, reverse, reverse_lazy
 from django.views.generic import DetailView
 
-from horilla.exceptions import HorillaHttp404
-from horilla.http.response import HorillaRefreshResponse
-
 # First-party (Horilla)
+from horilla.apps import apps
+from horilla.core.exceptions import FieldDoesNotExist, ValidationError
+from horilla.http import HorillaRefreshResponse, HttpNotFound
 from horilla.shortcuts import redirect, render
+from horilla.urls import resolve, reverse, reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
 from horilla_utils.methods import closest_numbers, get_section_info_for_model
 from horilla_utils.middlewares import _thread_local
 
@@ -90,7 +90,7 @@ class HorillaDetailView(DetailView):
             if request.headers.get("HX-Request") == "true":
                 messages.error(request, e)
                 return HorillaRefreshResponse(request)
-            raise HorillaHttp404(e)
+            raise HttpNotFound(e)
 
         app = self.model._meta.app_label
         model = self.model._meta.model_name
@@ -135,7 +135,7 @@ class HorillaDetailView(DetailView):
     def get_queryset(self):
         """Return the queryset for the detail view; require model to be set."""
         if not self.model:
-            raise HorillaHttp404("Model not found")
+            raise HttpNotFound("Model not found")
         return super().get_queryset()
 
     def _normalize_field_list(self, field_list, exclude_set):

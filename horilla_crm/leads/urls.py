@@ -1,7 +1,6 @@
 """URL configurations for the leads app."""
 
-from django.urls import path
-
+from horilla.urls import path
 from horilla_crm.leads import views
 
 app_name = "leads"

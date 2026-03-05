@@ -6,12 +6,11 @@ import logging
 
 # Third-party imports (Django)
 from django import forms
-from django.apps import apps
-from django.urls import reverse_lazy
-
-from horilla.registry.feature import FEATURE_REGISTRY
 
 # First-party / Horilla imports
+from horilla.apps import apps
+from horilla.registry.feature import FEATURE_REGISTRY
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import DISPLAYABLE_FIELD_TYPES
 from horilla_generics.forms import HorillaModelForm
 

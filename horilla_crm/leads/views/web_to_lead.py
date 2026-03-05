@@ -9,7 +9,6 @@ from django import forms
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.urls import reverse, reverse_lazy
 from django.utils import translation
 from django.views import View
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -17,11 +16,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import CreateView, FormView, TemplateView
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
-from horilla.http.response import HorillaRedirectResponse
+from horilla.http import HorillaRedirectResponse, HttpNotFound
+from horilla.shortcuts import render
 
 # First-party / Horilla imports
-from horilla.shortcuts import render
+from horilla.urls import reverse, reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -443,7 +442,7 @@ class PublicLeadFormView(CreateView):
 
             return DynamicLeadForm
         except LeadCaptureForm.DoesNotExist as e:
-            raise HorillaHttp404(
+            raise HttpNotFound(
                 str(e), template="web_to_lead/web_to_lead_404.html"
             ) from e
 
@@ -481,7 +480,7 @@ class PublicLeadFormView(CreateView):
             context["selected_fields_parsed"] = parsed_fields
 
         except LeadCaptureForm.DoesNotExist as e:
-            raise HorillaHttp404(
+            raise HttpNotFound(
                 str(e), template="web_to_lead/web_to_lead_404.html"
             ) from e
 

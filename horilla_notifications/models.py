@@ -7,15 +7,19 @@ from django.conf import settings
 # Third party imports (Django)
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
 from django.db import models
-from django.urls import reverse_lazy
 
-# First-party / Horilla imports
+from horilla.core.exceptions import ValidationError
+
+# First-party (Horilla)
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
 from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_utils.methods import has_xss
 
+# Local / relative imports
 from .methods import limit_content_types
 
 

@@ -4,13 +4,13 @@ Forms for the horilla_automations app
 
 # Third-party imports (Django)
 from django import forms
-from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.urls import reverse_lazy
 
 # First-party / Horilla imports
+from horilla.apps import apps
 from horilla.auth.models import User
+from horilla.urls import reverse_lazy
 from horilla_generics.forms import HorillaModelForm
 from horilla_mail.models import HorillaMailConfiguration
 

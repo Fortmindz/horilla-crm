@@ -11,9 +11,9 @@ from django.conf import settings
 
 # Third-party imports (Django)
 from django.db import models
-from django.urls import reverse_lazy
 
 # First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_reports.methods import limit_content_types

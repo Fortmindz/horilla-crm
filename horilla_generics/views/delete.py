@@ -4,27 +4,29 @@ This view checks for related records in other models and provides options to rea
 """
 
 # Standard library
+import json
 import logging
 
-from django.apps import apps
 from django.contrib import messages
+from django.db import transaction
+from django.http import HttpResponse
 
 # Django / third-party imports
-from django.core.exceptions import (
+from django.views.generic import DeleteView
+
+# First-party (Horilla)
+from horilla.apps import apps
+from horilla.core.exceptions import (
     ImproperlyConfigured,
     ObjectDoesNotExist,
     PermissionDenied,
 )
-from django.db import transaction
-from django.http import HttpResponse
-from django.urls import reverse_lazy
-from django.views.generic import DeleteView
-
-from horilla.exceptions import HorillaHttp404
-
-# First-party (Horilla)
+from horilla.http import HttpNotFound
 from horilla.shortcuts import redirect, render
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
 from horilla_core.models import RecycleBin
 from horilla_generics.views.toolkit.delete_mixins import (
     DeleteDependencyMixin,
@@ -162,6 +164,25 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 view_id,
             )
 
+            if action == "show_individual_reassign":
+                # Load all dependent records for bulk actions (table view)
+                cannot_delete_all, _, _ = self._check_dependencies(
+                    record_id, get_all=True
+                )
+                (
+                    all_dep_records,
+                    _,
+                    _,
+                    _,
+                ) = self._dependent_records_from_cannot_delete(
+                    cannot_delete_all, limit=None
+                )
+                context["dependent_records"] = all_dep_records
+                context["has_more_individual_records"] = False
+                context["selected_ids_json"] = json.dumps(
+                    [r.id for r in all_dep_records]
+                )
+
             if action == "show_bulk_reassign":
                 return render(
                     request, "partials/Single_delete/bulk_reassign_form.html", context
@@ -173,13 +194,16 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                     context,
                 )
             if action == "show_delete_confirmation":
-                related_objects = self.model._meta.related_objects
-                related_model = None
+                # Use actual dependency types from cannot_delete, not the last related_objects entry
                 related_verbose_name_plural = "records"
-                for rel in related_objects:
-                    related_model = rel.related_model
-                    related_verbose_name_plural = (
-                        related_model._meta.verbose_name_plural
+                related_model = None
+                if cannot_delete and cannot_delete[0].get("dependencies"):
+                    dep_names = [
+                        str(d["model_name"]) for d in cannot_delete[0]["dependencies"]
+                    ]
+                    related_verbose_name_plural = ", ".join(dep_names)
+                    related_model = cannot_delete[0]["dependencies"][0].get(
+                        "related_model"
                     )
                 context["model_verbose_name"] = self.model._meta.verbose_name
                 context["related_model"] = related_model if cannot_delete else None
@@ -201,7 +225,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
 
         except Exception as e:
             logger.error("Error in get method: %s", str(e))
-            raise HorillaHttp404(e)
+            raise HttpNotFound(e)
 
     def get_object(self, queryset=None):
         """Override to check delete permissions on the specific object."""
@@ -347,32 +371,72 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                     with transaction.atomic():
                         actions = {}
                         reassigned_count = 0
-                        for key, value in request.POST.items():
-                            if key.startswith("action_"):
-                                record_id_key = key.replace("action_", "")
-                                action_type = value
-                                new_target_id = request.POST.get(
-                                    f"new_target_{record_id_key}"
-                                )
-                                if action_type in ["reassign", "set_null", "delete"]:
-                                    actions[record_id_key] = {
-                                        "action": action_type,
-                                        "new_target_id": (
-                                            new_target_id
-                                            if action_type == "reassign"
-                                            and new_target_id
-                                            else None
-                                        ),
-                                    }
-                                    if action_type == "reassign" and new_target_id:
+                        selected_ids_raw = request.POST.get("selected_ids", "[]")
+                        try:
+                            selected_ids_list = json.loads(selected_ids_raw)
+                        except (TypeError, ValueError):
+                            selected_ids_list = []
+
+                        bulk_action = request.POST.get("bulk_action")
+                        bulk_target_id = request.POST.get("bulk_target_id", "").strip()
+
+                        if bulk_action in ("set_null", "delete") and selected_ids_list:
+                            for sid in selected_ids_list:
+                                actions[str(sid)] = {
+                                    "action": bulk_action,
+                                    "new_target_id": None,
+                                }
+                        else:
+                            for key, value in request.POST.items():
+                                if key.startswith("action_"):
+                                    record_id_key = key.replace("action_", "")
+                                    action_type = value
+                                    new_target_id = request.POST.get(
+                                        f"new_target_{record_id_key}"
+                                    )
+                                    if action_type in [
+                                        "reassign",
+                                        "set_null",
+                                        "delete",
+                                    ]:
+                                        actions[record_id_key] = {
+                                            "action": action_type,
+                                            "new_target_id": (
+                                                new_target_id
+                                                if action_type == "reassign"
+                                                and new_target_id
+                                                else None
+                                            ),
+                                        }
+                                        if action_type == "reassign" and new_target_id:
+                                            try:
+                                                self.model.objects.get(id=new_target_id)
+                                                reassigned_count += 1
+                                            except ObjectDoesNotExist:
+                                                return HttpResponse(
+                                                    "<script>alert('Invalid target ID');</script>",
+                                                    status=500,
+                                                )
+                            if not actions and selected_ids_list:
+                                for sid in selected_ids_list:
+                                    per_row_target = (
+                                        request.POST.get(f"new_target_{sid}") or ""
+                                    ).strip()
+                                    target_id = per_row_target or bulk_target_id
+                                    if target_id:
+                                        actions[str(sid)] = {
+                                            "action": "reassign",
+                                            "new_target_id": target_id,
+                                        }
                                         try:
-                                            self.model.objects.get(id=new_target_id)
+                                            self.model.objects.get(id=target_id)
                                             reassigned_count += 1
                                         except ObjectDoesNotExist:
                                             return HttpResponse(
                                                 "<script>alert('Invalid target ID');</script>",
                                                 status=500,
                                             )
+
                         processed_count = self._perform_individual_action(
                             record_id, actions, delete_mode
                         )
@@ -585,6 +649,22 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                             request.GET.get("view_id", f"delete_{main_record_id}"),
                         )
                         if cannot_delete:
+                            cannot_delete_all, _, _ = self._check_dependencies(
+                                main_record_id, get_all=True
+                            )
+                            (
+                                all_dep_records,
+                                _,
+                                _,
+                                _,
+                            ) = self._dependent_records_from_cannot_delete(
+                                cannot_delete_all, limit=None
+                            )
+                            context["dependent_records"] = all_dep_records
+                            context["has_more_individual_records"] = False
+                            context["selected_ids_json"] = json.dumps(
+                                [r.id for r in all_dep_records]
+                            )
                             return render(
                                 request,
                                 "partials/Single_delete/individual_reassign_form.html",

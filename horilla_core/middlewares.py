@@ -11,15 +11,15 @@ import logging
 
 # Django imports
 from django.http import HttpResponse, HttpResponseNotAllowed
-from django.urls import Resolver404, resolve
 from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
-from horilla.exceptions import HorillaHttp404
+from horilla.http import HttpNotFound
 from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
+from horilla.shortcuts import redirect, render
 
 # Local application imports
-from horilla.shortcuts import redirect, render
+from horilla.urls import Resolver404, resolve
 
 from .models import Company
 
@@ -74,15 +74,15 @@ class HorillaExceptionMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        """Process requests and catch HorillaHttp404 exceptions."""
+        """Process requests and catch HttpNotFound exceptions."""
         try:
             return self.get_response(request)
-        except HorillaHttp404 as exc:
+        except HttpNotFound as exc:
             return exc.as_response(request)
 
     def process_exception(self, request, exception):
-        """Handle HorillaHttp404 exceptions raised outside __call__."""
-        if isinstance(exception, HorillaHttp404):
+        """Handle HttpNotFound exceptions raised outside __call__."""
+        if isinstance(exception, HttpNotFound):
             return exception.as_response(request)
         return None
 

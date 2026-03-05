@@ -5,10 +5,10 @@ This view handles the methods for department view
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils.functional import cached_property
 
 # First-party imports (Horilla)
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

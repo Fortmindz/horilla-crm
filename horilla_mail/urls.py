@@ -2,8 +2,7 @@
 horilla_mail URL Configuration
 """
 
-from django.urls import path
-
+from horilla.urls import path
 from horilla_mail import views
 
 app_name = "horilla_mail"

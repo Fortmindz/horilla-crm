@@ -4,10 +4,8 @@ URL patterns for horilla_generics.
 Provides routes for global search, kanban and AJAX helper views.
 """
 
-# Third-party imports (Django)
-from django.urls import path
-
 # First-party / Horilla imports
+from horilla.urls import path
 from horilla_generics import views
 
 app_name = "horilla_generics"

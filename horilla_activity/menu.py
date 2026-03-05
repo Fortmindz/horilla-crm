@@ -4,11 +4,11 @@ for the Horilla  Activities app
 """
 
 # Third party imports (Django)
-from django.urls import reverse_lazy
 
 from horilla.menu import sub_section_menu
 
 # First party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 
 

@@ -2,9 +2,9 @@
 URL patterns for horilla_crm.opportunities API
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_crm.opportunities.api.views import (
     DefaultOpportunityMemberViewSet,
     OpportunityStageViewSet,

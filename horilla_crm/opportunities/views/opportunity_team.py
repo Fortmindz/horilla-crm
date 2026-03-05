@@ -15,17 +15,16 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.html import format_html
 from django.views.generic import DetailView, TemplateView, View
 
 from horilla.auth.models import User
-from horilla.exceptions import HorillaHttp404
+from horilla.http import HorillaRefreshResponse, HttpNotFound
+from horilla.shortcuts import get_object_or_404
 
 # First-party / Horilla imports
-from horilla.http import HorillaRefreshResponse
-from horilla.shortcuts import get_object_or_404
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
 from horilla_crm.opportunities.filters import (
@@ -297,7 +296,7 @@ class OpportunityTeamDetailView(LoginRequiredMixin, DetailView):
             if request.headers.get("HX-Request") == "true":
                 messages.error(self.request, e)
                 return HorillaRefreshResponse(request)
-            raise HorillaHttp404(e) from e
+            raise HttpNotFound(e) from e
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
@@ -341,8 +340,12 @@ class OpportunityTeamDetailNavbar(LoginRequiredMixin, HorillaNavView):
     def new_button(self):
         """Return 'New' button config for adding team members."""
         obj = self.request.GET.get("obj")
+        if obj:
+            obj = str(obj).split("?")[0].strip()
+        base = reverse_lazy("opportunities:create_opportunity_team_member")
+        url = f"{base}?obj={obj}" if obj else str(base)
         return {
-            "url": f"""{ reverse_lazy('opportunities:create_opportunity_team_member')}?obj={obj}""",
+            "url": url,
             "attrs": {"id": "opportunity-team-member-create"},
         }
 
@@ -429,9 +432,12 @@ class OpportunityTeamMemberCreateView(LoginRequiredMixin, HorillaSingleFormView)
     save_and_new = False
 
     def get_initial(self):
-        """Set initial team from GET parameter"""
+        """Set initial team from GET parameter obj (handles malformed query e.g. ?obj=3?obj=3)."""
         initial = super().get_initial()
         obj_id = self.request.GET.get("obj")
+        if obj_id:
+            # Normalize: use only the first token if param looks like "3?obj=3"
+            obj_id = str(obj_id).split("?")[0].strip()
         if obj_id:
             try:
                 initial["team"] = OpportunityTeam.objects.get(pk=obj_id)
@@ -441,13 +447,19 @@ class OpportunityTeamMemberCreateView(LoginRequiredMixin, HorillaSingleFormView)
 
     @cached_property
     def form_url(self):
-        """Get form URL based on create or update mode"""
+        """Get form URL based on create or update mode; preserve obj for create so POST keeps team context."""
         pk = self.kwargs.get("pk") or self.request.GET.get("id")
         if pk:
             return reverse_lazy(
                 "opportunities:edit_opportunity_team_member", kwargs={"pk": pk}
             )
-        return reverse_lazy("opportunities:create_opportunity_team_member")
+        base = reverse_lazy("opportunities:create_opportunity_team_member")
+        obj_id = self.request.GET.get("obj")
+        if obj_id:
+            obj_id = str(obj_id).split("?")[0].strip()
+        if obj_id:
+            return f"{base}?obj={obj_id}"
+        return base
 
     def validate_form_for_multiple_instances(self, form):
         """Validate form before creating multiple instances"""
@@ -506,7 +518,6 @@ class OpportunityTeamMemberUpdateView(LoginRequiredMixin, HorillaSingleFormView)
     """Form view to update an existing opportunity team member."""
 
     model = DefaultOpportunityMember
-    form_class = OpportunityTeamMemberForm
     fields = ["team", "user", "team_role", "opportunity_access_level"]
     full_width_fields = ["user", "team_role", "opportunity_access_level"]
     form_title = _("Update Team Member")

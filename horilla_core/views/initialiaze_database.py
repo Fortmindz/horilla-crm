@@ -21,14 +21,15 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.template import Context, Template
-from django.urls import reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-# First-party / Horilla imports
 from horilla.auth.models import User
 from horilla.http import safe_url
 from horilla.shortcuts import redirect, render
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import db_initialization, htmx_required, method_decorator
 from horilla_core.forms import CompanyFormClass, UserFormClassSingle
 from horilla_core.models import Company, Role

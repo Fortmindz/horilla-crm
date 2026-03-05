@@ -9,10 +9,11 @@ from decimal import Decimal, InvalidOperation
 
 # Third-party imports (Django)
 from django import forms
-from django.urls import reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.forms import HorillaModelForm
 

@@ -4,7 +4,7 @@ Supports child campaigns, members, and contact management routes.
 Integrates with HTMX for dynamic campaign interactions.
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 

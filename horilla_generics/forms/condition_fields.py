@@ -6,14 +6,18 @@ condition choices, initial values, and condition validation. Use from HorillaMod
 by passing the form instance as the first argument (no extra mixin required).
 """
 
+# Standard library imports
 import json
 import logging
 
+# Third-party imports (Django)
 from django import forms
-from django.apps import apps
 from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+
+# First-party / Horilla imports
+from horilla.apps import apps
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 

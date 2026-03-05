@@ -12,17 +12,23 @@ from urllib.parse import urlencode
 # Django / third-party imports
 from django import forms
 from django.contrib import messages
-from django.core.exceptions import FieldDoesNotExist
 from django.db import IntegrityError, models
 from django.http import HttpResponse
-from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView
 
+from horilla.core.exceptions import FieldDoesNotExist
+
 # First-party (Horilla)
+from horilla.urls import reverse, reverse_lazy
 from horilla.utils.choices import TABLE_FALLBACK_FIELD_TYPES
 from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.views.toolkit import single_form_builder
 from horilla_generics.views.toolkit.form_mixin import FormViewCommonMixin
+from horilla_generics.views.toolkit.single_form_builder import (
+    fill_mandatory_condition_defaults,
+)
+
+# First-party / Horilla apps
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -50,16 +56,10 @@ class HorillaSingleFormView(FormViewCommonMixin, FormView):
     condition_field_choices = None
     condition_field_title = None
     condition_hx_include = None
-    condition_related_name = None  # Name of the related manager (e.g., "conditions", "criteria", "team_members")
-    condition_related_name_candidates = [
-        "conditions",
-        "criteria",
-        "team_members",
-    ]  # Fallback names when condition_related_name is None
-    condition_order_by = ["order", "created_at"]  # Default ordering for conditions
-    content_type_field = (
-        None  # Field name that contains ContentType (e.g., "content_type", "model")
-    )
+    condition_related_name = None
+    condition_related_name_candidates = []
+    condition_order_by = ["created_at"]
+    content_type_field = None
     header = True
     modal_height_class = None
     hx_attrs: dict = {}
@@ -337,6 +337,10 @@ class HorillaSingleFormView(FormViewCommonMixin, FormView):
 
         for row_id in sorted(condition_data.keys(), key=sort_key):
             row_data = condition_data[row_id]
+            # Fill mandatory condition fields that are missing (e.g. not shown in form)
+            row_data = fill_mandatory_condition_defaults(
+                self.model, self.condition_fields, row_data
+            )
 
             # Skip empty rows
             if not any(row_data.get(field) for field in self.condition_fields):

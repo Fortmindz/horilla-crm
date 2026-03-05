@@ -12,21 +12,20 @@ from operator import or_
 from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
 # Third-party (Django)
-from django.apps import apps
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import CharField, ForeignKey, ManyToManyField, Q, TextField
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.views import View
 
+# First-party (Horilla)
+from horilla.apps import apps
 from horilla.http import safe_url
 from horilla.registry.feature import FEATURE_REGISTRY
-
-# First-party (Horilla)
 from horilla.shortcuts import redirect, render
+from horilla.urls import reverse_lazy
 from horilla_generics.views.list import HorillaListView
 from horilla_utils.methods import get_section_info_for_model
 

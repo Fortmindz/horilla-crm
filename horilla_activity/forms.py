@@ -8,10 +8,11 @@ from django import forms
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from django.forms import ValidationError
-from django.urls import reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.urls import reverse_lazy
 from horilla_activity.methods import get_activity_content_types_queryset
 from horilla_activity.models import Activity
 from horilla_core.mixins import OwnerQuerysetMixin

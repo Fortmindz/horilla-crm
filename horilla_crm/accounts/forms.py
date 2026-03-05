@@ -7,9 +7,9 @@ with validation and dynamic queryset setup to prevent circular references.
 
 # Third-party imports(Django)
 from django import forms
-from django.urls import reverse_lazy
 
 # First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 

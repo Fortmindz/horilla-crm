@@ -7,14 +7,16 @@ import re
 # Third party imports (Django)
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
 from django.db import models
 from django.template import engines
-from django.urls import reverse_lazy
 
-# First-party / Horilla imports
+from horilla.core.exceptions import ValidationError
+
+# First-party (Horilla)
+from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
-from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
+from horilla.utils.upload import upload_path
+from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_mail.encryption_utils import decrypt_password
 from horilla_mail.fields import EncryptedCharField
 from horilla_mail.methods import limit_content_types

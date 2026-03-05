@@ -12,12 +12,13 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import FormView, View
 
-# First-party / Horilla imports
 from horilla.shortcuts import get_object_or_404, render
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,

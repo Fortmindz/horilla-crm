@@ -2,8 +2,7 @@
 URL configuration for the forecast app.
 """
 
-from django.urls import path
-
+from horilla.urls import path
 from horilla_crm.forecast import views
 
 app_name = "forecast"

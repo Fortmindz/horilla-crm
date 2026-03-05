@@ -2,7 +2,7 @@
 URLs for the horilla_automations app
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 from .load_automation import CreateSelectedAutomationsView, LoadAutomationModalView

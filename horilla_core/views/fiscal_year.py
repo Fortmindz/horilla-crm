@@ -1,19 +1,5 @@
 """
 Fiscal Year management views for Horilla Core.
-
-This module contains views and HTMX endpoints to handle:
-- Creation and editing of Fiscal Year configurations
-- Dynamic form field updates based on fiscal year type
-- Calendar previews for fiscal years
-- Week start day calculations
-- Fiscal Year instance navigation and display
-
-Classes:
-    - FiscalYearFormView
-    - FiscalYearFieldsView
-    - CalculateWeekStartDayView
-    - FiscalYearCalendarPreviewView
-    - FiscalYearCalendarView
 """
 
 # Standard library
@@ -26,20 +12,57 @@ from django.contrib import messages
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 from django.views import View
-from django.views.generic import DetailView
+from django.views.generic import DetailView, TemplateView
 from django.views.generic.edit import FormView
 
 # First-party / Horilla imports
-from horilla.exceptions import HorillaHttp404
+from horilla.http import HttpNotFound
 from horilla.shortcuts import get_object_or_404, render
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators.wrapper import permission_required_or_denied
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.forms import FiscalYearForm
 from horilla_core.mixins import FiscalYearCalendarMixin
 from horilla_core.models import FiscalYear, FiscalYearInstance
 from horilla_generics.views import HorillaSingleFormView
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_company"), name="dispatch"
+)
+class CompanyFiscalYearTab(LoginRequiredMixin, TemplateView):
+    """
+    TemplateView for fiscal year tab.
+    """
+
+    template_name = "settings/fiscal_year.html"
+
+    def get_context_data(self, **kwargs):
+        """
+        Get context data for fiscal year tab.
+        """
+        context = super().get_context_data(**kwargs)
+        company = getattr(self.request, "active_company", None)
+        if company:
+            cmp = company
+        else:
+            cmp = self.request.user.company
+        if not company:
+            context["has_company"] = False
+            return context
+        obj = cmp.fiscalyear_set.first() if cmp.fiscalyear_set.exists() else None
+        start_date = None
+        if obj:
+            current_fy_instance = obj.year_instances.filter(is_current=True).first()
+            if current_fy_instance:
+                start_date = current_fy_instance.start_date
+        context["obj"] = obj
+        context["start_date"] = start_date
+        context["has_company"] = True
+        return context
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -501,12 +524,12 @@ class FiscalYearCalendarView(LoginRequiredMixin, DetailView, FiscalYearCalendarM
         return super().get(request, *args, **kwargs)
 
     def get_object(self, queryset=None):
-        """Return FiscalYear by pk or raise HorillaHttp404."""
+        """Return FiscalYear by pk or raise HttpNotFound."""
         pk = self.kwargs.get(self.pk_url_kwarg)
         try:
             return FiscalYear.objects.get(pk=pk)
         except (FiscalYear.DoesNotExist, ValueError, TypeError) as e:
-            raise HorillaHttp404(e)
+            raise HttpNotFound(e)
 
     def get_context_data(self, **kwargs):
         """Add fiscal year instances, calendar data, and navigation context."""

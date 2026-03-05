@@ -12,9 +12,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 # Third-party imports (Django)
 from django.http import HttpResponse
-from django.urls import reverse_lazy
 
 # First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
