@@ -1,5 +1,5 @@
 """
-AppConfig for the horilla_automations app
+AppLauncher for the horilla_automations app
 """
 
 from horilla.apps import AppLauncher

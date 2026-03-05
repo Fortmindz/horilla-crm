@@ -5,15 +5,18 @@ Provides HorillaModelForm and related base classes for standard (single-page)
 model forms with field configuration, permissions, condition fields, and HTMX support.
 """
 
+# Standard library imports
 import logging
 
+# Third-party imports (Django)
 from django import forms
 from django.db import models
 from django.db.models import Q
 from django.templatetags.static import static
-from django.utils.translation import gettext_lazy as _
 
+# First-party / Horilla imports
 from horilla.auth.models import User
+from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.forms import condition_fields as condition_fields_module
 from horilla_generics.forms.form_class_mixin import (
     WIDGET_INPUT_CSS_CLASS,

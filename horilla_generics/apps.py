@@ -1,7 +1,7 @@
 """
 Horilla generics app configuration.
 
-This module defines the AppConfig for the horilla_generics application and performs
+This module defines the AppLauncher for the horilla_generics application and performs
 application startup tasks such as URL registration and signal imports.
 """
 

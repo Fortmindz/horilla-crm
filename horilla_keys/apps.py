@@ -1,5 +1,5 @@
 """
-AppConfig for the horilla_keys app
+AppLauncher for the horilla_keys app
 """
 
 from horilla.apps import AppLauncher
