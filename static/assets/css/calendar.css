@@ -39,22 +39,16 @@
 }
 .fc a[data-navlink]:hover {
   text-decoration: underline;
-  color: #2995e3;
+  color: #e54f38;
 }
 .fc-daygrid-dot-event.fc-event-mirror,
 .fc-daygrid-dot-event {
   transition: 0.3s;
   font-size: 0.75rem;
 }
-.fc-daygrid-dot-event.fc-event-mirror,
-.fc-daygrid-dot-event:hover {
-  background: #ebf4f9;
-  color: #2995e3;
-}
+
 .fc-daygrid-event-dot {
-  border: calc(var(--fc-daygrid-event-dot-width) / 2) solid #74d837;
-  position: relative;
-  top: -1px;
+  display: none;
 }
 .fc .fc-popover {
   box-shadow: rgb(0 0 0 / 8%) 0px 2px 20px;
@@ -74,7 +68,7 @@
   color: #e54f38;
 }
 #calendarPopup {
-  min-width: 200px;
+  width: 230px;
   box-shadow: rgb(0 0 0 / 8%) 0px 2px 20px;
   border-radius: 5px;
   border: unset !important;
@@ -89,14 +83,8 @@
   transition: 0.3s;
   font-weight: 500;
 }
-#popupContent button:hover {
-  text-decoration: unset;
-  color: #2995e3;
-}
-#popupContent strong {
-  display: inline-flex;
-  color: #2995e3;
-}
+
+
 #popupContent .para {
   padding: 3px 0;
 }
@@ -111,9 +99,7 @@
   transition: 0.3s;
   font-size: 0.7rem;
 }
-#popupContent label:hover {
-  color: #2995e3;
-}
+
 .fc-timegrid-event-harness > .fc-timegrid-event {
   padding: 5px;
 }
@@ -122,11 +108,9 @@
 }
 #popupContent h5 {
     margin: -15px;
-    background-color: #d8f1ff;
     border-radius: 5px 5px 0 0;
     padding: 8px 10px;
     margin-bottom: 3px;
-    color: #2994e1;
     font-weight: 600;
     font-size: 0.85rem;
 }
@@ -138,6 +122,6 @@
   padding: 8px 0;
 }
 .fc .fc-daygrid-day.fc-day-today {
-    background-color: rgb(204 230 248);
-    color: #2995e3;
+    background-color: #fcedeb;
+    color: #e54f38;
 }

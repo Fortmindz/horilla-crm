@@ -46,7 +46,7 @@
                         </button>
                     </div>
                     <div>
-                        <div class="flex gap-2">
+                        <div class="flex gap-1">
                             <button id="dayView"
                                 class="tab-btn text-xs px-3 py-2 rounded-md transition duration-300 h-8 w-16 bg-primary-300 text-primary-600 hover:bg-primary-600 hover:text-white">
                                 {% trans 'Day' %}
@@ -363,11 +363,19 @@
                             const safeDeleteUrl = escapeHtml(event.extendedProps.deleteUrl || '');
 
                             content = `
-                                <div class="flex flex-col gap-2">
-                                    <h5>${safeTitle}</h5>
-                                    <p><strong>{% trans 'Reason' %}:</strong> ${safeDescription}</p>
-                                    <div class="flex gap-1"><strong>{% trans 'Start Date' %}:</strong> ${event.start?.toLocaleString()}</div>
-                                    <div class="flex gap-1"><strong>{% trans 'End Date' %}:</strong> ${event.end?.toLocaleString() || 'N/A'}</div>
+                                <div class="flex flex-col gap-2 text-sm">
+                                    <h5 class="font-semibold mb-1 bg-primary-300 text-primary-600">${safeTitle}</h5>
+                                    <div class="grid grid-cols-[90px_10px_minmax(0,1fr)] gap-y-1">
+                                        <div class="font-bold">{% trans 'Reason' %}</div>
+                                        <div>:</div>
+                                        <div>${safeDescription}</div>
+                                        <div class="font-bold">{% trans 'Start Date' %}</div>
+                                        <div>:</div>
+                                        <div>${event.extendedProps.start_display || event.start?.toLocaleString()}</div>
+                                        <div class="font-bold">{% trans 'End Date' %}</div>
+                                        <div>:</div>
+                                        <div>${event.extendedProps.end_display || event.end?.toLocaleString() || 'N/A'}</div>
+                                    </div>
                                 </div>
                             `;
                             // Icons for unavailability (only Edit and Delete)
@@ -376,21 +384,23 @@
                             const safeDeleteUrlJs = escapeJsString(event.extendedProps.deleteUrl || '');
 
                             icons = `
-                                <div class="flex gap-3 mt-2">
+                                <div class="flex tablebtn mt-3">
                                 ${ window.hasUnavailabilityChangeOwnPerm ? `
-                                    <button
+                                    <button type="button"
                                         onclick="editEvent('${safeEventIdJs}', '${safeEventUrlJs}')"
-                                        class="text-blue-600 hover:text-blue-800"
+                                        class="group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
                                     >
-                                        <i class="fas fa-edit"></i> {% trans 'Edit' %}
+                                        <i class="fas fa-edit text-color-600 width="15" height="15"></i>
+                                        <div class="min-w-max z-40 absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-[3px] px-[15px] bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap"><p>{% trans 'Edit' %}</p></div>
                                     </button>
                                     ` : ''}
                                     ${window.hasUnavailabilityDeletePerm ? `
-                                    <button
+                                    <button type="button"
                                         onclick="deleteEvent('${safeEventIdJs}', '${safeDeleteUrlJs}')"
-                                        class="text-red-600 hover:text-red-800"
+                                        class="group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
                                     >
-                                        <i class="fas fa-trash"></i> {% trans 'Delete' %}
+                                        <img src="{% static 'assets/icons/a4.svg' %}" alt="{% trans 'Delete' %}" width="15" height="15" />
+                                        <div class="min-w-max z-40 absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-[3px] px-[15px] bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap"><p>{% trans 'Delete' %}</p></div>
                                     </button>
                                     ` : '' }
                                 </div>
@@ -399,34 +409,61 @@
                             // Content for other activity types
                             const subject = event.extendedProps.subject || "No subject";
                             const status = event.extendedProps.status;
+                            const statusDisplay = event.extendedProps.status_display || status || "";
+                            const activityTypeDisplay = event.extendedProps.activity_type_display || event.extendedProps.calendarType || "";
+                            const calendarType = event.extendedProps.calendarType || "";
+                            const isTask = calendarType === "task";
+                            const dueDateDisplay = event.extendedProps.due_date_display || (event.extendedProps.dueDate ? new Date(event.extendedProps.dueDate).toLocaleString() : "—");
+                            const startDisplay = event.extendedProps.start_display || (event.start ? event.start.toLocaleString() : "—");
+                            const endDisplay = event.extendedProps.end_display || (event.end ? event.end.toLocaleString() : "—");
                             const assignedToList = event.extendedProps.assignedTo || [];
-                            const clientName = assignedToList.map(user => user.first_name).join(", ") || "No assigned user";
+                            const clientName = assignedToList.map(user => user.first_name).join(", ") || "Unassigned";
 
                             // Escape all user inputs to prevent XSS
                             const safeTitle = escapeHtml(event.title);
                             const safeSubject = escapeHtml(subject);
                             const safeClientName = escapeHtml(clientName);
-                            const safeStatus = escapeHtml(status);
+                            const safeStatus = escapeHtml(statusDisplay);
+                            const safeActivityType = escapeHtml(activityTypeDisplay);
                             const safeEventId = escapeHtml(event.id);
                             const safeEventUrl = escapeHtml(event.url || '');
                             const safeDeleteUrl = escapeHtml(event.extendedProps.deleteUrl || '');
                             const safeDetailUrl = escapeHtml(event.extendedProps.detailUrl || '');
 
+                            const dateRows = isTask
+                                ? `<div class="font-bold">{% trans 'Due Date' %}</div>
+                                        <div>:</div>
+                                        <div>${dueDateDisplay}</div>`
+                                : `<div class="font-bold">{% trans 'Start Date' %}</div>
+                                        <div>:</div>
+                                        <div>${startDisplay}</div>
+                                        <div class="font-bold">{% trans 'End Date' %}</div>
+                                        <div>:</div>
+                                        <div>${endDisplay}</div>`;
+
                             content = `
-                                <div class="flex flex-col gap-2">
-                                    <h5>${safeTitle}</h5>
-                                    <span class="para"><strong>{% trans 'Subject' %}:</strong> ${safeSubject}</span>
-                                    <div class="flex gap-1"><strong>{% trans 'Start Date' %}:</strong> ${event.start?.toLocaleString()}</div>
-                                    <div class="flex gap-1"><strong>{% trans 'End Date' %}:</strong> ${event.end?.toLocaleString()}</div>
-                                    <p><strong>{% trans 'Assigned to' %}:</strong> ${safeClientName}</p>
-                                    <p><strong>{% trans 'Status' %}:</strong> ${safeStatus}</p>
-                                    ${status === "pending" && window.statusFieldPermission === "readwrite" ? `
-                                     <div class="radio-group">
-                                        <label>
-                                            <input type="radio" name="status" value="complete" onclick="updateEventStatus('${escapeJsString(event.id)}', 'completed')"> {% trans 'Mark as Complete' %}
-                                            <span class="custom-radio"></span>
-                                        </label>
+                                <div class="flex flex-col gap-2 text-sm">
+                                    <h5 class="font-semibold mb-1 bg-primary-300 text-primary-600">${safeTitle}</h5>
+                                    <div class="grid grid-cols-[90px_10px_minmax(0,1fr)] gap-y-1">
+                                        <div class="font-bold">{% trans 'Subject' %}</div>
+                                        <div>:</div>
+                                        <div>${safeSubject}</div>
+                                        ${dateRows}
+                                        <div class="font-bold">{% trans 'Assigned to' %}</div>
+                                        <div>:</div>
+                                        <div>${safeClientName}</div>
+                                        <div class="font-bold">{% trans 'Status' %}</div>
+                                        <div>:</div>
+                                        <div>${safeStatus}</div>
                                     </div>
+                                    ${status != "completed" && window.statusFieldPermission === "readwrite" ? `
+                                    <button type="button"
+                                        onclick="updateEventStatus('${escapeJsString(event.id)}', 'completed')"
+                                        class="w-full mt-2 py-1.5 px-3 text-xs font-medium rounded-md bg-primary-100 text-primary-600 border border-primary-200 transition duration-300 flex items-center justify-center gap-1.5"
+                                    >
+                                        <i class="fas fa-check"></i>
+                                        <span>{% trans 'Mark as Complete' %}</span>
+                                    </button>
                                     ` : ""}
                                 </div>
                             `;
@@ -437,29 +474,32 @@
                             const safeDetailUrlJs = escapeJsString(event.extendedProps.detailUrl || '');
 
                             icons = `
-                                <div class="flex gap-3 mt-2">
+                                <div class="flex tablebtn mt-3">
                                 ${window.hasActivityChangeOwnPerm ? `
-                                    <button
+                                    <button type="button"
                                         onclick="editEvent('${safeEventIdJs}', '${safeEventUrlJs}')"
-                                        class="text-blue-600 hover:text-blue-800"
+                                        class="group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
                                     >
-                                        <i class="fas fa-edit"></i> {% trans 'Edit' %}
+                                        <i class="fas fa-edit text-color-600"></i>
+                                        <div class="min-w-max z-40 absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-[3px] px-[15px] bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap"><p>{% trans 'Edit' %}</p></div>
                                     </button>
                                     ` : '' }
                                     ${window.hasActivityDeletePerm ? `
-                                    <button
+                                    <button type="button"
                                         onclick="deleteEvent('${safeEventIdJs}', '${safeDeleteUrlJs}')"
-                                        class="text-red-600 hover:text-red-800"
+                                        class="group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
                                     >
-                                        <i class="fas fa-trash"></i> {% trans 'Delete' %}
+                                        <i class="fas fa-trash text-color-600"></i>
+                                        <div class="min-w-max z-40 absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-[3px] px-[15px] bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap"><p>{% trans 'Delete' %}</p></div>
                                     </button>
                                     ` : '' }
                                     ${window.hasActivityViewOwnPerm ? `
-                                    <button
+                                    <button type="button"
                                         onclick="showEventInfo('${safeEventIdJs}', '${safeDetailUrlJs}')"
-                                        class="text-gray-600 hover:text-gray-800"
+                                        class="group relative w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
                                     >
-                                        <i class="fas fa-info-circle"></i> {% trans 'Info' %}
+                                        <i class="fas fa-info-circle text-color-600"></i>
+                                        <div class="min-w-max z-40 absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-[3px] px-[15px] bg-[#000000] text-[.7rem] rounded-[5px] text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap"><p>{% trans 'Info' %}</p></div>
                                     </button>
                                     ` :  '' }
                                 </div>
@@ -490,7 +530,7 @@
                                 content += `
                                     <button
                                         onclick="createNewActivity('${safeClickedDate}')"
-                                        class="text-blue-600 hover:underline text-sm"
+                                        class="text-blue-600 text-sm"
                                     >
                                         {% trans 'New Activity' %}
                                     </button>
@@ -501,7 +541,7 @@
                                 content += `
                                     <button
                                         onclick="markDateUnavailable('${safeClickedDate}')"
-                                        class="text-red-600 hover:underline text-sm"
+                                        class="text-red-600 text-sm"
                                     >
                                         {% trans 'Mark as Unavailable' %}
                                     </button>
@@ -863,7 +903,7 @@
                 </div>
             </div>
             <div class="col-span-6 lg:col-span-2">
-                <div class="h-full shadow-[0px_0px_20px_0px_rgba(0,0,0,0.05)] bg-white rounded-lg z-0 p-4">
+                <div class="h-full shadow-[0px_0px_20px_0px_rgba(0,0,0,0.05)] bg-white rounded-lg z-0 p-4 w-[180px]">
                     <div class="flex items-center gap-1">
                         <div class="w-3">
                             <input type="checkbox"
@@ -875,7 +915,7 @@
                     <div>
                         {% for calendar in calendars %}
                             <div class="flex items-center justify-between gap-2 mb-3 relative">
-                                <div class="flex gap-2 text-sm items-center flex-1">
+                                <div class="flex gap-1 text-sm items-center flex-1">
                                     <div class="w-5">
                                         <input
                                             type="checkbox"
