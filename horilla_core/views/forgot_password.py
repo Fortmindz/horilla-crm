@@ -9,7 +9,6 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
-from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from django.db.models import Q
 from django.http import HttpResponse
@@ -22,7 +21,10 @@ from django.views import View
 from horilla.auth.models import User
 
 # First-party / Horilla imports
+from horilla.core.exceptions import ValidationError
 from horilla.shortcuts import redirect, render
+
+# First-party / Horilla apps
 from horilla_core.models import Company
 from horilla_mail.models import HorillaMailConfiguration
 
