@@ -9,16 +9,18 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
 
-# First-party / Horilla imports
+# First-party imports (Horilla)
 from horilla.apps import apps
+from horilla.registry.limiters import limit_content_types
 from horilla.registry.permission_registry import permission_exempt_model
 from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
 from horilla.utils.translation import gettext_lazy as _
 from horilla.utils.upload import upload_path
 from horilla_core.models import HorillaContentType, HorillaCoreModel
-from horilla_dashboard.methods import limit_content_types
 from horilla_reports.models import Report
+
+# First-party / Horilla apps
 from horilla_utils.methods import render_template
 
 logger = logging.getLogger(__name__)
@@ -276,7 +278,7 @@ class DashboardComponent(HorillaCoreModel):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        limit_choices_to=limit_content_types,
+        limit_choices_to=limit_content_types("dashboard_component_models"),
         verbose_name=_("Module"),
     )
 

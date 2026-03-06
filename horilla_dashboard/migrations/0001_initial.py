@@ -4,7 +4,7 @@ import django.core.validators
 import django.db.models.deletion
 import django.utils.timezone
 import horilla.utils.upload
-import horilla_dashboard.methods
+import horilla.registry.limiters
 from django.conf import settings
 from django.db import migrations, models
 
@@ -293,7 +293,7 @@ class Migration(migrations.Migration):
                     "module",
                     models.ForeignKey(
                         blank=True,
-                        limit_choices_to=horilla_dashboard.methods.limit_content_types,
+                        limit_choices_to=horilla.registry.limiters.ContentTypeLimiter('dashboard_component_models'),
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         to="horilla_core.horillacontenttype",
