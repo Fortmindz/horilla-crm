@@ -1,12 +1,10 @@
 """Data helpers for report detail views (pivots, aggregates, FK caching)."""
 
 import logging
-from urllib.parse import urlencode
 
 import pandas as pd
 
 from horilla_reports.views.toolkit.report_helper import create_temp_report_with_preview
-from horilla_utils.methods import get_section_info_for_model
 
 logger = logging.getLogger(__name__)
 

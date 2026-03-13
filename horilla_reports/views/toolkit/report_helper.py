@@ -44,13 +44,16 @@ class ReportPreviewMixin:
     """Shared helpers for report preview session handling."""
 
     def get_session_key(self, report):
+        """to get the session key"""
         return f"report_preview_{report.pk}"
 
     def get_preview_data(self, request, report):
+        """Function to get the preview data"""
         session_key = self.get_session_key(report)
         return request.session.get(session_key, {})
 
     def save_preview_data(self, request, report, preview_data):
+        """Function to save the preview data"""
         session_key = self.get_session_key(report)
         request.session[session_key] = preview_data
         request.session.modified = True
