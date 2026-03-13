@@ -1,5 +1,5 @@
 """
-Handles campaign-related views, including list, create, update, and delete operations.
+Views for Campaigns
 """
 
 # Standard library imports
@@ -8,15 +8,12 @@ from functools import cached_property
 from urllib.parse import urlencode
 
 # Third-party imports (Django)
-from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.utils import timezone
-from django.views.generic import FormView, View
+from django.views.generic import View
+
+from horilla.shortcuts import get_object_or_404, render
 
 # First-party / Horilla imports
-from horilla.apps import apps
-from horilla.http import HttpResponse
-from horilla.shortcuts import get_object_or_404, render
 from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
@@ -27,15 +24,10 @@ from horilla.utils.decorators import (
 from horilla.utils.translation import gettext_lazy as _
 from horilla_activity.views import HorillaActivitySectionView
 from horilla_crm.campaigns.filters import CampaignFilter
-from horilla_crm.campaigns.forms import (
-    CampaignFormClass,
-    CampaignMemberForm,
-    CampaignSingleForm,
-    ChildCampaignForm,
-)
 from horilla_crm.campaigns.models import Campaign, CampaignMember
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
+    HorillaChartView,
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
@@ -43,14 +35,14 @@ from horilla_generics.views import (
     HorillaHistorySectionView,
     HorillaKanbanView,
     HorillaListView,
-    HorillaMultiStepFormView,
     HorillaNavView,
     HorillaNotesAttachementSectionView,
     HorillaRelatedListSectionView,
-    HorillaSingleDeleteView,
-    HorillaSingleFormView,
+    HorillaSplitView,
     HorillaView,
 )
+from horilla_generics.views.card import HorillaCardView
+from horilla_generics.views.timeline import HorillaTimelineView
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -65,6 +57,10 @@ class CampaignView(LoginRequiredMixin, HorillaView):
     list_url = reverse_lazy("campaigns:campaign_list_view")
     kanban_url = reverse_lazy("campaigns:campaign_kanban_view")
     group_by_url = reverse_lazy("campaigns:campaign_group_by")
+    card_url = reverse_lazy("campaigns:campaign_card_view")
+    split_view_url = reverse_lazy("campaigns:campaign_split_view")
+    chart_url = reverse_lazy("campaigns:campaign_chart_view")
+    timeline_url = reverse_lazy("campaigns:campaign_timeline")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -82,6 +78,7 @@ class CampaignNavbar(LoginRequiredMixin, HorillaNavView):
     main_url = reverse_lazy("campaigns:campaign_view")
     kanban_url = reverse_lazy("campaigns:campaign_kanban_view")
     group_by_url = reverse_lazy("campaigns:campaign_group_by")
+    card_url = reverse_lazy("campaigns:campaign_card_view")
     model_str = "campaigns.Campaign"
     model_name = "Campaign"
     model_app_label = "campaigns"
@@ -89,6 +86,9 @@ class CampaignNavbar(LoginRequiredMixin, HorillaNavView):
     exclude_kanban_fields = "company"
     enable_actions = True
     enable_quick_filters = True
+    split_view_url = reverse_lazy("campaigns:campaign_split_view")
+    chart_url = reverse_lazy("campaigns:campaign_chart_view")
+    timeline_url = reverse_lazy("campaigns:campaign_timeline")
 
     @cached_property
     def new_button(self):
@@ -119,7 +119,7 @@ class CampaignListView(LoginRequiredMixin, HorillaListView):
 
     model = Campaign
     paginate_by = 20
-    view_id = "Campaign_List"
+    view_id = "campaign-list"
     filterset_class = CampaignFilter
     search_url = reverse_lazy("campaigns:campaign_list_view")
     main_url = reverse_lazy("campaigns:campaign_view")
@@ -243,22 +243,6 @@ class CampaignListView(LoginRequiredMixin, HorillaListView):
         return None
 
 
-@method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied("campaigns.delete_campaign", modal=True),
-    name="dispatch",
-)
-class CampaignDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
-    """
-    Campaign delete view
-    """
-
-    model = Campaign
-
-    def get_post_delete_response(self):
-        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
-
-
 @method_decorator(
     permission_required_or_denied(
         ["campaigns.view_campaign", "campaigns.view_own_campaign"]
@@ -271,7 +255,7 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
     """
 
     model = Campaign
-    view_id = "Campaign_Kanban"
+    view_id = "campaign-kanban"
     filterset_class = CampaignFilter
     search_url = reverse_lazy("campaigns:campaign_list_view")
     main_url = reverse_lazy("campaigns:campaign_view")
@@ -310,6 +294,38 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
             "own_permission": "campaigns.view_own_campaign",
             "owner_field": "campaign_owner",
         }
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignCardView(LoginRequiredMixin, HorillaCardView):
+    """
+    Card view for campaign
+    """
+
+    model = Campaign
+    view_id = "campaign-card"
+    filterset_class = CampaignFilter
+    search_url = reverse_lazy("campaigns:campaign_list_view")
+    main_url = reverse_lazy("campaigns:campaign_view")
+
+    columns = [
+        "campaign_name",
+        "campaign_owner",
+        "campaign_type",
+        "status",
+        "expected_revenue",
+    ]
+
+    actions = CampaignListView.actions
+
+    col_attrs = CampaignListView.col_attrs
+
+    no_record_add_button = CampaignListView.no_record_add_button
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -368,81 +384,88 @@ class CampaignGroupByView(LoginRequiredMixin, HorillaGroupByView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class CampaignFormView(LoginRequiredMixin, HorillaMultiStepFormView):
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignSplitView(LoginRequiredMixin, HorillaSplitView):
     """
-    form view for campaign
+    Campaign Split view: left = tile list, right = simple details on click.
     """
 
-    form_class = CampaignFormClass
     model = Campaign
-    fullwidth_fields = ["number_sent", "description"]
-    total_steps = 3
-    detail_url_name = "campaigns:campaign_detail_view"
-    step_titles = {
-        "1": _("Campaign Information"),
-        "2": _("Financial Information"),
-        "3": _("Additional Information"),
-    }
+    view_id = "campaign-split"
+    filterset_class = CampaignFilter
+    search_url = reverse_lazy("campaigns:campaign_list_view")
+    main_url = reverse_lazy("campaigns:campaign_view")
+    enable_quick_filters = True
+    split_view_permission = "campaigns.view_campaign"
+    split_view_own_permission = "campaigns.view_own_campaign"
+    split_view_owner_field = "campaign_owner"
 
-    single_step_url_name = {
-        "create": "campaigns:campaign_single_create",
-        "edit": "campaigns:campaign_single_edit",
-    }
+    columns = [
+        "campaign_name",
+        "campaign_type",
+        "campaign_owner",
+        "status",
+        "expected_revenue",
+        "budget_cost",
+    ]
 
-    @cached_property
-    def form_url(self):
-        """
-        Return the URL for the form submission
-        """
-        pk = self.kwargs.get("pk") or self.request.GET.get("id")
-        if pk:
-            return reverse_lazy("campaigns:campaign_edit", kwargs={"pk": pk})
-        return reverse_lazy("campaigns:campaign_create")
+    no_record_add_button = CampaignListView.no_record_add_button
+    actions = CampaignListView.actions
 
 
 @method_decorator(htmx_required, name="dispatch")
-class CampaignSingleFormView(LoginRequiredMixin, HorillaSingleFormView):
-    """campaign Create/Update Single Page View"""
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignChartView(LoginRequiredMixin, HorillaChartView):
+    """Campaign chart view: counts by group-by field using same filters as list/kanban."""
 
     model = Campaign
-    form_class = CampaignSingleForm
-    full_width_fields = ["description"]
-    detail_url_name = "campaigns:campaign_detail_view"
-    multi_step_url_name = {
-        "create": "campaigns:campaign_create",
-        "edit": "campaigns:campaign_edit",
-    }
-
-    @cached_property
-    def form_url(self):
-        """Form URL for lead"""
-        pk = self.kwargs.get("pk") or self.request.GET.get("id")
-        if pk:
-            return reverse_lazy("campaigns:campaign_single_edit", kwargs={"pk": pk})
-        return reverse_lazy("campaigns:campaign_single_create")
+    view_id = "campaign-chart"
+    filterset_class = CampaignFilter
+    search_url = reverse_lazy("campaigns:campaign_list_view")
+    main_url = reverse_lazy("campaigns:campaign_view")
+    group_by_field = "status"
+    exclude_kanban_fields = "company"
 
 
-@method_decorator(htmx_required, name="dispatch")
-class CampaignChangeOwnerForm(LoginRequiredMixin, HorillaSingleFormView):
-    """
-    Change owner form
-    """
+@method_decorator(
+    permission_required_or_denied(
+        ["campaigns.view_campaign", "campaigns.view_own_campaign"]
+    ),
+    name="dispatch",
+)
+class CampaignTimelineView(LoginRequiredMixin, HorillaTimelineView):
+    """Timeline from created_at to updated_at; rows by status. Use Timeline settings to use start/end date."""
 
     model = Campaign
-    fields = ["campaign_owner"]
-    full_width_fields = ["campaign_owner"]
-    modal_height = False
-    form_title = _("Change Owner")
-
-    @cached_property
-    def form_url(self):
-        """
-        Return the URL for the form submission
-        """
-        pk = self.kwargs.get("pk") or self.request.GET.get("id")
-        if pk:
-            return reverse_lazy("campaigns:campaign_change_owner", kwargs={"pk": pk})
-        return None
+    view_id = "campaign-timeline"
+    filterset_class = CampaignFilter
+    search_url = reverse_lazy("campaigns:campaign_list_view")
+    main_url = reverse_lazy("campaigns:campaign_view")
+    enable_quick_filters = True
+    timeline_start_field = "created_at"
+    timeline_end_field = "updated_at"
+    timeline_group_by_field = "status"
+    timeline_title_field = "campaign_name"
+    columns = [
+        "campaign_name",
+        "campaign_type",
+        "campaign_owner",
+        "status",
+        "start_date",
+        "end_date",
+    ]
+    actions = CampaignListView.actions
+    col_attrs = CampaignListView.col_attrs
 
 
 @method_decorator(
@@ -839,388 +862,11 @@ class CampaignHierarchyView(LoginRequiredMixin, View):
         """
         campaign_id = request.GET.get("id")
         if not campaign_id:
-            return render(request, "error/403.html", {"modal": True})
+            return render(request, "403.html", {"modal": True})
         campaign = get_object_or_404(Campaign, pk=campaign_id)
         root = _build_campaign_tree(campaign)
         return render(
             request,
             "campaigns/campaign_hierarchy_modal.html",
             {"root": root},
-        )
-
-
-@method_decorator(htmx_required, name="dispatch")
-class AddChildCampaignFormView(LoginRequiredMixin, FormView):
-    """
-    Form view to select an existing campaign and assign it as a child campaign.
-    """
-
-    template_name = "single_form_view.html"
-    header = True
-    form_class = ChildCampaignForm
-
-    def get(self, request, *args, **kwargs):
-
-        campaign_id = request.GET.get("id")
-        if request.user.has_perm("campaigns.change_campaign") or request.user.has_perm(
-            "campaigns.create_campaign"
-        ):
-            return super().get(request, *args, **kwargs)
-
-        if campaign_id:
-            campaign = get_object_or_404(Campaign, pk=campaign_id)
-            if campaign.campaign_owner == request.user:
-                return super().get(request, *args, **kwargs)
-
-        return render(request, "error/403.html")
-
-    def get_form_kwargs(self):
-        """
-        Pass the request to the form for queryset filtering and validation.
-        """
-        kwargs = super().get_form_kwargs()
-        kwargs["request"] = self.request
-        return kwargs
-
-    def get_initial(self):
-        """
-        Prepopulate the form with initial data if needed.
-        """
-        initial = super().get_initial()
-        parent_id = self.request.GET.get("id")
-
-        if parent_id:
-            try:
-                parent_campaign = Campaign.objects.get(pk=parent_id)
-                initial["parent_campaign"] = parent_campaign
-            except Exception as e:
-                logger.error(e)  # Debug
-
-        return initial
-
-    def get_context_data(self, **kwargs):
-        """
-        Add context data for the template.
-        """
-        context = super().get_context_data(**kwargs)
-        context["form_title"] = _("Add Child Campaign")
-        context["full_width_fields"] = ["campaign"]  # Make sure campaign is full width
-        context["form_url"] = self.get_form_url()
-
-        form_url = self.get_form_url()
-
-        context["hx_attrs"] = {
-            "hx-post": str(form_url),
-            "hx-target": "#modalBox",
-            "hx-swap": "innerHTML",
-        }
-        context["modal_height"] = False
-        context["view_id"] = "add-child-campaign-form-view"
-        context["condition_fields"] = []
-        context["header"] = self.header
-        context["field_permissions"] = {}
-        return context
-
-    def form_valid(self, form):
-        """
-        Update the selected campaign's parent_campaign field and return HTMX response.
-        """
-        if not self.request.user.is_authenticated:
-            messages.error(
-                self.request, _("You must be logged in to perform this action.")
-            )
-            return self.form_invalid(form)
-
-        selected_campaign = form.cleaned_data["campaign"]
-        parent_campaign = form.cleaned_data[
-            "parent_campaign"
-        ]  # Get from form data instead of GET
-
-        if not parent_campaign:
-            form.add_error(None, _("No parent campaign specified in the request."))
-            return self.form_invalid(form)
-
-        try:
-            if selected_campaign.id == parent_campaign.id:
-                form.add_error("campaign", _("A campaign cannot be its own parent."))
-                return self.form_invalid(form)
-
-            if selected_campaign.parent_campaign:
-                form.add_error(
-                    "campaign", _("This campaign already has a parent campaign.")
-                )
-                return self.form_invalid(form)
-
-            # Update the selected campaign
-            selected_campaign.parent_campaign = parent_campaign
-            selected_campaign.updated_at = timezone.now()
-            selected_campaign.updated_by = self.request.user
-            selected_campaign.save()
-
-            messages.success(self.request, _("Child campaign assigned successfully!"))
-
-        except ValueError:
-            form.add_error(None, _("Invalid parent campaign ID format."))
-            return self.form_invalid(form)
-
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-child_campaigns-btn', 'click');closeModal();</script>"
-        )
-
-    def get_form_url(self):
-        """
-        Get the form URL for submission.
-        """
-        return reverse_lazy("campaigns:create_child_campaign")
-
-
-@method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied("campaigns.delete_campaign"), name="dispatch"
-)
-class ChildCampaignDeleteView(LoginRequiredMixin, View):
-    """
-    View to remove parent-child relationship from a campaign.
-    """
-
-    def delete(self, request, pk, *args, **kwargs):
-        """
-        Handle DELETE request to remove parent campaign relationship.
-        """
-
-        child_campaign = get_object_or_404(Campaign, pk=pk)
-
-        has_permission = (
-            request.user.has_perm("campaigns.change_campaign")
-            or child_campaign.campaign_owner == request.user
-            or (
-                child_campaign.parent_campaign
-                and child_campaign.parent_campaign.campaign_owner == request.user
-            )
-        )
-
-        if not has_permission:
-            messages.error(
-                request, _("You don't have permission to perform this action.")
-            )
-            return HttpResponse(
-                "<script>htmx.trigger('#tab-child_campaigns-btn', 'click');</script>",
-                status=403,
-            )
-
-        parent_campaign = child_campaign.parent_campaign
-
-        if not parent_campaign:
-            messages.warning(
-                request, _("This campaign doesn't have a parent campaign.")
-            )
-            return HttpResponse(
-                "<script>htmx.trigger('#tab-child_campaigns-btn', 'click');</script>"
-            )
-
-        try:
-            child_campaign.parent_campaign = None
-            child_campaign.updated_at = timezone.now()
-            child_campaign.updated_by = request.user
-            child_campaign.save()
-
-            messages.success(
-                request,
-                _(
-                    f"Successfully removed {child_campaign.campaign_name} from {parent_campaign.campaign_name}'s child campaigns."
-                ),
-            )
-
-            return HttpResponse(
-                "<script>htmx.trigger('#tab-child_campaigns-btn', 'click');</script>"
-            )
-
-        except Exception as e:
-            print(f"Error removing child campaign: {e}")
-            messages.error(
-                request, _("An error occurred while removing the child campaign.")
-            )
-            return HttpResponse(
-                "<script>htmx.trigger('#tab-child_campaigns-btn', 'click');</script>",
-            )
-
-
-@method_decorator(htmx_required, name="dispatch")
-class AddToCampaignFormview(LoginRequiredMixin, HorillaSingleFormView):
-    """
-    Add lead to campaign form view
-    """
-
-    model = CampaignMember
-    fields = ["lead", "campaign", "member_status"]
-    full_width_fields = ["campaign", "member_status"]
-    modal_height = False
-    form_title = _("Add to Campaign")
-    hidden_fields = ["lead"]
-    save_and_new = False
-
-    def get(self, request, *args, **kwargs):
-        lead_id = request.GET.get("id")
-        pk = self.kwargs.get("pk")
-        lead = None
-
-        if pk:
-            campaign_member = get_object_or_404(CampaignMember, pk=pk)
-            lead = campaign_member.lead
-        elif lead_id:
-            Lead = apps.get_model("leads", "Lead")
-            lead = get_object_or_404(Lead, pk=lead_id)
-        is_owner = lead and lead.lead_owner == request.user
-        if pk:
-            if request.user.has_perm("leads.change_lead"):
-                pass
-            elif request.user.has_perm("leads.change_own_lead") and is_owner:
-                pass
-            else:
-                return render(request, "error/403.html", {"modal": True})
-        return super().get(request, *args, **kwargs)
-
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-campaigns-btn', 'click');closeModal();</script>"
-        )
-
-    def get_initial(self):
-        initial = super().get_initial()
-        lead_id = self.request.GET.get("id")
-        if lead_id:
-            initial["lead"] = lead_id
-        return initial
-
-    @cached_property
-    def form_url(self):
-        """
-        Return the form URL for submission.
-        """
-        if self.kwargs.get("pk"):
-            return reverse_lazy(
-                "campaigns:edit_campaign_member", kwargs={"pk": self.kwargs.get("pk")}
-            )
-        return reverse_lazy("campaigns:add_to_campaign")
-
-
-@method_decorator(htmx_required, name="dispatch")
-class AddCampaignMemberFormview(LoginRequiredMixin, HorillaSingleFormView):
-    """
-    Form view to craete and edit campaign member
-    """
-
-    model = CampaignMember
-    form_class = CampaignMemberForm
-    modal_height = False
-    form_title = _("Add Campaign Members")
-    full_width_fields = ["member_status", "member_type", "lead", "contact"]
-    save_and_new = False
-
-    def get_initial(self):
-        initial = super().get_initial()
-        campaign_id = (
-            self.request.GET.get("id")
-            if self.request.GET.get("id")
-            else self.request.GET.get("campaign")
-        )
-        member_type = self.request.GET.get("member_type")
-        if member_type:
-            initial["member_type"] = member_type
-        if campaign_id:
-            initial["campaign"] = campaign_id
-        return initial
-
-    def form_valid(self, form):
-        super().form_valid(form)
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-members-btn', 'click');closeModal();</script>"
-        )
-
-    @cached_property
-    def form_url(self):
-        """
-        Return the form URL for submission.
-        """
-        if self.kwargs.get("pk"):
-            return reverse_lazy(
-                "campaigns:edit_added_campaign_members",
-                kwargs={"pk": self.kwargs.get("pk")},
-            )
-        return reverse_lazy("campaigns:add_campaign_members")
-
-
-@method_decorator(
-    permission_required_or_denied("campaigns.delete_campaignmember", modal=True),
-    name="dispatch",
-)
-class CampaignMemberDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
-    """
-    Campaign member delete view
-    """
-
-    model = CampaignMember
-
-    def get_post_delete_response(self):
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-members-btn','click');$('#reloadButton').click();</script>"
-        )
-
-
-@method_decorator(htmx_required, name="dispatch")
-class AddContactToCampaignFormView(LoginRequiredMixin, HorillaSingleFormView):
-    """
-    Form iew for adding contacts into campaigns
-    """
-
-    model = CampaignMember
-    fields = ["contact", "campaign", "member_status"]
-    full_width_fields = ["campaign", "member_status"]
-    modal_height = False
-    form_title = _("Add to Campaign")
-    hidden_fields = ["contact"]
-    save_and_new = False
-
-    def form_valid(self, form):
-        form.instance.member_type = "contact"
-        super().form_valid(form)
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-campaigns-btn', 'click');closeModal();</script>"
-        )
-
-    def get_initial(self):
-        initial = super().get_initial()
-        contact_id = self.request.GET.get("id")
-        if contact_id:
-            initial["contact"] = contact_id
-        return initial
-
-    @cached_property
-    def form_url(self):
-        """
-        Return the form URL for submission.
-        """
-        if self.kwargs.get("pk"):
-            return reverse_lazy(
-                "campaigns:edit_contact_to_campaign",
-                kwargs={"pk": self.kwargs.get("pk")},
-            )
-        return reverse_lazy("campaigns:add_contact_to_campaign")
-
-
-@method_decorator(
-    permission_required_or_denied("campaigns.delete_campaignmember", modal=True),
-    name="dispatch",
-)
-class CampaignContactMemberDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
-    """
-    Campaign contact member delete view
-    """
-
-    model = CampaignMember
-
-    def get_post_delete_response(self):
-        return HttpResponse(
-            "<script>htmx.trigger('#tab-campaigns-btn','click');</script>"
         )
