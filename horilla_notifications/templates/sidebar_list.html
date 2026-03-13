@@ -3,7 +3,9 @@
 <div class="">
     <div class="flex justify-between items-center mb-4">
         <h3 class="font-semibold flex items-center gap-2">
-            <button class="closebtn closeSidemenu" data-sidebar="sidebarModal3"><i class="fa-solid fa-angle-right"></i></button>
+            <button type="button" class="closebtn" onclick="closeSidebar('sidebarModal3')">
+                <i class="fa-solid fa-angle-right"></i>
+            </button>
             {% trans "All Notifications" %}
         </h3>
         <button
