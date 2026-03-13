@@ -52,6 +52,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
         "RecycleBin",
         "ActiveTab",
         "KanbanGroupBy",
+        "TimelineSpanBy",
         "ListColumnVisibility",
         "RecentlyViewed",
         "SavedFilterList",
@@ -83,7 +84,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 else self.model.objects.all()
             )
         except LookupError:
-            return render(self.request, "error/403.html", {"modal": True})
+            return render(self.request, "403.html", {"modal": True})
 
     def get(self, request, *args, **kwargs):
         """Handle GET requests for delete view, including dependency check and form rendering."""
@@ -115,7 +116,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 }
                 return render(
                     request,
-                    "partials/Single_delete/delete_dependency_partial.html",
+                    "partials/single_delete/delete_dependency_partial.html",
                     context,
                 )
 
@@ -138,7 +139,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 }
                 return render(
                     request,
-                    "partials/Single_delete/individual_reassign_partial.html",
+                    "partials/single_delete/individual_reassign_partial.html",
                     context,
                 )
 
@@ -184,12 +185,12 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
 
             if action == "show_bulk_reassign":
                 return render(
-                    request, "partials/Single_delete/bulk_reassign_form.html", context
+                    request, "partials/single_delete/bulk_reassign_form.html", context
                 )
             if action == "show_individual_reassign":
                 return render(
                     request,
-                    "partials/Single_delete/individual_reassign_form.html",
+                    "partials/single_delete/individual_reassign_form.html",
                     context,
                 )
             if action == "show_delete_confirmation":
@@ -209,16 +210,16 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 context["related_verbose_name_plural"] = related_verbose_name_plural
                 context["hx_target"] = self.hx_target
                 return render(
-                    request, "partials/Single_delete/delete_all_confirm.html", context
+                    request, "partials/single_delete/delete_all_confirm.html", context
                 )
 
             if not request.GET.get("delete_mode"):
                 return render(
-                    request, "partials/Single_delete/delete_mode_modal.html", context
+                    request, "partials/single_delete/delete_mode_modal.html", context
                 )
             return render(
                 request,
-                "partials/Single_delete/delete_dependency_modal.html",
+                "partials/single_delete/delete_dependency_modal.html",
                 context,
             )
 
@@ -288,7 +289,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                     "check_dependencies": check_dependencies,
                 }
                 return render(
-                    request, "partials/Single_delete/delete_mode_modal.html", context
+                    request, "partials/single_delete/delete_mode_modal.html", context
                 )
 
             if check_dependencies == "false" and delete_mode:
@@ -339,7 +340,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 )
                 return render(
                     request,
-                    "partials/Single_delete/delete_dependency_modal.html",
+                    "partials/single_delete/delete_dependency_modal.html",
                     context,
                 )
 
@@ -666,12 +667,12 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                             )
                             return render(
                                 request,
-                                "partials/Single_delete/individual_reassign_form.html",
+                                "partials/single_delete/individual_reassign_form.html",
                                 context,
                             )
                         return render(
                             request,
-                            "partials/Single_delete/delete_dependency_modal.html",
+                            "partials/single_delete/delete_dependency_modal.html",
                             context,
                         )
                 except Exception as e:
@@ -700,7 +701,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                 )
                 return render(
                     request,
-                    "partials/Single_delete/delete_dependency_modal.html",
+                    "partials/single_delete/delete_dependency_modal.html",
                     context,
                 )
 
