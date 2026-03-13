@@ -1,16 +1,10 @@
 """Helper methods for ForecastTypeTabView (create forecasts, trends, enhance data)."""
 
-# Third-party imports (Django)
-from django.core.paginator import Paginator
-from django.utils.functional import cached_property
-
 # First-party / Horilla imports
 from horilla.auth.models import User
-from horilla.shortcuts import get_object_or_404
 from horilla.utils.translation import gettext_lazy as _
-from horilla_core.models import Company, FiscalYearInstance, Period
-from horilla_crm.forecast.models import Forecast, ForecastTarget, ForecastType
-from horilla_crm.forecast.utils import ForecastCalculator
+from horilla_core.models import Period
+from horilla_crm.forecast.models import Forecast
 
 
 class ForecastTypeTabHelpersMixin:

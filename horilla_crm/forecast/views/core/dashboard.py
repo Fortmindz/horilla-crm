@@ -1,12 +1,8 @@
 """
-Forecast Views Module
 
 Django class-based views for managing and displaying sales forecast data in Horilla CRM.
 Features: Period-based forecasts, trend analysis, user/aggregated views, optimized queries.
 """
-
-# Standard library imports
-from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
