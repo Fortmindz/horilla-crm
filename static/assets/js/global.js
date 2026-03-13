@@ -1922,3 +1922,74 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }, true);
 });
+
+/* ==========================================================================
+   Split view: active tile (red line) and sync on prev/next / HTMX load
+   Uses event delegation so it works when split view is loaded via navbar (HTMX).
+   ========================================================================== */
+(function () {
+    var ACTIVE_CLASS = 'split-view-tile-active';
+
+    function clearTileSelection() {
+        var list = document.getElementById('split-view-tiles');
+        if (!list) return;
+        var tiles = list.querySelectorAll('.split-view-tile');
+        tiles.forEach(function (el) {
+            el.classList.remove(ACTIVE_CLASS);
+        });
+    }
+
+    function setTileSelected(tile) {
+        if (!tile) return;
+        clearTileSelection();
+        tile.classList.add(ACTIVE_CLASS);
+        window._splitViewSelectedId = tile.getAttribute('data-id');
+    }
+
+    function setActiveTileById(id) {
+        if (!id) return;
+        var list = document.getElementById('split-view-tiles');
+        if (!list) return;
+        var t = list.querySelector('.split-view-tile[data-id="' + id + '"]');
+        if (t) {
+            clearTileSelection();
+            t.classList.add(ACTIVE_CLASS);
+            window._splitViewSelectedId = id;
+        }
+    }
+
+    // Tile click: delegate so it works when split view is loaded via HTMX (navbar)
+    document.body.addEventListener('click', function (e) {
+        var tile = e.target.closest('.split-view-tile');
+        if (!tile) return;
+        var list = document.getElementById('split-view-tiles');
+        if (!list || !list.contains(tile)) return;
+        if (!tile.getAttribute('hx-get')) return;
+        var tileId = tile.getAttribute('data-id');
+        if (!tileId) return;
+        setTileSelected(tile);
+    }, true);
+
+    // After detail panel swap: sync active tile (tile click or prev/next)
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        if (evt.detail.target.id !== 'splitViewDetailPanel') return;
+        var selectedId = window._splitViewSelectedId;
+        window._splitViewSelectedId = null;
+        clearTileSelection();
+        if (!selectedId) {
+            var container = evt.detail.target;
+            var el = container.querySelector && container.querySelector('[data-object-id]');
+            if (el) selectedId = el.getAttribute('data-object-id');
+        }
+        if (selectedId) {
+            var list = document.getElementById('split-view-tiles');
+            if (list) {
+                var t = list.querySelector('.split-view-tile[data-id="' + selectedId + '"]');
+                if (t) {
+                    t.classList.add(ACTIVE_CLASS);
+                    t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                }
+            }
+        }
+    });
+})();

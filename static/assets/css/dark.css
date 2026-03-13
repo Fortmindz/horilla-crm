@@ -139,6 +139,8 @@ body.dark #profile-edit-btn img,
 body.dark #navBar img,
 body.dark .bg-dark-25 img,
 body.dark #dropdownLeftEndButton img,
+/* Chart view actions (same down.svg as report chart; invisible on dark bg without invert) */
+body.dark #chartViewActionsButton img,
 body.dark
   .after\:bg-\[url\(\/static\/assets\/icons\/right-arrow\.svg\)\]::after,
 body.dark #tab-campaigns button img,
@@ -166,6 +168,17 @@ body.dark .custom-scroll {
   scrollbar-color: #7f7f7f #424242;
 }
 body.dark .bg-primary-300 {
+  background-color: #3f3f3f !important;
+}
+
+/* Split view: override active tile colors in dark theme */
+body.dark {
+  --split-view-active-bg: #3f3f3f;     /* darker background */
+  --split-view-active-border: #f07a6a; /* lighter primary accent */
+}
+
+/* Split view: tile hover in dark theme */
+body.dark #split-view-tiles .split-view-tile:hover {
   background-color: #3f3f3f !important;
 }
 body.dark .canvas-wrap {
