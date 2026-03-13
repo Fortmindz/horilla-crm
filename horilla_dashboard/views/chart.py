@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 # Third-party imports (Django)
 from django.contrib import messages
 from django.db.models import Count, ForeignKey
+from django.utils.encoding import force_str
 from django.views.generic import View
 
 # First-party / Horilla imports
@@ -20,9 +21,9 @@ from horilla.utils.decorators import (
 )
 from horilla.utils.translation import gettext_lazy as _
 from horilla_dashboard.models import DashboardComponent
+from horilla_dashboard.utils import DATE_RANGE_CHOICES, apply_date_range_to_queryset
 
 # Local imports
-from horilla_dashboard.utils import DATE_RANGE_CHOICES, apply_date_range_to_queryset
 from horilla_dashboard.views.helper import get_queryset_for_module
 from horilla_utils.methods import get_section_info_for_model
 
@@ -65,6 +66,12 @@ class ChartPreviewView(View):
             "stacked_vertical",
             "stacked_horizontal",
             "funnel",
+            "scatter",
+            "heatmap",
+            "treemap",
+            "area",
+            "sankey",
+            "radar",
         )
         if (
             component_type == "chart" or (not component_type and chart_type)
@@ -332,10 +339,17 @@ class DashboardComponentChartView(View):
                     queryset, model, date_range, date_from=date_from, date_to=date_to
                 )
 
-            is_stacked_chart = component.chart_type in [
+            # Chart types that need primary + secondary grouping → stackedData
+            two_group_chart_types = [
                 "stacked_vertical",
                 "stacked_horizontal",
+                "heatmap",
+                "sankey",
+                "radar",
             ]
+            use_two_groupings = component.chart_type in two_group_chart_types and bool(
+                component.secondary_grouping
+            )
 
             x_axis_label = (
                 component.grouping_field.replace("_", " ").title()
@@ -346,7 +360,7 @@ class DashboardComponentChartView(View):
             if component.grouping_field:
                 field = model._meta.get_field(component.grouping_field)
 
-                if is_stacked_chart and component.secondary_grouping:
+                if use_two_groupings:
                     return self.get_stacked_chart_data(
                         queryset, component, conditions, field, x_axis_label, model
                     )
@@ -448,44 +462,39 @@ class DashboardComponentChartView(View):
             section_info = get_section_info_for_model(model)
 
             if field.is_relation and hasattr(field.remote_field.model, "name"):
-                categories = list(
+                category_keys = list(
                     queryset.values_list(f"{component.grouping_field}__name", flat=True)
                     .distinct()
                     .order_by(f"{component.grouping_field}__name")
                 )
             else:
-                categories = list(
+                category_keys = list(
                     queryset.values_list(component.grouping_field, flat=True)
                     .distinct()
                     .order_by(component.grouping_field)
                 )
 
+            # Keep raw keys for grouped_dict lookup; build display labels separately.
+            # Otherwise CharField+choices stores "finance" but labels are "Finance" —
+            # grouped_dict.get("Finance", 0) is always 0 and stacked bars disappear.
+            category_keys = [c for c in category_keys if c is not None]
             try:
                 if hasattr(field, "choices") and field.choices:
                     category_display = {}
                     for choice_value, choice_label in field.choices:
-                        category_display[choice_value] = choice_label
-                    categories = [
-                        (
-                            category_display.get(cat, str(cat))
-                            if cat is not None
-                            else "None"
-                        )
-                        for cat in categories
-                        if cat is not None
+                        category_display[choice_value] = force_str(choice_label)
+                    category_labels = [
+                        force_str(category_display.get(cat, cat))
+                        for cat in category_keys
                     ]
                 else:
-                    categories = [
-                        str(cat) if cat is not None else "None"
-                        for cat in categories
-                        if cat is not None
-                    ]
+                    category_labels = [force_str(cat) for cat in category_keys]
             except Exception:
-                categories = [
-                    str(cat) if cat is not None else "None"
-                    for cat in categories
-                    if cat is not None
-                ]
+                category_labels = [force_str(cat) for cat in category_keys]
+
+            is_relation_name = field.is_relation and hasattr(
+                field.remote_field.model, "name"
+            )
 
             secondary_field = (
                 model._meta.get_field(component.secondary_grouping)
@@ -537,37 +546,48 @@ class DashboardComponentChartView(View):
                 elif hasattr(secondary_field, "choices") and secondary_field.choices:
                     for choice_value, choice_label in secondary_field.choices:
                         if choice_value == secondary_value:
-                            display_value = choice_label
+                            display_value = force_str(choice_label)
                             break
 
-                filtered_queryset = queryset.filter(
-                    **{component.secondary_grouping: secondary_value}
-                )
+                if secondary_field.is_relation and hasattr(
+                    secondary_field.remote_field.model, "name"
+                ):
+                    filter_field = f"{component.secondary_grouping}__name"
+                elif isinstance(secondary_field, ForeignKey):
+                    filter_field = f"{component.secondary_grouping}_id"
+                else:
+                    filter_field = component.secondary_grouping
 
-                if field.is_relation and hasattr(field.remote_field.model, "name"):
+                filtered_queryset = queryset.filter(**{filter_field: secondary_value})
+
+                if is_relation_name:
                     grouped_data = filtered_queryset.values(
                         f"{component.grouping_field}__name"
                     ).annotate(value=Count("id"))
-                    grouped_dict = {
-                        item[f"{component.grouping_field}__name"]: item["value"]
-                        for item in grouped_data
-                    }
+                    grouped_dict = {}
+                    for item in grouped_data:
+                        k = item[f"{component.grouping_field}__name"]
+                        if k is not None:
+                            grouped_dict[k] = item["value"]
                 else:
                     grouped_data = filtered_queryset.values(
                         component.grouping_field
                     ).annotate(value=Count("id"))
-                    grouped_dict = {
-                        str(item[component.grouping_field]): item["value"]
-                        for item in grouped_data
-                    }
+                    grouped_dict = {}
+                    for item in grouped_data:
+                        k = item[component.grouping_field]
+                        if k is not None:
+                            # Same key type as category_keys from values_list
+                            grouped_dict[k] = item["value"]
 
                 series_values = []
-                for category in categories:
-                    series_values.append(float(grouped_dict.get(category, 0)))
+                for cat_key in category_keys:
+                    # Lookup by raw key so choice fields (industry/lead_source) match DB values
+                    series_values.append(float(grouped_dict.get(cat_key, 0)))
 
                 series_data.append(
                     {
-                        "name": str(display_value),
+                        "name": force_str(display_value),
                         "data": series_values,
                     }
                 )
@@ -602,10 +622,13 @@ class DashboardComponentChartView(View):
                 urls.append(f"{section_info['url']}?{query}")
 
             return {
-                "labels": categories,
+                "labels": category_labels,
                 "data": [],
                 "urls": urls,
-                "stackedData": {"categories": categories, "series": series_data},
+                "stackedData": {
+                    "categories": category_labels,
+                    "series": series_data,
+                },
                 "labelField": component.grouping_field.replace("_", " ").title(),
                 "x_axis_label": x_axis_label,
                 "hasMultipleGroups": True,
@@ -663,10 +686,16 @@ class DashboardComponentChartView(View):
 
             field = model._meta.get_field(component.grouping_field)
 
-            is_stacked_chart = component.chart_type in [
+            two_group_chart_types = [
                 "stacked_vertical",
                 "stacked_horizontal",
+                "heatmap",
+                "sankey",
+                "radar",
             ]
+            use_two_groupings = component.chart_type in two_group_chart_types and bool(
+                component.secondary_grouping
+            )
 
             x_axis_label = (
                 component.grouping_field.replace("_", " ").title()
@@ -674,8 +703,8 @@ class DashboardComponentChartView(View):
                 else "Category"
             )
 
-            if is_stacked_chart and component.secondary_grouping:
-                logger.info("Processing stacked chart for component %s", component.id)
+            if use_two_groupings:
+                logger.info("Processing two-group chart for component %s", component.id)
                 return self.get_stacked_chart_data(
                     queryset, component, conditions, field, x_axis_label, model
                 )

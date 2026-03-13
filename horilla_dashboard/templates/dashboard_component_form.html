@@ -18,9 +18,8 @@
             <div hx-get="{% url 'horilla_dashboard:get_grouping_field_choices' %}"
                  hx-target="#grouping_field_container"
                  hx-swap="innerHTML"
-                 hx-include="[name='module']"
+                 hx-include="[name='module'],[name='grouping_field'],[name='secondary_grouping']"
                  hx-trigger="change from:#id_module"
-                hx-vals="js:{module: getModuleValue()}"
                  id="grouping-field-trigger"></div>
 
             <div hx-get="{% url 'horilla_dashboard:get_columns_field_choices' %}"
@@ -28,15 +27,13 @@
                  hx-swap="innerHTML"
                  hx-include="[name='module']"
                  hx-trigger="change from:#id_module"
-                  hx-vals="js:{module: getModuleValue()}"
                  id="column-field-trigger"></div>
             <div hx-get="{% url 'horilla_dashboard:get_secondary_grouping_field_choices' %}"
                  hx-target="#secondary_grouping_container"
                  hx-swap="innerHTML"
-                 hx-include="[name='module']"
+                 hx-include="[name='module'],[name='grouping_field'],[name='secondary_grouping']"
                  hx-trigger="change from:#id_module"
-                  hx-vals="js:{module: getModuleValue()}"
-                 id="column-field-trigger"></div>
+                 id="secondary-grouping-field-trigger"></div>
         </div>
 
         <div class="p-5">
@@ -121,11 +118,16 @@
                                         <select name="{{ field.name }}"
                                                 id="{{ field.id_for_label }}"
                                                 class="{{ field.field.widget.attrs.class|default:'' }} form-control"
-                                                hx-get="{% url 'horilla_dashboard:preview_chart' %}"
-                                                hx-target="#preview-container"
-                                                hx-swap="innerHTML"
-                                                hx-trigger="change,load"
-                                                hx-include="[name='chart_type'],[name='component_type']">
+                                                {% if form.instance.pk %}
+                                                    hx-get="{% url 'horilla_dashboard:component_update' pk=form.instance.pk %}"
+                                                {% else %}
+                                                    hx-get="{% url 'horilla_dashboard:component_create' %}"
+                                                {% endif %}
+                                                hx-target="#dashboardcomponent-form-view-container"
+                                                hx-swap="outerHTML"
+                                                hx-include="#dashboardcomponent-form-view"
+                                                hx-trigger="change"
+                                                onchange="updatePreviewAfterFormSwap()">
                                             {% for choice in field.field.choices %}
                                                 <option value="{{ choice.0 }}" {% if choice.0 == field.value %}selected{% endif %}>{{ choice.1 }}</option>
                                             {% endfor %}
@@ -361,9 +363,8 @@
     function getModuleValue() {
         const moduleSelect = document.getElementById('id_module');
         if (!moduleSelect) return '';
-
-        const selectedOption = moduleSelect.options[moduleSelect.selectedIndex];
-        return selectedOption ? selectedOption.text : '';
+        /* Use option value (registry key / content type id), not label — avoids wrong model choices */
+        return moduleSelect.value || '';
     }
 
     function updatePreviewAfterFormSwap() {

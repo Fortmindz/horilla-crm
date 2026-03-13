@@ -96,7 +96,7 @@
                 {% for component in non_kpi_components %}
                 <div class="col-span-6 dashboard-component-card" data-component-id="{{ component.id }}">
                   <div
-                    class="shadow-sm bg-white rounded-lg z-0 p-4 overflow overflow-hidden relative"
+                    class="shadow-sm bg-white rounded-lg z-0 p-4 relative {% if component.component_type == 'chart' %}overflow-visible{% else %}overflow overflow-hidden{% endif %}"
                   >
                     <div class="edit-drag-handle hidden absolute left-2 top-2 cursor-grab text-gray-400 z-20" title="{% trans 'Drag to reorder' %}"><i class="fa-solid fa-grip-vertical"></i></div>
                     <div class="flex items-center justify-between mb-3">
@@ -104,8 +104,8 @@
                     </div>
                     {% if component.component_type == 'chart' %}
                     <div
-                      class="chart-container relative w-full"
-                      style="height: 344px"
+                      class="chart-container relative w-full overflow-visible"
+                      style="height: 344px; min-height: 344px"
                     >
                       <div
                         hx-get="{% url 'horilla_dashboard:component_chart' component_id=component.id %}{% if date_range %}?date_range={{ date_range }}{% if date_range == 'custom' %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% endif %}{% endif %}"

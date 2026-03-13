@@ -95,7 +95,8 @@
                             <div class="grid grid-cols-12 gap-6" id="reorderable-components">
                                 {% for component in non_kpi_components %}
                                     <div class="col-span-6 dashboard-component-card" data-component-id="{{ component.id }}">
-                                        <div class="shadow-sm bg-white rounded-lg z-0 p-4 overflow overflow-hidden relative">
+                                        {# overflow-visible on chart cards so ECharts tooltips are not clipped; tables keep overflow hidden via inner wrapper if needed #}
+                                        <div class="shadow-sm bg-white rounded-lg z-0 p-4 relative {% if component.component_type == 'chart' %}overflow-visible{% else %}overflow overflow-hidden{% endif %}">
                                             <div class="edit-drag-handle hidden absolute left-2 top-2 cursor-grab text-gray-400 z-20" title="{% trans 'Drag to reorder' %}"><i class="fa-solid fa-grip-vertical"></i></div>
                                             <div class="flex items-center justify-between mb-3">
                                                 <h3 class="text-md font-semibold">{{ component.name }}</h3>
@@ -173,7 +174,7 @@
                                                 {% endif %}
                                             </div>
                                             {% if component.component_type == 'chart' %}
-                                                <div class="chart-container relative w-full" style="height: 344px">
+                                                <div class="chart-container relative w-full overflow-visible" style="height: 344px; min-height: 344px">
                                                     <div hx-get="{% url 'horilla_dashboard:component_chart' component_id=component.id %}"
                                                         hx-trigger="load" hx-swap="innerHTML"
                                                         class="w-full h-full">

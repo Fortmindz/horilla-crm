@@ -11,7 +11,19 @@
         const config = {{ chart_config_json|safe }};
         const option = EChartsConfig.getChartOption(config);
         myChart.setOption(option);
-        EChartsConfig.attachClickHandler(myChart, config.urls);
+        // Dashboard cards often use overflow-hidden ancestors; force tooltip on body when supported
+        if (config.type && String(config.type).toLowerCase().indexOf('stacked') !== -1) {
+            try {
+                myChart.setOption({
+                    tooltip: {
+                        appendToBody: true,
+                        confine: false,
+                        extraCssText: 'max-height:70vh;overflow-y:auto;padding:10px 12px;z-index:99999;'
+                    }
+                }, false);
+            } catch (e) {}
+        }
+        EChartsConfig.attachClickHandler(myChart, config.urls, config);
         if (typeof window.chartInstances === 'undefined') window.chartInstances = {};
         window.chartInstances[compKey] = { instance: myChart, config: config };
     }

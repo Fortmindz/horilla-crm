@@ -579,7 +579,6 @@ class DefaultDashboardGenerator:
                 "filter_set_class": None,
                 "table_class": True,
                 "table_width": False,
-                "table_height": False,
                 "table_height_as_class": "h-[300px]",
                 "header_attrs": {},
                 "col_attrs": col_attrs,

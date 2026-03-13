@@ -13,9 +13,9 @@ from django.db.models import Count
 from horilla.apps import apps
 from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
+from horilla_dashboard.utils import DATE_RANGE_CHOICES, apply_date_range_to_queryset
 
 # Local imports
-from horilla_dashboard.utils import DATE_RANGE_CHOICES, apply_date_range_to_queryset
 from horilla_dashboard.views.helper import get_queryset_for_module
 from horilla_generics.views import HorillaListView
 from horilla_utils.methods import get_section_info_for_model
@@ -540,7 +540,6 @@ def get_table_data(component, request):
     list_view.bulk_update_option = False
     list_view.bulk_delete_enabled = False
     list_view.list_column_visibility = False
-    list_view.table_height = False
     list_view.table_height_as_class = "h-[300px]"
     list_view.object_list = page_obj.object_list
     list_view.enable_sorting = True

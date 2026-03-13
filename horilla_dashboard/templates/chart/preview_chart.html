@@ -55,6 +55,54 @@
             "labels": ["Stage 1", "Satge 2", "Stage 3", "Stage 4", "Stage 5"],
             "data": [100, 75, 50, 30, 20],
             "labelField": "Sample Data"
+        },
+        "scatter": {
+            "labels": ["Point A", "Point B", "Point C", "Point D", "Point E"],
+            "data": [10, 35, 22, 45, 30],
+            "labelField": "Sample Scatter"
+        },
+        "heatmap": {
+            "stackedData": {
+                "categories": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                "series": [
+                    { "name": "Group 1", "data": [5, 20, 15, 25, 30] },
+                    { "name": "Group 2", "data": [10, 15, 20, 18, 22] }
+                ]
+            },
+            "labelField": "Sample Heatmap",
+            "hasMultipleGroups": true
+        },
+        "treemap": {
+            "labels": ["Segment A", "Segment B", "Segment C", "Segment D"],
+            "data": [40, 25, 20, 15],
+            "labelField": "Sample Treemap"
+        },
+        "area": {
+            "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+            "data": [12, 18, 25, 20, 28, 32],
+            "labelField": "Sample Area"
+        },
+        "sankey": {
+            "stackedData": {
+                "categories": ["Source A", "Source B", "Source C"],
+                "series": [
+                    { "name": "Target X", "data": [20, 10, 5] },
+                    { "name": "Target Y", "data": [15, 25, 10] }
+                ]
+            },
+            "labelField": "Sample Sankey",
+            "hasMultipleGroups": true
+        },
+        "radar": {
+            "stackedData": {
+                "categories": ["Metric 1", "Metric 2", "Metric 3", "Metric 4", "Metric 5"],
+                "series": [
+                    { "name": "Group A", "data": [60, 80, 70, 85, 75] },
+                    { "name": "Group B", "data": [55, 75, 65, 80, 70] }
+                ]
+            },
+            "labelField": "Sample Radar",
+            "hasMultipleGroups": true
         }
     };
 

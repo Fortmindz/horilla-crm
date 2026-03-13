@@ -12,6 +12,7 @@ from horilla.apps import apps
 from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.urls import reverse_lazy
 from horilla.utils.choices import DISPLAYABLE_FIELD_TYPES
+from horilla_core.models import HorillaContentType
 from horilla_generics.forms import HorillaModelForm
 
 from .models import ComponentCriteria, Dashboard, DashboardComponent, DashboardFolder
@@ -101,10 +102,10 @@ class DashboardCreateForm(HorillaModelForm):
 
             for module_key, model_cls in get_dashboard_component_models():
                 app_label = model_cls._meta.app_label
-                model_name = model_cls._meta.model_name
+                meta_model_name = model_cls._meta.model_name
 
-                view_perm = f"{app_label}.view_{model_name}"
-                view_own_perm = f"{app_label}.view_own_{model_name}"
+                view_perm = f"{app_label}.view_{meta_model_name}"
+                view_own_perm = f"{app_label}.view_own_{meta_model_name}"
 
                 if user.has_perm(view_perm) or user.has_perm(view_own_perm):
                     label = model_cls._meta.verbose_name.title()
@@ -128,10 +129,24 @@ class DashboardCreateForm(HorillaModelForm):
                             self.data = self.data.copy()
                             self.data[name] = None
 
-        # Hide fields based on component_type
-        component_type = self.request.GET.get("component_type") or (
-            self.instance_obj.component_type if self.instance_obj else ""
-        )
+        # Hide fields based on component_type.
+        # - For GET, we rely on query params/instance (so HTMX preview works).
+        # - For POST, we MUST read from form data; otherwise columns for
+        #   table_data components get hidden/nullified and never saved.
+        if (
+            hasattr(self, "request")
+            and getattr(self.request, "method", "").upper() == "POST"
+        ):
+            component_type = (
+                self.data.get("component_type")
+                or self.request.POST.get("component_type")
+                or (self.instance_obj.component_type if self.instance_obj else "")
+            )
+
+        else:
+            component_type = self.request.GET.get("component_type") or (
+                self.instance_obj.component_type if self.instance_obj else ""
+            )
 
         nullify_values = (
             self.request.method == "GET" if hasattr(self, "request") else True
@@ -141,6 +156,36 @@ class DashboardCreateForm(HorillaModelForm):
                 ["chart_type", "secondary_grouping", "grouping_field"],
                 nullify=nullify_values,
             )
+        else:
+            # Hide secondary_grouping unless chart type uses two groupings
+            two_group_chart_types = [
+                "stacked_vertical",
+                "stacked_horizontal",
+                "radar",
+                "heatmap",
+                "sankey",
+            ]
+            if (
+                hasattr(self, "request")
+                and getattr(self.request, "method", "").upper() == "POST"
+            ):
+                chart_type = (
+                    self.data.get("chart_type")
+                    or self.request.POST.get("chart_type")
+                    or (
+                        getattr(self.instance_obj, "chart_type", None)
+                        if self.instance_obj
+                        else ""
+                    )
+                )
+            else:
+                chart_type = self.request.GET.get("chart_type") or (
+                    getattr(self.instance_obj, "chart_type", None)
+                    if self.instance_obj
+                    else ""
+                )
+            if chart_type not in two_group_chart_types:
+                hide_fields(["secondary_grouping"], nullify=nullify_values)
 
         if component_type != "kpi":
             hide_fields(["icon", "metric_type"], nullify=nullify_values)
@@ -152,7 +197,7 @@ class DashboardCreateForm(HorillaModelForm):
             )
 
         if component_type != "table_data":
-            hide_fields(["columns"], nullify=nullify_values)
+            hide_fields(["columns"], nullify=True)
         else:
             if "columns" in self.fields:
                 if (
@@ -275,6 +320,10 @@ class DashboardCreateForm(HorillaModelForm):
 
         if self.instance_obj and self.instance_obj.pk and model_name:
             self._initialize_select_fields_for_edit(model_name)
+        elif self.instance_obj and self.instance_obj.pk and self.instance_obj.module_id:
+            # Fallback if model_name missing: resolve from instance FK so grouping
+            # choices always match the saved module (Lead vs Opportunity, etc.).
+            self._initialize_select_fields_for_edit(str(self.instance_obj.module_id))
 
     def _initialize_select_fields_for_edit(self, model_name):
         """Initialize select fields in edit mode by mimicking HTMX view behavior"""
@@ -284,15 +333,30 @@ class DashboardCreateForm(HorillaModelForm):
                 self.instance_obj.component_type if self.instance_obj else ""
             )
 
+            # Registry-first resolution (same as field_choices views) so we never
             model = None
-            for app_config in apps.get_app_configs():
-                try:
-                    model = apps.get_model(
-                        app_label=app_config.label, model_name=model_name.lower()
-                    )
-                    break
-                except LookupError:
-                    continue
+            if model_name:
+                module_key = (model_name or "").strip().lower()
+                if model_name.isdigit():
+                    try:
+                        ct = HorillaContentType.objects.get(pk=model_name)
+                        module_key = (ct.model or "").strip().lower()
+                    except Exception:
+                        module_key = ""
+                for key, model_cls in get_dashboard_component_models():
+                    if key == module_key:
+                        model = model_cls
+                        break
+                if not model and module_key:
+                    for app_config in apps.get_app_configs():
+                        try:
+                            model = apps.get_model(
+                                app_label=app_config.label,
+                                model_name=module_key,
+                            )
+                            break
+                        except LookupError:
+                            continue
 
             if not model:
                 return
@@ -357,11 +421,12 @@ class DashboardCreateForm(HorillaModelForm):
                         field_label = field.verbose_name or field.name
                         secondary_grouping_fields.append((field_name, f"{field_label}"))
 
-                current_value = (
-                    getattr(self.instance_obj, "secondary_grouping_field", "")
-                    if self.instance_obj
-                    else ""
-                )
+                if self.instance_obj:
+                    current_value = (
+                        getattr(self.instance_obj, "secondary_grouping", None) or ""
+                    )
+                else:
+                    current_value = ""
                 self.fields["secondary_grouping"] = forms.ChoiceField(
                     choices=[("", "Select Secondary Grouping Field")]
                     + secondary_grouping_fields,
@@ -391,7 +456,15 @@ class DashboardCreateForm(HorillaModelForm):
         return cleaned_data
 
     def clean_columns(self):
-        """Clean the columns field to store as comma-separated values"""
+        """Clean the columns field to store as JSON list string."""
+
+        # Chart/KPI components must not persist columns; hidden field can still post
+        # garbage from HTMX preview (nested JSON) and exceed max_length.
+        component_type = (self.data.get("component_type") or "").strip()
+        if not component_type and self.instance_obj:
+            component_type = getattr(self.instance_obj, "component_type", "") or ""
+        if component_type and component_type != "table_data":
+            return ""
 
         raw_columns = self.data.getlist("columns")
         columns = self.cleaned_data.get("columns")
@@ -406,9 +479,26 @@ class DashboardCreateForm(HorillaModelForm):
             columns = raw_columns if raw_columns else [columns]
 
         if not columns:
-            print("No columns - returning empty")
             return ""
 
-        column_list = [str(col) for col in columns if col]
-        result = json.dumps(column_list)
-        return result
+        column_list = []
+        for col in columns:
+            if not col:
+                continue
+            s = str(col).strip()
+            # Avoid nested JSON strings from bad double-submit (preview include)
+            if s.startswith("[") and s.endswith("]") and len(s) > 80:
+                try:
+                    parsed = json.loads(s)
+                    if isinstance(parsed, list):
+                        column_list.extend(str(x) for x in parsed if x)
+                        continue
+                except json.JSONDecodeError:
+                    pass
+            if s and s not in column_list:
+                column_list.append(s)
+
+        if not column_list:
+            return ""
+
+        return json.dumps(column_list)
