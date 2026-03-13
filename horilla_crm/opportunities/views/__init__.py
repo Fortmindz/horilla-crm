@@ -18,9 +18,13 @@ from horilla_crm.opportunities.views.core import (
     OpportunityRelatedLists,
     OpportunitySingleFormView,
     OpportunitiesNotesAndAttachments,
+    OpportunitySplitView,
     OpportunityView,
     RelatedOpportunityFormView,
     SelectClosedStageView,
+    OpportunityCardView,
+    OpportunityChartView,
+    OpportunityTimelineView,
 )
 from horilla_crm.opportunities.views.opporunity_stages import (
     ChangeFinalStage,
@@ -101,6 +105,10 @@ __all__ = [
     "OpportunityContactRoleFormview",
     "OpportunityContactRoleDeleteView",
     "SelectClosedStageView",
+    "OpportunityCardView",
+    "OpportunitySplitView",
+    "OpportunityChartView",
+    "OpportunityTimelineView",
     # opporunity_stages
     "OpportunityStageView",
     "OpportunityStageNavbar",

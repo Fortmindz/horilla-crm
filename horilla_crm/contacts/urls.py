@@ -15,9 +15,24 @@ urlpatterns = [
         "contact-list-view/", views.ContactListView.as_view(), name="contact_list_view"
     ),
     path(
+        "contact-layout-split/",
+        views.ContactSplitView.as_view(),
+        name="contact_split_view",
+    ),
+    path(
         "contact-kanban-view/",
         views.ContactKanbanView.as_view(),
         name="contact_kanban_view",
+    ),
+    path(
+        "contact-card-view/",
+        views.ContactCardView.as_view(),
+        name="contact_card_view",
+    ),
+    path(
+        "contacts-timeline/",
+        views.ContactTimelineView.as_view(),
+        name="contacts_timeline",
     ),
     path(
         "contact-create-form/",
@@ -123,5 +138,10 @@ urlpatterns = [
         "contact-group-by/",
         views.ContactGroupByView.as_view(),
         name="contact_group_by_view",
+    ),
+    path(
+        "contact-chart-view/",
+        views.ContactChartView.as_view(),
+        name="contact_chart_view",
     ),
 ]

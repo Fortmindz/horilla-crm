@@ -21,14 +21,34 @@ urlpatterns = [
         name="campaign_list_view",
     ),
     path(
+        "campaign-layout-split/",
+        views.CampaignSplitView.as_view(),
+        name="campaign_split_view",
+    ),
+    path(
         "campaign-kanban-view/",
         views.CampaignKanbanView.as_view(),
         name="campaign_kanban_view",
     ),
     path(
+        "campaign-card-view/",
+        views.CampaignCardView.as_view(),
+        name="campaign_card_view",
+    ),
+    path(
         "campaign-group-by/",
         views.CampaignGroupByView.as_view(),
         name="campaign_group_by",
+    ),
+    path(
+        "campaign-chart-view/",
+        views.CampaignChartView.as_view(),
+        name="campaign_chart_view",
+    ),
+    path(
+        "campaign-timeline/",
+        views.CampaignTimelineView.as_view(),
+        name="campaign_timeline",
     ),
     path("campaign-create/", views.CampaignFormView.as_view(), name="campaign_create"),
     path(

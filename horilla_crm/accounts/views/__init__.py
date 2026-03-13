@@ -6,6 +6,7 @@ from horilla_crm.accounts.views.core import (
     AccountListView,
     AccountGroupByView,
     AccountsKanbanView,
+    AccountCardView,
     AccountDetailView,
     AccountDetailViewTabs,
     AccountDetailsTab,
@@ -14,6 +15,9 @@ from horilla_crm.accounts.views.core import (
     AccountRelatedListsTab,
     AccountHierarchyView,
     AccountsNotesAndAttachments,
+    AccountSplitView,
+    AccountChartView,
+    AccountTimelineView,
 )
 from horilla_crm.accounts.views.actions import (
     AccountFormView,
@@ -42,6 +46,10 @@ __all__ = [
     "AccountRelatedListsTab",
     "AccountHierarchyView",
     "AccountsNotesAndAttachments",
+    "AccountCardView",
+    "AccountSplitView",
+    "AccountChartView",
+    "AccountTimelineView",
     # account_form
     "AccountFormView",
     "AccountsSingleFormView",

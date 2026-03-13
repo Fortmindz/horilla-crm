@@ -27,9 +27,29 @@ urlpatterns = [
         name="opportunities_kanban",
     ),
     path(
+        "opportunities-card/",
+        views.OpportunityCardView.as_view(),
+        name="opportunities_card",
+    ),
+    path(
         "opportunities-group-by/",
         views.OpportunityGroupByView.as_view(),
         name="opportunities_group_by",
+    ),
+    path(
+        "opportunities-layout-split/",
+        views.OpportunitySplitView.as_view(),
+        name="opportunities_split_view",
+    ),
+    path(
+        "opportunities-chart/",
+        views.OpportunityChartView.as_view(),
+        name="opportunities_chart",
+    ),
+    path(
+        "opportunities-timeline/",
+        views.OpportunityTimelineView.as_view(),
+        name="opportunities_timeline",
     ),
     path(
         "opportunity-create/",

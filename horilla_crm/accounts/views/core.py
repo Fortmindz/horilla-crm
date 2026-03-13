@@ -32,6 +32,7 @@ from horilla_crm.accounts.models import Account, PartnerAccountRelationship
 from horilla_crm.contacts.models import ContactAccountRelationship
 from horilla_generics.mixins import RecentlyViewedMixin
 from horilla_generics.views import (
+    HorillaChartView,
     HorillaDetailSectionView,
     HorillaDetailTabView,
     HorillaDetailView,
@@ -42,8 +43,11 @@ from horilla_generics.views import (
     HorillaNavView,
     HorillaNotesAttachementSectionView,
     HorillaRelatedListSectionView,
+    HorillaSplitView,
     HorillaView,
 )
+from horilla_generics.views.card import HorillaCardView
+from horilla_generics.views.timeline import HorillaTimelineView
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,10 @@ class AccountView(LoginRequiredMixin, HorillaView):
     list_url = reverse_lazy("accounts:accounts_list_view")
     kanban_url = reverse_lazy("accounts:accounts_kanban_view")
     group_by_url = reverse_lazy("accounts:accounts_group_by_view")
+    card_url = reverse_lazy("accounts:accounts_card_view")
+    split_view_url = reverse_lazy("accounts:accounts_split_view")
+    chart_url = reverse_lazy("accounts:accounts_chart_view")
+    timeline_url = reverse_lazy("accounts:accounts_timeline")
 
 
 @method_decorator(
@@ -77,12 +85,16 @@ class AccountsNavbar(LoginRequiredMixin, HorillaNavView):
     main_url = reverse_lazy("accounts:accounts_view")
     kanban_url = reverse_lazy("accounts:accounts_kanban_view")
     group_by_url = reverse_lazy("accounts:accounts_group_by_view")
+    card_url = reverse_lazy("accounts:accounts_card_view")
     model_name = "Account"
     model_app_label = "accounts"
     filterset_class = AccountFilter
     exclude_kanban_fields = "company"
     enable_actions = True
     enable_quick_filters = True
+    split_view_url = reverse_lazy("accounts:accounts_split_view")
+    chart_url = reverse_lazy("accounts:accounts_chart_view")
+    timeline_url = reverse_lazy("accounts:accounts_timeline")
 
     @cached_property
     def new_button(self):
@@ -294,6 +306,34 @@ class AccountGroupByView(LoginRequiredMixin, HorillaGroupByView):
         ]
 
 
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["accounts.view_account", "accounts.view_own_account"]
+    ),
+    name="dispatch",
+)
+class AccountSplitView(LoginRequiredMixin, HorillaSplitView):
+    """
+    Account Split view: left = tile list, right = simple details on click.
+    """
+
+    model = Account
+    view_id = "accounts-split"
+    filterset_class = AccountFilter
+    search_url = reverse_lazy("accounts:accounts_list_view")
+    main_url = reverse_lazy("accounts:accounts_view")
+    enable_quick_filters = True
+    split_view_permission = "accounts.view_account"
+    split_view_own_permission = "accounts.view_own_account"
+    split_view_owner_field = "account_owner"
+
+    columns = ["name", "annual_revenue"]
+
+    no_record_add_button = AccountListView.no_record_add_button
+    actions = AccountListView.actions
+
+
 @method_decorator(
     permission_required_or_denied(
         ["accounts.view_account", "accounts.view_own_account"]
@@ -353,6 +393,86 @@ class AccountsKanbanView(LoginRequiredMixin, HorillaKanbanView):
             "own_permission": "accounts.view_own_account",
             "owner_field": "account_owner",
         }
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["accounts.view_account", "accounts.view_own_account"]
+    ),
+    name="dispatch",
+)
+class AccountCardView(LoginRequiredMixin, HorillaCardView):
+    """
+    Card view for account
+    """
+
+    model = Account
+    view_id = "account-card"
+    filterset_class = AccountFilter
+    search_url = reverse_lazy("accounts:accounts_list_view")
+    main_url = reverse_lazy("accounts:accounts_view")
+
+    columns = [
+        "name",
+        "account_number",
+        "account_owner",
+        "account_type",
+        "annual_revenue",
+    ]
+
+    actions = AccountListView.actions
+
+    col_attrs = AccountListView.col_attrs
+
+    no_record_add_button = AccountListView.no_record_add_button
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["accounts.view_account", "accounts.view_own_account"]
+    ),
+    name="dispatch",
+)
+class AccountChartView(LoginRequiredMixin, HorillaChartView):
+    """Account chart view: counts by group-by field using same filters as list/kanban."""
+
+    model = Account
+    view_id = "accounts-chart"
+    filterset_class = AccountFilter
+    search_url = reverse_lazy("accounts:accounts_list_view")
+    main_url = reverse_lazy("accounts:accounts_view")
+    group_by_field = "account_type"
+    exclude_kanban_fields = "company"
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["accounts.view_account", "accounts.view_own_account"]
+    ),
+    name="dispatch",
+)
+class AccountTimelineView(LoginRequiredMixin, HorillaTimelineView):
+    """Timeline from created_at to updated_at; rows by account_type."""
+
+    model = Account
+    view_id = "accounts-timeline"
+    filterset_class = AccountFilter
+    search_url = reverse_lazy("accounts:accounts_list_view")
+    main_url = reverse_lazy("accounts:accounts_view")
+    enable_quick_filters = True
+    timeline_start_field = "created_at"
+    timeline_end_field = "updated_at"
+    timeline_group_by_field = "account_type"
+    timeline_title_field = "name"
+    columns = [
+        "name",
+        "account_number",
+        "account_owner",
+        "account_type",
+    ]
+    actions = AccountListView.actions
+    col_attrs = AccountListView.col_attrs
 
 
 @method_decorator(
@@ -851,7 +971,7 @@ class AccountHierarchyView(LoginRequiredMixin, View):
         """
         account_id = request.GET.get("id")
         if not account_id:
-            return render(request, "error/403.html", {"modal": True})
+            return render(request, "403.html", {"modal": True})
         account = get_object_or_404(Account, pk=account_id)
         root = _build_account_tree(account)
         return render(

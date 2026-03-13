@@ -21,13 +21,17 @@ from horilla.utils.translation import gettext_lazy as _
 from horilla_crm.opportunities.filters import OpportunityFilter
 from horilla_crm.opportunities.models import Opportunity
 from horilla_generics.views import (
+    HorillaChartView,
     HorillaGroupByView,
     HorillaKanbanView,
     HorillaListView,
     HorillaNavView,
     HorillaSingleDeleteView,
+    HorillaSplitView,
     HorillaView,
 )
+from horilla_generics.views.card import HorillaCardView
+from horilla_generics.views.timeline import HorillaTimelineView
 
 
 class OpportunityView(LoginRequiredMixin, HorillaView):
@@ -37,6 +41,10 @@ class OpportunityView(LoginRequiredMixin, HorillaView):
     list_url = reverse_lazy("opportunities:opportunities_list")
     kanban_url = reverse_lazy("opportunities:opportunities_kanban")
     group_by_url = reverse_lazy("opportunities:opportunities_group_by")
+    card_url = reverse_lazy("opportunities:opportunities_card")
+    split_view_url = reverse_lazy("opportunities:opportunities_split_view")
+    chart_url = reverse_lazy("opportunities:opportunities_chart")
+    timeline_url = reverse_lazy("opportunities:opportunities_timeline")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -55,6 +63,10 @@ class OpportunityNavbar(LoginRequiredMixin, HorillaNavView):
     filterset_class = OpportunityFilter
     kanban_url = reverse_lazy("opportunities:opportunities_kanban")
     group_by_url = reverse_lazy("opportunities:opportunities_group_by")
+    card_url = reverse_lazy("opportunities:opportunities_card")
+    split_view_url = reverse_lazy("opportunities:opportunities_split_view")
+    chart_url = reverse_lazy("opportunities:opportunities_chart")
+    timeline_url = reverse_lazy("opportunities:opportunities_timeline")
     model_name = "Opportunity"
     model_app_label = "opportunities"
     exclude_kanban_fields = "owner"
@@ -279,6 +291,39 @@ class OpportunityKanbanView(LoginRequiredMixin, HorillaKanbanView):
     ),
     name="dispatch",
 )
+class OpportunityCardView(LoginRequiredMixin, HorillaCardView):
+    """
+    Opportunity Card view
+    """
+
+    model = Opportunity
+    view_id = "opportunity-card"
+    filterset_class = OpportunityFilter
+    search_url = reverse_lazy("opportunities:opportunities_list")
+    main_url = reverse_lazy("opportunities:opportunities_view")
+
+    columns = [
+        "name",
+        "owner",
+        "close_date",
+        "expected_revenue",
+        "stage",
+    ]
+
+    actions = OpportunityListView.actions
+
+    col_attrs = OpportunityListView.col_attrs
+
+    no_record_add_button = OpportunityListView.no_record_add_button
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
 class OpportunityGroupByView(LoginRequiredMixin, HorillaGroupByView):
     """
     Opportunity Group By view
@@ -326,3 +371,79 @@ class OpportunityGroupByView(LoginRequiredMixin, HorillaGroupByView):
                 }
             }
         ]
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class OpportunitySplitView(LoginRequiredMixin, HorillaSplitView):
+    """
+    Opportunity Split view: left = tile list, right = simple details on click.
+    """
+
+    model = Opportunity
+    view_id = "opportunity-split"
+    filterset_class = OpportunityFilter
+    search_url = reverse_lazy("opportunities:opportunities_list")
+    main_url = reverse_lazy("opportunities:opportunities_view")
+    split_view_permission = "opportunities.view_opportunity"
+    split_view_own_permission = "opportunities.view_own_opportunity"
+    split_view_owner_field = "owner"
+
+    columns = ["name", "amount"]
+
+    no_record_add_button = OpportunityListView.no_record_add_button
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class OpportunityChartView(LoginRequiredMixin, HorillaChartView):
+    """Opportunity chart view: counts by group-by field using same filters as list/kanban."""
+
+    model = Opportunity
+    view_id = "opportunity-chart"
+    filterset_class = OpportunityFilter
+    search_url = reverse_lazy("opportunities:opportunities_list")
+    main_url = reverse_lazy("opportunities:opportunities_view")
+    group_by_field = "stage"
+    exclude_kanban_fields = "owner"
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class OpportunityTimelineView(LoginRequiredMixin, HorillaTimelineView):
+    """Timeline from created_at to close_date (fallback updated_at); rows by stage."""
+
+    model = Opportunity
+    view_id = "opportunity-timeline"
+    filterset_class = OpportunityFilter
+    search_url = reverse_lazy("opportunities:opportunities_list")
+    main_url = reverse_lazy("opportunities:opportunities_view")
+    enable_quick_filters = True
+    timeline_start_field = "created_at"
+    timeline_end_field = "close_date"
+    timeline_fallback_end_field = "updated_at"
+    timeline_group_by_field = "stage"
+    timeline_title_field = "name"
+    columns = [
+        "name",
+        "amount",
+        "close_date",
+        "stage",
+        "opportunity_type",
+    ]
+    actions = OpportunityListView.actions
+    col_attrs = OpportunityListView.col_attrs

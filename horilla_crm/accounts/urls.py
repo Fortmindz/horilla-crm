@@ -19,14 +19,34 @@ urlpatterns = [
         name="accounts_list_view",
     ),
     path(
+        "accounts-layout-split/",
+        views.AccountSplitView.as_view(),
+        name="accounts_split_view",
+    ),
+    path(
         "accounts-kanban-view/",
         views.AccountsKanbanView.as_view(),
         name="accounts_kanban_view",
     ),
     path(
+        "accounts-card-view/",
+        views.AccountCardView.as_view(),
+        name="accounts_card_view",
+    ),
+    path(
         "accounts-group-by-view/",
         views.AccountGroupByView.as_view(),
         name="accounts_group_by_view",
+    ),
+    path(
+        "accounts-chart-view/",
+        views.AccountChartView.as_view(),
+        name="accounts_chart_view",
+    ),
+    path(
+        "accounts-timeline/",
+        views.AccountTimelineView.as_view(),
+        name="accounts_timeline",
     ),
     path(
         "account-create-form-view/",

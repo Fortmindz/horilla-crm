@@ -5,12 +5,16 @@ Submodules: base (list, navbar, kanban, group_by, delete), forms, detail, detail
 """
 
 from horilla_crm.opportunities.views.core.base import (
+    OpportunityChartView,
     OpportunityDeleteView,
     OpportunityGroupByView,
     OpportunityKanbanView,
     OpportunityListView,
     OpportunityNavbar,
+    OpportunitySplitView,
+    OpportunityTimelineView,
     OpportunityView,
+    OpportunityCardView,
 )
 from horilla_crm.opportunities.views.core.detail import (
     OpportunityActivityTabView,
@@ -39,7 +43,11 @@ __all__ = [
     "OpportunityListView",
     "OpportunityDeleteView",
     "OpportunityKanbanView",
+    "OpportunityCardView",
     "OpportunityGroupByView",
+    "OpportunitySplitView",
+    "OpportunityChartView",
+    "OpportunityTimelineView",
     "OpportunityMultiStepFormView",
     "OpportunitySingleFormView",
     "RelatedOpportunityFormView",
