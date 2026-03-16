@@ -1,37 +1,92 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
 .pytest_cache/
 
-# Environment
-.env*
-venv/
-.venv/
-horillavenv/
-
-# Git
-.git/
-.gitignore
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Django
-staticfiles/
+# Django stuff:
+*.log
+local_settings.py
 media/
-*.sqlite3
+staticfiles/
+static_root/
 
-# IDE
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDEs
 .vscode/
 .idea/
+*.swp
 
-# Documentation
-*.md
+# MacOS
+.DS_Store
 
-# Temporary
-*.tmp
-*.log
+# Node
+node_modules/
+
+# Git
+.git
+.gitignore
+
+# Docker (avoid recursive copy)
+docker-compose.yml
+docker-compose.override.yml
+
+# Database files
+*.sqlite3
+
+# Backup artifacts
+csv_tmp/
+*.dump
+
+# Documentation (not needed in image)
+ARCHITECTURE.md
+INDEX.md
+
+# Claude/AI
+.claude/

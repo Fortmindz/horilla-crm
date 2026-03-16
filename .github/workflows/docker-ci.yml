@@ -1,6 +1,6 @@
-# Verify Docker build and runtime on the runner (no SSH / no production server).
+# Verify Docker build and runtime on the runner.
 # Catches: Dockerfile/build failures, migration errors, collectstatic issues,
-# gunicorn startup failures, and HTTP readiness before deploy.
+# uvicorn startup failures, and broken health endpoint.
 
 name: Docker CI
 
@@ -32,8 +32,6 @@ jobs:
 
       - name: Ensure local_settings exists (gitignored; Django settings import requires it)
         run: |
-          # horilla/settings/__init__.py imports local_settings unconditionally; file is not in repo.
-          # Create minimal module on runner so bind-mounted /app can import it (CI only).
           if [ ! -f horilla/settings/local_settings.py ]; then
             printf '%s\n' '# Ephemeral for CI — allows settings import *' > horilla/settings/local_settings.py
           fi
@@ -69,24 +67,22 @@ jobs:
               python manage.py check
             "
 
-      - name: Start web (gunicorn) and wait for HTTP 200
+      - name: Start web (uvicorn) and wait for health
         run: |
           set -e
           docker compose -f "$COMPOSE_FILE" up -d web
 
-          # App has no /health/ route; admin login is a stable 200 when ASGI/Django is up.
-          URL="http://localhost:8000/admin/login/"
-          echo "Waiting for $URL ..."
+          echo "Waiting for http://localhost:8000/health/ ..."
           for i in $(seq 1 90); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$URL" || echo "000")
-            if [ "$code" = "200" ]; then
-              echo "Web OK (HTTP $code)"
+            if curl -sf --max-time 5 http://localhost:8000/health/ | grep -q '"status"'; then
+              echo "Health check OK"
+              curl -s http://localhost:8000/health/
               exit 0
             fi
             sleep 2
           done
 
-          echo "Web did not return 200 — web logs:"
+          echo "Health check failed — web logs:"
           docker compose -f "$COMPOSE_FILE" logs --tail=80 web
           exit 1
 
@@ -95,7 +91,7 @@ jobs:
         run: |
           docker compose -f "$COMPOSE_FILE" --profile production up -d nginx
           sleep 5
-          curl -sf --max-time 10 http://localhost:80/admin/login/ >/dev/null || echo "Nginx check skipped or failed (web :8000 already validated)"
+          curl -sf --max-time 10 http://localhost:80/health/ || echo "Nginx health check skipped or failed (web :8000 already validated)"
 
       - name: Tear down
         if: always()
