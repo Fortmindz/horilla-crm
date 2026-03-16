@@ -16,6 +16,7 @@ from . import (
     datetime_filters,
     display_tags,
     field_filters,
+    history_display,
     misc_tags,
     navigation_tags,
     permission_tags,

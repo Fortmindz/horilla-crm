@@ -54,6 +54,6 @@ def user_datetime_format_display(value):
             )
             if result is not None:
                 return result
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             pass
     return value

@@ -35,7 +35,7 @@
                             <div class="absolute left-1/2 transform -translate-x-1/2 h-full w-1 bg-gray-300 hidden md:block"></div>
 
                             <ul class="space-y-10">
-                                {% for entry in entries %}
+                                {% for entry in entries|collapse_redundant_history %}
                                     <li class="flex flex-col sm:flex-row justify-between items-center relative">
                                         <div class="md:w-1/2 md:pr-10 md:text-right mt-2 md:mt-0 order-1 md:order-none">
                                             <div class="inline-block px-4 py-2 rounded-md text-center bg-primary-200 text-primary-600">
@@ -58,7 +58,9 @@
                                                     {% elif 'updated' in entry|lower %}
                                                         {% trans "Edit" %}
                                                     {% elif 'created' in entry|lower %}
-                                                        {{ entry.content_type.model|capfirst }}
+                                                        {% with mail_label=entry|mail_create_display activity_label=entry|activity_create_display %}
+                                                        {% if mail_label %}{{ mail_label }}{% elif activity_label %}{{ activity_label }}{% else %}{{ entry.content_type.model|capfirst }}{% endif %}
+                                                        {% endwith %}
                                                     {% else %}
                                                         {{ entry.content_type.model|capfirst }}
                                                     {% endif %}
@@ -66,10 +68,19 @@
 
                                                 <p class="mt-1 text-xs text-gray-700">
                                                     {% if 'created' in entry|lower %}
-                                                        {% trans "New" %} {{ entry.content_type.model|capfirst }} {% trans "created" %}
+                                                        {% with mail_label=entry|mail_create_display activity_label=entry|activity_create_display details=entry|activity_create_details %}
+                                                        {% if mail_label %}
+                                                            {{ mail_label }}
+                                                        {% elif activity_label %}
+                                                            {% if details %}<span class="font-bold text-black">{% trans "Status" %}:</span> {{ details.status }}{% endif %}
+                                                        {% else %}
+                                                            {% trans "New" %} {{ entry.content_type.model|capfirst }} {% trans "created" %}
+                                                        {% endif %}
+                                                        {% endwith %}
                                                     {% elif 'updated' in entry|lower %}
-                                                        {% if entry.changes_display_dict %}
-                                                            {% for field, values in entry.changes_display_dict.items %}
+                                                        {% with display_changes=entry|history_changes_display %}
+                                                        {% if display_changes %}
+                                                            {% for field, values in display_changes.items %}
                                                                 <span class="font-bold text-black">{{ field|capfirst }}:</span> <br>
                                                                 {{ values.0|default:"--"|user_datetime_format_display }} → <span style="background-color: #ffd8d29c; color:#e54f38; padding: 2px 4px; border-radius: 5px;">{{ values.1|default:"--"|user_datetime_format_display}}</span>
                                                                 {% if not forloop.last %}<br>{% endif %}
@@ -77,6 +88,7 @@
                                                         {% else %}
                                                             {{ entry.content_type.model|lower }} {% trans "status" %}
                                                         {% endif %}
+                                                        {% endwith %}
                                                     {% elif 'call' in entry|lower %}
                                                         {% trans "Added call task to this" %} {{ model_name|capfirst }}
                                                     {% elif 'email' in entry|lower %}
@@ -92,13 +104,15 @@
                                                     {% elif entry.content_type.model == "meeting" %}
                                                         {% trans "Meeting scheduled with this" %} {{ model_name|capfirst }}
                                                     {% else %}
-                                                        {% if entry.changes_display_dict %}
-                                                            {% for key, value in entry.changes_display_dict.items %}
+                                                        {% with display_changes=entry|history_changes_display %}
+                                                        {% if display_changes %}
+                                                            {% for key, value in display_changes.items %}
                                                                 {{ key }}: {{ value.0|default:"--"|user_datetime_format_display }}{% if value.1 %} → {{ value.1|default:"--"|user_datetime_format_display }}{% endif %}<br>
                                                             {% endfor %}
                                                         {% else %}
                                                             {% trans "Action performed by" %} {{ entry.actor|default:"Unknown" }}
                                                         {% endif %}
+                                                        {% endwith %}
                                                     {% endif %}
                                                 </p>
                                             </div>
