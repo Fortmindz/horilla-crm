@@ -34,6 +34,20 @@
                  hx-include="[name='module'],[name='grouping_field'],[name='secondary_grouping']"
                  hx-trigger="change from:#id_module"
                  id="secondary-grouping-field-trigger"></div>
+
+            <div hx-get="{% url 'horilla_dashboard:get_metric_field_choices' %}"
+                 hx-target="#metric_type_container"
+                 hx-swap="innerHTML"
+                 hx-include="[name='module'],[name='component_type'],[name='metric_type']"
+                 hx-trigger="change from:#id_module, change from:#id_component_type"
+                 id="metric-field-trigger"></div>
+
+            <div hx-get="{% url 'horilla_dashboard:get_y_axis_metric_field_choices' %}"
+                 hx-target="#y_axis_metric_type_container"
+                 hx-swap="innerHTML"
+                 hx-include="[name='module'],[name='component_type'],[name='y_axis_metric_type']"
+                 hx-trigger="change from:#id_module, change from:#id_component_type"
+                 id="y-axis-metric-field-trigger"></div>
         </div>
 
         <div class="p-5">

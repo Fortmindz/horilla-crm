@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib import messages
-from django.db.models import Count, ForeignKey
+from django.db.models import Avg, Count, ForeignKey, Max, Min, Sum
 from django.utils.encoding import force_str
 from django.views.generic import View
 
@@ -51,7 +51,7 @@ class ChartPreviewView(View):
             return render(
                 request,
                 "chart/preview_kpi.html",
-                {"title": "Total", "value": "$574.34", "change": "+23%"},
+                {"title": "Total", "value": "574.34"},
             )
 
         if component_type == "table_data":
@@ -219,7 +219,11 @@ class DashboardComponentChartView(View):
 
     def get_kpi_data(self, component):
         """
-        Calculate KPI data - always returns count of records.
+        Calculate KPI data.
+        Supports:
+        - "count" → total record count
+        - "<agg>__<field_name>" for numeric fields, where <agg> is one of:
+          sum, average, min, max
         """
         model = None
         module_name = component.module.model if component.module else None
@@ -258,13 +262,48 @@ class DashboardComponentChartView(View):
                     queryset, model, date_range, date_from=date_from, date_to=date_to
                 )
 
+            metric_type = (component.metric_type or "").strip()
+
+            # Default: simple record count
             value = queryset.count()
+            metric_label = "Count"
+            field_label_str = module_name.title() if module_name else "Records"
+
+            if metric_type and metric_type != "count":
+                try:
+                    agg_key, field_name = metric_type.split("__", 1)
+                except ValueError:
+                    agg_key, field_name = "", ""
+
+                agg_map = {
+                    "sum": Sum,
+                    "average": Avg,
+                    "min": Min,
+                    "max": Max,
+                }
+
+                if agg_key in agg_map and field_name:
+                    try:
+                        field = model._meta.get_field(field_name)
+                        field_label_str = str(
+                            getattr(field, "verbose_name", field_name) or field_name
+                        )
+                    except Exception:
+                        field_label_str = field_name.replace("_", " ").title()
+
+                    agg_func = agg_map[agg_key]
+                    agg_result = queryset.aggregate(result=agg_func(field_name)).get(
+                        "result"
+                    )
+                    value = agg_result or 0
+
+                    metric_label = (
+                        "Average"
+                        if agg_key == "average"
+                        else agg_key.replace("_", " ").title()
+                    )
 
             section_info = get_section_info_for_model(model)
-
-            metric_label = (
-                f"{component.metric_type.title() if component.metric_type else 'Count'}"
-            )
 
             base_url = section_info["url"]
             if conditions.exists():
@@ -294,7 +333,7 @@ class DashboardComponentChartView(View):
                 "value": float(value),
                 "url": filtered_url,
                 "section": section_info["section"],
-                "label": f"{metric_label} of {module_name.title()}",
+                "label": f"{metric_label} of {field_label_str}",
             }
         except Exception:
             return None
@@ -302,7 +341,8 @@ class DashboardComponentChartView(View):
     def get_chart_data(self, component):
         """
         Retrieve chart data based on component configuration.
-        Handles only chart-type components. Always uses Count aggregation.
+        Handles only chart-type components.
+        Uses Count aggregation by default, or the configured y-axis metric when set.
         """
         model = None
         module_name = component.module.model if component.module else None
@@ -367,19 +407,39 @@ class DashboardComponentChartView(View):
 
                 queryset = self.apply_conditions(queryset, conditions)
 
+                # Determine aggregation for Y-axis: default count, or numeric metric when configured.
+                y_metric = (component.y_axis_metric_type or "").strip()
+                agg_func = Count
+                agg_field_name = "id"
+                if y_metric and y_metric != "count":
+                    try:
+                        agg_key, field_name = y_metric.split("__", 1)
+                    except ValueError:
+                        agg_key, field_name = "", ""
+
+                    agg_map = {
+                        "sum": Sum,
+                        "average": Avg,
+                        "min": Min,
+                        "max": Max,
+                    }
+                    if agg_key in agg_map and field_name:
+                        agg_func = agg_map[agg_key]
+                        agg_field_name = field_name
+
                 if field.is_relation and hasattr(field.remote_field.model, "name"):
                     queryset = queryset.values(
                         f"{component.grouping_field}__name",
                         f"{component.grouping_field}_id",
-                    ).annotate(value=Count("id"))
+                    ).annotate(value=agg_func(agg_field_name))
                 else:
                     if field.is_relation:
                         queryset = queryset.values(
                             component.grouping_field, f"{component.grouping_field}_id"
-                        ).annotate(value=Count("id"))
+                        ).annotate(value=agg_func(agg_field_name))
                     else:
                         queryset = queryset.values(component.grouping_field).annotate(
-                            value=Count("id")
+                            value=agg_func(agg_field_name)
                         )
 
                 labels = []
@@ -420,7 +480,9 @@ class DashboardComponentChartView(View):
                         label = "None"
 
                     labels.append(str(label))
-                    data.append(float(item["value"]))
+                    # Some aggregations (e.g. Sum on all-null groups) may yield None; treat as 0
+                    value = item.get("value")
+                    data.append(float(value) if value is not None else 0.0)
 
                     filter_value = label
                     if field.is_relation:
@@ -455,7 +517,10 @@ class DashboardComponentChartView(View):
     def get_stacked_chart_data(
         self, queryset, component, conditions, field, x_axis_label, model
     ):
-        """Handle stacked chart data - always uses Count aggregation"""
+        """
+        Handle stacked chart data.
+        Uses Count aggregation by default, or the configured y-axis metric when set.
+        """
         try:
             queryset = self.apply_conditions(queryset, conditions)
 
@@ -503,6 +568,26 @@ class DashboardComponentChartView(View):
             )
             if not secondary_field:
                 return None
+
+            # Determine aggregation for Y-axis: default count, or numeric metric when configured.
+            y_metric = (component.y_axis_metric_type or "").strip()
+            agg_func = Count
+            agg_field_name = "id"
+            if y_metric and y_metric != "count":
+                try:
+                    agg_key, field_name = y_metric.split("__", 1)
+                except ValueError:
+                    agg_key, field_name = "", ""
+
+                agg_map = {
+                    "sum": Sum,
+                    "average": Avg,
+                    "min": Min,
+                    "max": Max,
+                }
+                if agg_key in agg_map and field_name:
+                    agg_func = agg_map[agg_key]
+                    agg_field_name = field_name
 
             if secondary_field.is_relation and hasattr(
                 secondary_field.remote_field.model, "name"
@@ -563,22 +648,24 @@ class DashboardComponentChartView(View):
                 if is_relation_name:
                     grouped_data = filtered_queryset.values(
                         f"{component.grouping_field}__name"
-                    ).annotate(value=Count("id"))
+                    ).annotate(value=agg_func(agg_field_name))
                     grouped_dict = {}
                     for item in grouped_data:
                         k = item[f"{component.grouping_field}__name"]
                         if k is not None:
-                            grouped_dict[k] = item["value"]
+                            value = item.get("value")
+                            grouped_dict[k] = float(value) if value is not None else 0.0
                 else:
                     grouped_data = filtered_queryset.values(
                         component.grouping_field
-                    ).annotate(value=Count("id"))
+                    ).annotate(value=agg_func(agg_field_name))
                     grouped_dict = {}
                     for item in grouped_data:
                         k = item[component.grouping_field]
                         if k is not None:
                             # Same key type as category_keys from values_list
-                            grouped_dict[k] = item["value"]
+                            value = item.get("value")
+                            grouped_dict[k] = float(value) if value is not None else 0.0
 
                 series_values = []
                 for cat_key in category_keys:

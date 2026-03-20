@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Avg, Count, Max, Min, Sum
 
 # First-party / Horilla imports
 from horilla.apps import apps
@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__)
 
 def get_kpi_data(component, request):
     """
-    Calculate KPI data - always returns count of records.
+    Calculate KPI data.
+    Supports:
+    - "count" → total record count
+    - "<agg>__<field_name>" for numeric fields, where <agg> is one of:
+      sum, average, min, max
     """
     model = None
     module_name = component.module.model if component.module else None
@@ -47,19 +51,54 @@ def get_kpi_data(component, request):
         conditions = component.conditions.all().order_by("sequence")
         queryset = apply_conditions(queryset, conditions)
 
+        metric_type = (component.metric_type or "").strip()
+
+        # Default: simple record count
         value = queryset.count()
+        metric_label = "Count"
+        field_label_str = module_name.title() if module_name else "Records"
+
+        if metric_type and metric_type != "count":
+            try:
+                agg_key, field_name = metric_type.split("__", 1)
+            except ValueError:
+                agg_key, field_name = "", ""
+
+            agg_map = {
+                "sum": Sum,
+                "average": Avg,
+                "min": Min,
+                "max": Max,
+            }
+
+            if agg_key in agg_map and field_name:
+                try:
+                    field = model._meta.get_field(field_name)
+                    field_label_str = str(
+                        getattr(field, "verbose_name", field_name) or field_name
+                    )
+                except Exception:
+                    field_label_str = field_name.replace("_", " ").title()
+
+                agg_func = agg_map[agg_key]
+                agg_result = queryset.aggregate(result=agg_func(field_name)).get(
+                    "result"
+                )
+                value = agg_result or 0
+
+                metric_label = (
+                    "Average"
+                    if agg_key == "average"
+                    else agg_key.replace("_", " ").title()
+                )
 
         section_info = get_section_info_for_model(model)
-
-        metric_label = (
-            f"{component.metric_type.title() if component.metric_type else 'Count'}"
-        )
 
         return {
             "value": float(value),
             "url": section_info["url"],
             "section": section_info["section"],
-            "label": f"{metric_label} of {module_name.title()}",
+            "label": f"{metric_label} of {field_label_str}",
         }
     except Exception:
         return None

@@ -51,6 +51,16 @@ urlpatterns = [
         name="get_secondary_grouping_field_choices",
     ),
     path(
+        "get-metric-field-choices/",
+        views.MetricFieldChoicesView.as_view(),
+        name="get_metric_field_choices",
+    ),
+    path(
+        "get-y-axis-metric-field-choices/",
+        views.YAxisMetricFieldChoicesView.as_view(),
+        name="get_y_axis_metric_field_choices",
+    ),
+    path(
         "component-chart/<int:component_id>/",
         views.DashboardComponentChartView.as_view(),
         name="component_chart",

@@ -243,14 +243,6 @@ class DashboardComponent(HorillaCoreModel):
         ("radar", _("Radar Chart")),
     ]
 
-    METRIC_TYPES = [
-        ("count", _("Count")),
-        ("sum", _("Sum")),
-        ("average", _("Average")),
-        ("min", _("Minimum")),
-        ("max", _("Maximum")),
-    ]
-
     dashboard = models.ForeignKey(
         Dashboard,
         on_delete=models.CASCADE,
@@ -289,8 +281,7 @@ class DashboardComponent(HorillaCoreModel):
     )
 
     metric_type = models.CharField(
-        max_length=50,
-        choices=METRIC_TYPES,
+        max_length=100,
         default="count",
         blank=True,
         null=True,
@@ -306,6 +297,15 @@ class DashboardComponent(HorillaCoreModel):
         blank=True,
         null=True,
         verbose_name=_("Secondary Grouping"),
+    )
+
+    # Y-axis metric configuration for chart components
+    y_axis_metric_type = models.CharField(
+        max_length=100,
+        default="count",
+        blank=True,
+        null=True,
+        verbose_name=_("Y-axis Metric Type"),
     )
 
     columns = models.TextField(blank=True, null=True, verbose_name=_("Table Columns"))

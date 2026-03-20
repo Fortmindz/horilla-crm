@@ -130,9 +130,6 @@ class DashboardCreateForm(HorillaModelForm):
                             self.data[name] = None
 
         # Hide fields based on component_type.
-        # - For GET, we rely on query params/instance (so HTMX preview works).
-        # - For POST, we MUST read from form data; otherwise columns for
-        #   table_data components get hidden/nullified and never saved.
         if (
             hasattr(self, "request")
             and getattr(self.request, "method", "").upper() == "POST"
@@ -153,7 +150,12 @@ class DashboardCreateForm(HorillaModelForm):
         )
         if component_type != "chart":
             hide_fields(
-                ["chart_type", "secondary_grouping", "grouping_field"],
+                [
+                    "chart_type",
+                    "secondary_grouping",
+                    "grouping_field",
+                    "y_axis_metric_type",
+                ],
                 nullify=nullify_values,
             )
         else:
@@ -189,10 +191,325 @@ class DashboardCreateForm(HorillaModelForm):
 
         if component_type != "kpi":
             hide_fields(["icon", "metric_type"], nullify=nullify_values)
+        else:
+
+            if "metric_type" in self.fields:
+                model = None
+
+                # 1) Prefer the instance's module when editing
+                if (
+                    self.instance_obj
+                    and getattr(self.instance_obj, "module", None)
+                    and getattr(self.instance_obj.module, "model", None)
+                ):
+                    instance_model_name = self.instance_obj.module.model
+                    for app_config in apps.get_app_configs():
+                        try:
+                            model = apps.get_model(
+                                app_label=app_config.label,
+                                model_name=instance_model_name.lower(),
+                            )
+                            break
+                        except LookupError:
+                            continue
+
+                # 2) Fallback to module value coming from the form (create flow)
+                if not model:
+                    module_value = (
+                        (self.data.get("module") or "").strip()
+                        if hasattr(self, "data")
+                        else ""
+                    )
+                    if not module_value and hasattr(self, "request"):
+                        module_value = (
+                            self.request.GET.get("module")
+                            or self.request.POST.get("module")
+                            or ""
+                        )
+
+                    if module_value:
+                        # If it's a HorillaContentType id, resolve to model name
+                        if module_value.isdigit():
+                            try:
+                                ct = HorillaContentType.objects.get(pk=module_value)
+                                module_key = (ct.model or "").strip().lower()
+                            except Exception:
+                                module_key = ""
+                        else:
+                            module_key = module_value.strip().lower()
+
+                        if module_key:
+                            # First, check the dashboard registry
+                            for key, model_cls in get_dashboard_component_models():
+                                if key == module_key:
+                                    model = model_cls
+                                    break
+
+                            # Fallback: search installed apps
+                            if not model:
+                                for app_config in apps.get_app_configs():
+                                    try:
+                                        model = apps.get_model(
+                                            app_label=app_config.label,
+                                            model_name=module_key,
+                                        )
+                                        break
+                                    except LookupError:
+                                        continue
+
+                metric_choices = [("count", "Count of records")]
+
+                if model:
+                    numeric_internal_types = {
+                        "IntegerField",
+                        "BigIntegerField",
+                        "SmallIntegerField",
+                        "PositiveIntegerField",
+                        "PositiveSmallIntegerField",
+                        "DecimalField",
+                        "FloatField",
+                    }
+
+                    for field in model._meta.get_fields():
+                        if not getattr(field, "concrete", False) or getattr(
+                            field, "is_relation", False
+                        ):
+                            continue
+
+                        field_type = (
+                            field.get_internal_type()
+                            if hasattr(field, "get_internal_type")
+                            else ""
+                        )
+
+                        if field_type not in numeric_internal_types:
+                            continue
+
+                        field_name = field.name
+                        field_label = getattr(field, "verbose_name", field_name)
+                        field_label_str = str(field_label)
+
+                        # Store as "<agg>__<field_name>" so the view can
+                        # unambiguously parse the metric configuration.
+                        metric_choices.extend(
+                            [
+                                (f"sum__{field_name}", f"Sum of {field_label_str}"),
+                                (
+                                    f"average__{field_name}",
+                                    f"Average of {field_label_str}",
+                                ),
+                                (f"min__{field_name}", f"Minimum of {field_label_str}"),
+                                (f"max__{field_name}", f"Maximum of {field_label_str}"),
+                            ]
+                        )
+
+                current_metric = (
+                    (self.data.get("metric_type") or "").strip()
+                    if hasattr(self, "data")
+                    else ""
+                )
+                if (
+                    not current_metric
+                    and self.instance_obj
+                    and getattr(self.instance_obj, "metric_type", None)
+                ):
+                    current_metric = (self.instance_obj.metric_type or "").strip()
+                if not current_metric:
+                    current_metric = (
+                        (self.initial.get("metric_type") or "").strip()
+                        if hasattr(self, "initial")
+                        else ""
+                    )
+
+                if current_metric and current_metric not in {
+                    value for value, _ in metric_choices
+                }:
+                    # Use a readable label derived from the stored key.
+                    parts = current_metric.split("__", 1)
+                    if len(parts) == 2:
+                        agg_key, field_name = parts
+                        agg_label = (
+                            "Average"
+                            if agg_key == "average"
+                            else agg_key.replace("_", " ").title()
+                        )
+                        field_label = field_name.replace("_", " ").title()
+                        label = f"{agg_label} of {field_label}"
+                    else:
+                        label = current_metric.replace("_", " ").title()
+                    metric_choices.append((current_metric, label))
+
+                self.fields["metric_type"] = forms.ChoiceField(
+                    choices=metric_choices,
+                    required=False,
+                    initial=current_metric or "count",
+                    widget=forms.Select(
+                        attrs={
+                            "class": "js-example-basic-single headselect",
+                            "id": "id_metric_type",
+                            "name": "metric_type",
+                        }
+                    ),
+                )
+
+        # For chart components, provide a y-axis metric selector that mirrors KPI metric choices.
+        if component_type == "chart":
+            if "y_axis_metric_type" in self.fields:
+                model = None
+
+                if (
+                    self.instance_obj
+                    and getattr(self.instance_obj, "module", None)
+                    and getattr(self.instance_obj.module, "model", None)
+                ):
+                    instance_model_name = self.instance_obj.module.model
+                    for app_config in apps.get_app_configs():
+                        try:
+                            model = apps.get_model(
+                                app_label=app_config.label,
+                                model_name=instance_model_name.lower(),
+                            )
+                            break
+                        except LookupError:
+                            continue
+
+                if not model:
+                    module_value = (
+                        (self.data.get("module") or "").strip()
+                        if hasattr(self, "data")
+                        else ""
+                    )
+                    if not module_value and hasattr(self, "request"):
+                        module_value = (
+                            self.request.GET.get("module")
+                            or self.request.POST.get("module")
+                            or ""
+                        )
+
+                    if module_value:
+                        if module_value.isdigit():
+                            try:
+                                ct = HorillaContentType.objects.get(pk=module_value)
+                                module_key = (ct.model or "").strip().lower()
+                            except Exception:
+                                module_key = ""
+                        else:
+                            module_key = module_value.strip().lower()
+
+                        if module_key:
+                            for key, model_cls in get_dashboard_component_models():
+                                if key == module_key:
+                                    model = model_cls
+                                    break
+
+                            if not model:
+                                for app_config in apps.get_app_configs():
+                                    try:
+                                        model = apps.get_model(
+                                            app_label=app_config.label,
+                                            model_name=module_key,
+                                        )
+                                        break
+                                    except LookupError:
+                                        continue
+
+                y_metric_choices = [("count", "Count of records")]
+
+                if model:
+                    numeric_internal_types = {
+                        "IntegerField",
+                        "BigIntegerField",
+                        "SmallIntegerField",
+                        "PositiveIntegerField",
+                        "PositiveSmallIntegerField",
+                        "DecimalField",
+                        "FloatField",
+                    }
+
+                    for field in model._meta.get_fields():
+                        if not getattr(field, "concrete", False) or getattr(
+                            field, "is_relation", False
+                        ):
+                            continue
+
+                        field_type = (
+                            field.get_internal_type()
+                            if hasattr(field, "get_internal_type")
+                            else ""
+                        )
+
+                        if field_type not in numeric_internal_types:
+                            continue
+
+                        field_name = field.name
+                        field_label = getattr(field, "verbose_name", field_name)
+                        field_label_str = str(field_label)
+
+                        y_metric_choices.extend(
+                            [
+                                (f"sum__{field_name}", f"Sum of {field_label_str}"),
+                                (
+                                    f"average__{field_name}",
+                                    f"Average of {field_label_str}",
+                                ),
+                                (f"min__{field_name}", f"Minimum of {field_label_str}"),
+                                (f"max__{field_name}", f"Maximum of {field_label_str}"),
+                            ]
+                        )
+
+                current_y_metric = (
+                    (self.data.get("y_axis_metric_type") or "").strip()
+                    if hasattr(self, "data")
+                    else ""
+                )
+                if (
+                    not current_y_metric
+                    and self.instance_obj
+                    and getattr(self.instance_obj, "y_axis_metric_type", None)
+                ):
+                    current_y_metric = (
+                        self.instance_obj.y_axis_metric_type or ""
+                    ).strip()
+                if not current_y_metric:
+                    current_y_metric = (
+                        (self.initial.get("y_axis_metric_type") or "").strip()
+                        if hasattr(self, "initial")
+                        else ""
+                    )
+
+                if current_y_metric and current_y_metric not in {
+                    value for value, _ in y_metric_choices
+                }:
+                    parts = current_y_metric.split("__", 1)
+                    if len(parts) == 2:
+                        agg_key, field_name = parts
+                        agg_label = (
+                            "Average"
+                            if agg_key == "average"
+                            else agg_key.replace("_", " ").title()
+                        )
+                        field_label = field_name.replace("_", " ").title()
+                        label = f"{agg_label} of {field_label}"
+                    else:
+                        label = current_y_metric.replace("_", " ").title()
+                    y_metric_choices.append((current_y_metric, label))
+
+                self.fields["y_axis_metric_type"] = forms.ChoiceField(
+                    choices=y_metric_choices,
+                    required=False,
+                    initial=current_y_metric or "count",
+                    widget=forms.Select(
+                        attrs={
+                            "class": "js-example-basic-single headselect",
+                            "id": "id_y_axis_metric_type",
+                            "name": "y_axis_metric_type",
+                        }
+                    ),
+                )
 
         if component_type == "table_data":
             hide_fields(
-                ["grouping_field", "metric_field", "metric_type"],
+                ["grouping_field", "metric_field", "metric_type", "y_axis_metric_type"],
                 nullify=nullify_values,
             )
 
@@ -321,19 +638,31 @@ class DashboardCreateForm(HorillaModelForm):
         if self.instance_obj and self.instance_obj.pk and model_name:
             self._initialize_select_fields_for_edit(model_name)
         elif self.instance_obj and self.instance_obj.pk and self.instance_obj.module_id:
-            # Fallback if model_name missing: resolve from instance FK so grouping
-            # choices always match the saved module (Lead vs Opportunity, etc.).
             self._initialize_select_fields_for_edit(str(self.instance_obj.module_id))
+        else:
+            module_value = ""
+            if hasattr(self, "data") and self.data:
+                module_value = (self.data.get("module") or "").strip()
+            if not module_value and hasattr(self, "request"):
+                module_value = (self.request.GET.get("module") or "").strip() or (
+                    self.request.POST.get("module") or ""
+                ).strip()
+            if module_value:
+                self._initialize_select_fields_for_edit(module_value)
 
     def _initialize_select_fields_for_edit(self, model_name):
         """Initialize select fields in edit mode by mimicking HTMX view behavior"""
         try:
-            # Get component_type to check which fields should be visible
+            # Get component_type / chart_type to check which fields should be visible
             component_type = self.request.GET.get("component_type") or (
                 self.instance_obj.component_type if self.instance_obj else ""
             )
+            chart_type = self.request.GET.get("chart_type") or (
+                getattr(self.instance_obj, "chart_type", None)
+                if self.instance_obj
+                else ""
+            )
 
-            # Registry-first resolution (same as field_choices views) so we never
             model = None
             if model_name:
                 module_key = (model_name or "").strip().lower()
@@ -400,7 +729,19 @@ class DashboardCreateForm(HorillaModelForm):
                 )
 
             # Only initialize secondary_grouping if component_type is 'chart'
-            if "secondary_grouping" in self.fields and component_type == "chart":
+            # AND the chart type actually supports a second grouping axis.
+            two_group_chart_types = [
+                "stacked_vertical",
+                "stacked_horizontal",
+                "radar",
+                "heatmap",
+                "sankey",
+            ]
+            if (
+                "secondary_grouping" in self.fields
+                and component_type == "chart"
+                and (chart_type or "") in two_group_chart_types
+            ):
                 secondary_grouping_fields = []
                 for field in model._meta.get_fields():
                     if field.concrete and not field.is_relation:
@@ -458,8 +799,6 @@ class DashboardCreateForm(HorillaModelForm):
     def clean_columns(self):
         """Clean the columns field to store as JSON list string."""
 
-        # Chart/KPI components must not persist columns; hidden field can still post
-        # garbage from HTMX preview (nested JSON) and exceed max_length.
         component_type = (self.data.get("component_type") or "").strip()
         if not component_type and self.instance_obj:
             component_type = getattr(self.instance_obj, "component_type", "") or ""

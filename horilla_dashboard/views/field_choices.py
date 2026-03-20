@@ -301,3 +301,187 @@ class SecondaryGroupingFieldChoicesView(View):
                 "current_secondary": current_secondary,
             },
         )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_dashboard.add_dashboard"), name="dispatch"
+)
+class MetricFieldChoicesView(View):
+    """
+    View to return metric type choices for KPI components based on the selected module.
+    """
+
+    def get(self, request, *args, **kwargs):
+        """
+        Build choices like:
+        - Count of records
+        - Sum/Average/Minimum/Maximum of each numeric field on the model.
+        Only active when component_type == 'kpi'.
+        """
+        component_type = (request.GET.get("component_type") or "").strip()
+
+        module = request.GET.get("module")
+        current_metric = (request.GET.get("metric_type") or "").strip()
+
+        model = _resolve_model_from_module(module)
+        metric_choices = [("count", "Count of records")]
+
+        if model:
+            numeric_internal_types = {
+                "IntegerField",
+                "BigIntegerField",
+                "SmallIntegerField",
+                "PositiveIntegerField",
+                "PositiveSmallIntegerField",
+                "DecimalField",
+                "FloatField",
+            }
+
+            for field in model._meta.get_fields():
+                if not getattr(field, "concrete", False) or getattr(
+                    field, "is_relation", False
+                ):
+                    continue
+
+                field_type = (
+                    field.get_internal_type()
+                    if hasattr(field, "get_internal_type")
+                    else ""
+                )
+
+                if field_type not in numeric_internal_types:
+                    continue
+
+                field_name = field.name
+                field_label = getattr(field, "verbose_name", field_name)
+                field_label_str = force_str(field_label)
+
+                metric_choices.extend(
+                    [
+                        (f"sum__{field_name}", f"Sum of {field_label_str}"),
+                        (f"average__{field_name}", f"Average of {field_label_str}"),
+                        (f"min__{field_name}", f"Minimum of {field_label_str}"),
+                        (f"max__{field_name}", f"Maximum of {field_label_str}"),
+                    ]
+                )
+
+        # Ensure the currently selected metric is always included
+        if current_metric and current_metric not in {v for v, _ in metric_choices}:
+            parts = current_metric.split("__", 1)
+            if len(parts) == 2:
+                agg_key, field_name = parts
+                agg_label = (
+                    "Average"
+                    if agg_key == "average"
+                    else agg_key.replace("_", " ").title()
+                )
+                field_label = field_name.replace("_", " ").title()
+                label = f"{agg_label} of {field_label}"
+            else:
+                label = current_metric.replace("_", " ").title()
+            metric_choices.append((current_metric, label))
+
+        return render(
+            request,
+            "partials/metric_field_select.html",
+            {
+                "field_choices": metric_choices,
+                "current_metric": current_metric or "count",
+            },
+        )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_dashboard.add_dashboard"), name="dispatch"
+)
+class YAxisMetricFieldChoicesView(View):
+    """
+    View to return y-axis metric type choices for chart components based on the selected module.
+    Uses the same logic as MetricFieldChoicesView but binds to the y_axis_metric_type field.
+    """
+
+    def get(self, request, *args, **kwargs):
+        component_type = (request.GET.get("component_type") or "").strip()
+        # Only charts use the dedicated y-axis metric; others fall back to simple count.
+        if component_type != "chart":
+            metric_choices = [("count", "Count of records")]
+            current_metric = (request.GET.get("y_axis_metric_type") or "").strip()
+            return render(
+                request,
+                "partials/y_axis_metric_field_select.html",
+                {
+                    "field_choices": metric_choices,
+                    "current_metric": current_metric or "count",
+                },
+            )
+
+        module = request.GET.get("module")
+        current_metric = (request.GET.get("y_axis_metric_type") or "").strip()
+
+        model = _resolve_model_from_module(module)
+        metric_choices = [("count", "Count of records")]
+
+        if model:
+            numeric_internal_types = {
+                "IntegerField",
+                "BigIntegerField",
+                "SmallIntegerField",
+                "PositiveIntegerField",
+                "PositiveSmallIntegerField",
+                "DecimalField",
+                "FloatField",
+            }
+
+            for field in model._meta.get_fields():
+                if not getattr(field, "concrete", False) or getattr(
+                    field, "is_relation", False
+                ):
+                    continue
+
+                field_type = (
+                    field.get_internal_type()
+                    if hasattr(field, "get_internal_type")
+                    else ""
+                )
+
+                if field_type not in numeric_internal_types:
+                    continue
+
+                field_name = field.name
+                field_label = getattr(field, "verbose_name", field_name)
+                field_label_str = force_str(field_label)
+
+                metric_choices.extend(
+                    [
+                        (f"sum__{field_name}", f"Sum of {field_label_str}"),
+                        (f"average__{field_name}", f"Average of {field_label_str}"),
+                        (f"min__{field_name}", f"Minimum of {field_label_str}"),
+                        (f"max__{field_name}", f"Maximum of {field_label_str}"),
+                    ]
+                )
+
+        if current_metric and current_metric not in {v for v, _ in metric_choices}:
+            parts = current_metric.split("__", 1)
+            if len(parts) == 2:
+                agg_key, field_name = parts
+                agg_label = (
+                    "Average"
+                    if agg_key == "average"
+                    else agg_key.replace("_", " ").title()
+                )
+                field_label = field_name.replace("_", " ").title()
+                label = f"{agg_label} of {field_label}"
+            else:
+                label = current_metric.replace("_", " ").title()
+            metric_choices.append((current_metric, label))
+
+        return render(
+            request,
+            "partials/y_axis_metric_field_select.html",
+            {
+                "field_choices": metric_choices,
+                "current_metric": current_metric or "count",
+            },
+        )

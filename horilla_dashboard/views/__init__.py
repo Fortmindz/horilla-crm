@@ -37,6 +37,8 @@ from horilla_dashboard.views.field_choices import (
     ColumnFieldChoicesView,
     GroupingFieldChoicesView,
     SecondaryGroupingFieldChoicesView,
+    MetricFieldChoicesView,
+    YAxisMetricFieldChoicesView,
 )
 
 from horilla_dashboard.views.chart import (
@@ -97,6 +99,8 @@ __all__ = [
     "ColumnFieldChoicesView",
     "GroupingFieldChoicesView",
     "SecondaryGroupingFieldChoicesView",
+    "MetricFieldChoicesView",
+    "YAxisMetricFieldChoicesView",
     # charts
     "ChartPreviewView",
     "DashboardComponentChartView",
