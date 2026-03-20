@@ -1,4 +1,4 @@
-"""Forecast type tab view (period-by-period data, trends, targets)."""
+"""Forecast type tab view (period-by-period data, trends, targets, chart analysis)."""
 
 # Third-party imports (Django)
 from django.contrib import messages
@@ -16,7 +16,10 @@ from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import FiscalYearInstance
 from horilla_core.services.fiscal_year_service import FiscalYearService
 from horilla_crm.forecast.models import ForecastType
-from horilla_crm.forecast.views.core.helpers import ForecastTypeTabHelpersMixin
+from horilla_crm.forecast.views.core.helpers import (
+    ForecastTypeTabHelpersMixin,
+    get_forecast_chart_data,
+)
 from horilla_crm.forecast.views.core.mixins import ForecastTypeTabMixin
 
 
@@ -103,7 +106,16 @@ class ForecastTypeTabView(
                 user_id = str(self.request.user.pk)
 
         page = self.request.GET.get("page", 1)
-        forecasts = self.get_forecast_data(forecast_type, fiscal_year, user_id, page)
+        beginning_period_id = self.request.GET.get("beginning_period_id") or None
+        ending_period_id = self.request.GET.get("ending_period_id") or None
+        forecasts = self.get_forecast_data(
+            forecast_type,
+            fiscal_year,
+            user_id,
+            page,
+            beginning_period_id=beginning_period_id,
+            ending_period_id=ending_period_id,
+        )
 
         # Calculate totals for all periods
         forecast_totals = self.calculate_forecast_totals(forecasts, forecast_type)
@@ -123,6 +135,8 @@ class ForecastTypeTabView(
             f"{forecast_type.get_forecast_type_display} Forecast for {fiscal_year.name}"
         )
 
+        forecast_chart_data = get_forecast_chart_data(forecasts, forecast_type)
+
         context.update(
             {
                 "forecast_type": forecast_type,
@@ -136,6 +150,7 @@ class ForecastTypeTabView(
                 "search_params": search_params,
                 "has_view_all": has_view_all,
                 "has_view_own": has_view_own,
+                "forecast_chart_data": forecast_chart_data,
             }
         )
         return context
@@ -225,3 +240,93 @@ class ForecastTypeTabView(
                 ) * 100
 
         return totals
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
+    ),
+    name="dispatch",
+)
+class ForecastChartsModalView(
+    ForecastTypeTabMixin, ForecastTypeTabHelpersMixin, TemplateView
+):
+    """HTMX view that returns chart analysis HTML for the content modal."""
+
+    template_name = "forecast_charts_modal_content.html"
+    USERS_PER_PAGE = (
+        10  # required by get_forecast_data mixin (paginates user list per period)
+    )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        forecast_type_id = self.request.GET.get("forecast_type_id")
+        fiscal_year_id = self.request.GET.get("fiscal_year_id")
+        user_id = self.request.GET.get("user_id")
+
+        if not forecast_type_id or not fiscal_year_id:
+            context["forecast_chart_data"] = None
+            context["currency_symbol"] = "USD"
+            return context
+
+        try:
+            forecast_type = get_object_or_404(
+                ForecastType, id=forecast_type_id, is_active=True
+            )
+        except Exception:
+            context["forecast_chart_data"] = None
+            context["currency_symbol"] = "USD"
+            return context
+
+        fiscal_year = None
+        if FiscalYearInstance.objects.filter(id=fiscal_year_id).exists():
+            fiscal_year = FiscalYearInstance.objects.get(id=fiscal_year_id)
+        else:
+            fiscal_year = self.get_current_fiscal_year
+
+        if not fiscal_year:
+            context["forecast_chart_data"] = None
+            context["currency_symbol"] = (
+                self.get_company_for_user.currency
+                if self.get_company_for_user
+                else "USD"
+            )
+            return context
+
+        company = (
+            self.request.active_company
+            if hasattr(self.request, "active_company") and self.request.active_company
+            else (
+                self.request.user.company
+                if hasattr(self.request.user, "company")
+                else None
+            )
+        )
+        if company:
+            FiscalYearService.check_and_update_fiscal_years(company=company)
+
+        has_view_all = self.request.user.has_perm("opportunities.view_opportunity")
+        has_view_own = self.request.user.has_perm("opportunities.view_own_opportunity")
+        if has_view_own and not has_view_all:
+            user_id = str(self.request.user.pk)
+
+        self.ensure_forecasts_exist(forecast_type, fiscal_year)
+        beginning_period_id = self.request.GET.get("beginning_period_id") or None
+        ending_period_id = self.request.GET.get("ending_period_id") or None
+        forecasts = self.get_forecast_data(
+            forecast_type,
+            fiscal_year,
+            user_id,
+            page=1,
+            beginning_period_id=beginning_period_id,
+            ending_period_id=ending_period_id,
+        )
+        forecast_chart_data = get_forecast_chart_data(forecasts, forecast_type)
+        currency_symbol = (
+            self.get_company_for_user.currency if self.get_company_for_user else "USD"
+        )
+
+        context["forecast_chart_data"] = forecast_chart_data
+        context["currency_symbol"] = currency_symbol
+        return context

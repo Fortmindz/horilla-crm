@@ -1,10 +1,108 @@
-"""Helper methods for ForecastTypeTabView (create forecasts, trends, enhance data)."""
+"""Helper methods for ForecastTypeTabView (create forecasts, trends, enhance data, chart data)."""
 
 # First-party / Horilla imports
 from horilla.auth.models import User
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import Period
 from horilla_crm.forecast.models import Forecast
+
+
+def get_forecast_chart_data(forecasts, forecast_type):
+    """
+    Build chart data for forecast analysis: period labels and series
+    (Target, Actual, Closed, Commit, Best Case, Pipeline).
+    Returns a dict with categories, series, and is_quantity_based for JS/echarts.
+    """
+    if not forecasts:
+        return {
+            "categories": [],
+            "series": [],
+            "stacked_series": [],
+            "stacked_category_series": [],
+            "forecast_vs_actual": {"categories": [], "target": [], "actual": []},
+            "trend": {"categories": [], "target": [], "actual": []},
+            "is_quantity_based": forecast_type.is_quantity_based,
+        }
+
+    categories = []
+    target_data = []
+    actual_data = []
+    closed_data = []
+    commit_data = []
+    best_case_data = []
+    pipeline_data = []
+
+    for forecast in forecasts:
+        if forecast.period:
+            fiscal_config = getattr(
+                forecast.period.quarter.fiscal_year,
+                "fiscal_year_config",
+                None,
+            )
+            if getattr(fiscal_config, "fiscal_year_type", None) == "standard":
+                label = _("Period %(num)s") % {
+                    "num": forecast.period.get_display_period_number()
+                }
+            else:
+                label = forecast.period.name or ""
+        elif forecast.quarter:
+            label = forecast.quarter.name or ""
+        else:
+            label = getattr(forecast.fiscal_year, "name", "")
+        categories.append(label)
+
+        if forecast_type.is_quantity_based:
+            target_data.append(float(forecast.target_quantity or 0))
+            actual_data.append(float(forecast.actual_quantity or 0))
+            closed_data.append(float(forecast.closed_quantity or 0))
+            commit_data.append(float(forecast.commit_quantity or 0))
+            best_case_data.append(float(forecast.best_case_quantity or 0))
+            pipeline_data.append(float(forecast.pipeline_quantity or 0))
+        else:
+            target_data.append(float(forecast.target_amount or 0))
+            actual_data.append(float(forecast.actual_amount or 0))
+            closed_data.append(float(forecast.closed_amount or 0))
+            commit_data.append(float(forecast.commit_amount or 0))
+            best_case_data.append(float(forecast.best_case_amount or 0))
+            pipeline_data.append(float(forecast.pipeline_amount or 0))
+
+    stacked_series = [
+        {"name": _("Target"), "data": target_data},
+        {"name": _("Actual"), "data": actual_data},
+        {"name": _("Closed"), "data": closed_data},
+        {"name": _("Commit"), "data": commit_data},
+        {"name": _("Best Case"), "data": best_case_data},
+        {"name": _("Pipeline"), "data": pipeline_data},
+    ]
+
+    forecast_vs_actual = {
+        "categories": categories,
+        "target": target_data,
+        "actual": actual_data,
+    }
+
+    trend = {
+        "categories": categories,
+        "target": target_data,
+        "actual": actual_data,
+    }
+
+    stacked_category_series = [
+        {"name": _("Closed"), "data": closed_data},
+        {"name": _("Commit"), "data": commit_data},
+        {"name": _("Best Case"), "data": best_case_data},
+        {"name": _("Pipeline"), "data": pipeline_data},
+    ]
+
+    return {
+        "categories": categories,
+        "series": stacked_series,
+        "stacked_series": stacked_series,
+        "stacked_category_series": stacked_category_series,
+        "forecast_vs_actual": forecast_vs_actual,
+        "trend": trend,
+        "is_quantity_based": forecast_type.is_quantity_based,
+    }
 
 
 class ForecastTypeTabHelpersMixin:
@@ -192,7 +290,6 @@ class ForecastTypeTabHelpersMixin:
 
         query_params = {
             "forecast_type": forecast_type,
-            "fiscal_year": periods[0].quarter.fiscal_year,
             "period__in": periods,
         }
         if user_id:

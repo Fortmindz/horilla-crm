@@ -17,7 +17,7 @@ from horilla.utils.decorators import (
     permission_required_or_denied,
 )
 from horilla.utils.translation import gettext_lazy as _
-from horilla_core.models import FiscalYearInstance
+from horilla_core.models import FiscalYearInstance, Period
 from horilla_core.services.fiscal_year_service import FiscalYearService
 from horilla_crm.forecast.models import ForecastType
 from horilla_generics.views import HorillaTabView, HorillaView
@@ -31,9 +31,27 @@ class ForecastView(LoginRequiredMixin, HorillaView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        forcast_types = ForecastType.objects.all()
+        company = (
+            self.request.active_company
+            if hasattr(self.request, "active_company") and self.request.active_company
+            else (
+                self.request.user.company
+                if hasattr(self.request.user, "company")
+                else None
+            )
+        )
+
+        forcast_types = (
+            ForecastType.all_objects.filter(company=company)
+            if company
+            else ForecastType.all_objects.none()
+        )
         type_count = forcast_types.count()
-        fiscal_years = FiscalYearInstance.objects.all()
+        fiscal_years = (
+            FiscalYearInstance.all_objects.filter(company=company)
+            if company
+            else FiscalYearInstance.all_objects.none()
+        )
         current_instance = fiscal_years.filter(is_current=True).first()
 
         fiscal_year_id = self.request.GET.get("fiscal_year_id")
@@ -51,6 +69,7 @@ class ForecastView(LoginRequiredMixin, HorillaView):
 
         context.update(
             {
+                # Users dropdown is still permission-driven elsewhere; keep all active users for now.
                 "users": User.objects.filter(is_active=True),
                 "fiscal_years": fiscal_years,
                 "current_instance": current_instance,
@@ -106,9 +125,18 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
         if company:
             FiscalYearService.check_and_update_fiscal_years(company=company)
 
-        forcast_types = ForecastType.objects.all()
+        # Forecast page is always active-company scoped.
+        forcast_types = (
+            ForecastType.all_objects.filter(company=company)
+            if company
+            else ForecastType.all_objects.none()
+        )
         type_count = forcast_types.count()
-        fiscal_years = FiscalYearInstance.objects.all()
+        fiscal_years = (
+            FiscalYearInstance.all_objects.filter(company=company)
+            if company
+            else FiscalYearInstance.all_objects.none()
+        )
         current_instance = fiscal_years.filter(is_current=True).first()
 
         fiscal_year_id = self.request.GET.get("fiscal_year_id")
@@ -123,6 +151,61 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
 
         query_params = self.request.GET.copy()
         query_string = query_params.urlencode() if query_params else ""
+
+        # Periods for period range filter (all periods, not just current fiscal year).
+        #
+        # IMPORTANT: Even when "show_all_companies" is enabled, period definitions are company-scoped.
+        # Using Period.objects would disable the company filter in that mode and the dropdown would show
+        # duplicated labels from multiple companies. So we always scope periods to the active company.
+        periods_qs = Period.all_objects.select_related(
+            "quarter", "quarter__fiscal_year"
+        ).order_by("quarter__fiscal_year__start_date", "period_number")
+        if company:
+            periods_qs = periods_qs.filter(company=company)
+        periods = list(periods_qs)
+
+        beginning_period_id = self.request.GET.get("beginning_period_id") or None
+        ending_period_id = self.request.GET.get("ending_period_id") or None
+
+        # If user hasn't chosen a range yet, default to the full range of the selected fiscal year
+        if (
+            selected_instance
+            and periods
+            and (not beginning_period_id or not ending_period_id)
+        ):
+            fy_periods = [
+                p
+                for p in periods
+                if getattr(p.quarter.fiscal_year, "id", None) == selected_instance.id
+            ]
+            if fy_periods:
+                if not beginning_period_id:
+                    beginning_period_id = str(fy_periods[0].id)
+                if not ending_period_id:
+                    ending_period_id = str(fy_periods[-1].id)
+
+        period_range_begin = None
+        period_range_end = None
+        if periods and beginning_period_id and ending_period_id:
+            period_range_begin = next(
+                (p for p in periods if str(p.id) == str(beginning_period_id)), None
+            )
+            period_range_end = next(
+                (p for p in periods if str(p.id) == str(ending_period_id)), None
+            )
+
+        # Ending-period choices: only periods at or after the selected beginning period
+        ending_periods = periods
+        if periods and beginning_period_id:
+            try:
+                begin_idx = next(
+                    i
+                    for i, p in enumerate(periods)
+                    if str(p.id) == str(beginning_period_id)
+                )
+                ending_periods = periods[begin_idx:]
+            except StopIteration:
+                ending_periods = periods
 
         # Check permissions
         has_view_all = self.request.user.has_perm("opportunities.view_opportunity")
@@ -161,6 +244,12 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
                 "show_all_users_option": show_all_users_option,
                 "has_view_all": has_view_all,
                 "has_view_own": has_view_own,
+                "periods": periods,
+                "beginning_period_id": beginning_period_id,
+                "ending_period_id": ending_period_id,
+                "period_range_begin": period_range_begin,
+                "period_range_end": period_range_end,
+                "ending_periods": ending_periods,
             }
         )
 
@@ -179,7 +268,7 @@ class ForecastTabView(LoginRequiredMixin, HorillaTabView):
 
     view_id = "forecast-tab-view"
     background_class = "rounded-md"
-    tab_class = "h-[calc(_100vh_-_300px_)] overflow-x-auto custom-scroll"
+    tab_class = "h-[calc(_100vh_-_290px_)] overflow-x-auto custom-scroll"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -195,9 +284,14 @@ class ForecastTabView(LoginRequiredMixin, HorillaTabView):
                 if self.request.active_company
                 else self.request.user.company
             )
-        forecast_types = ForecastType.objects.filter(
-            is_active=True, company=company
-        ).order_by("created_at")
+        # Forecast page is always active-company scoped, even if "show all companies" is enabled globally.
+        forecast_types = (
+            ForecastType.all_objects.filter(is_active=True, company=company).order_by(
+                "created_at"
+            )
+            if company
+            else ForecastType.all_objects.none()
+        )
 
         query_params = self.request.GET.copy()
         for index, forecast_type in enumerate(forecast_types, 1):

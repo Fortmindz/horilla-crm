@@ -1,6 +1,7 @@
 """Aggregate view modules for the `horilla_crm.forecast.views` package."""
 
 from horilla_crm.forecast.views.core import (
+    ForecastChartsModalView,
     ForecastView,
     ForecastNavbarView,
     ForecastTabView,
@@ -35,6 +36,7 @@ __all__ = [
     "ForecastNavbarView",
     "ForecastTabView",
     "ForecastTypeTabView",
+    "ForecastChartsModalView",
     "ForecastOpportunitiesView",
     # forecast_target
     "ForecastTargetView",

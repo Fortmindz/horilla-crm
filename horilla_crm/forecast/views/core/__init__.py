@@ -11,12 +11,16 @@ from horilla_crm.forecast.views.core.dashboard import (
     ForecastView,
 )
 from horilla_crm.forecast.views.core.opportunities import ForecastOpportunitiesView
-from horilla_crm.forecast.views.core.type_tab import ForecastTypeTabView
+from horilla_crm.forecast.views.core.type_tab import (
+    ForecastChartsModalView,
+    ForecastTypeTabView,
+)
 
 __all__ = [
     "ForecastView",
     "ForecastNavbarView",
     "ForecastTabView",
     "ForecastTypeTabView",
+    "ForecastChartsModalView",
     "ForecastOpportunitiesView",
 ]

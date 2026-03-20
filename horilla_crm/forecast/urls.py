@@ -23,6 +23,11 @@ urlpatterns = [
         name="forecast_type_tab_view",
     ),
     path(
+        "forecast-charts-modal/",
+        views.ForecastChartsModalView.as_view(),
+        name="forecast_charts_modal",
+    ),
+    path(
         "opportunities/<str:forecast_id>/<str:opportunity_type>/",
         views.ForecastOpportunitiesView.as_view(),
         name="forecast_opportunities",

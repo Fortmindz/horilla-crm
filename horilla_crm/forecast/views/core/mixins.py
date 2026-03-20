@@ -90,15 +90,32 @@ class ForecastTypeTabMixin:
         """
         calculator = ForecastCalculator(user=self.request.user, fiscal_year=fiscal_year)
 
-        all_users = list(User.objects.filter(is_active=True).values("id"))
-        all_periods = list(
-            Period.objects.filter(quarter__fiscal_year=fiscal_year).values("id")
+        company = self.get_company_for_user
+        all_users = (
+            list(User.objects.filter(is_active=True, company=company).values("id"))
+            if company
+            else []
+        )
+        all_periods = (
+            list(
+                Period.all_objects.filter(
+                    company=company, quarter__fiscal_year=fiscal_year
+                ).values("id")
+            )
+            if company
+            else []
         )
 
-        existing_forecasts = set(
-            Forecast.objects.filter(
-                forecast_type=forecast_type, fiscal_year=fiscal_year
-            ).values_list("owner_id", "period_id")
+        existing_forecasts = (
+            set(
+                Forecast.all_objects.filter(
+                    forecast_type=forecast_type,
+                    fiscal_year=fiscal_year,
+                    company=company,
+                ).values_list("owner_id", "period_id")
+            )
+            if company
+            else set()
         )
 
         missing_forecasts = []
@@ -112,28 +129,74 @@ class ForecastTypeTabMixin:
         if missing_forecasts:
             calculator.bulk_create_missing_forecasts(forecast_type, missing_forecasts)
 
-    def get_forecast_data(self, forecast_type, fiscal_year, user_id=None, page=1):
+    def get_forecast_data(
+        self,
+        forecast_type,
+        fiscal_year,
+        user_id=None,
+        page=1,
+        beginning_period_id=None,
+        ending_period_id=None,
+    ):
         """
-        COMPLETE FIX for single user trend data display
+        Multi-year aware forecast data loader.
+
+        If beginning_period_id and ending_period_id are provided and valid, build a
+        contiguous range of Periods between them (across all fiscal years). Otherwise
+        fall back to all periods of the given fiscal_year.
         """
-        periods = (
-            Period.objects.filter(quarter__fiscal_year=fiscal_year)
-            .select_related("quarter")
-            .order_by("period_number")
-        )
+
+        all_periods_qs = Period.all_objects.select_related(
+            "quarter", "quarter__fiscal_year"
+        ).order_by("quarter__fiscal_year__start_date", "period_number")
+        if self.get_company_for_user:
+            all_periods_qs = all_periods_qs.filter(company=self.get_company_for_user)
+
+        # Build the working period list
+        if beginning_period_id and ending_period_id:
+            begin_p = all_periods_qs.filter(id=beginning_period_id).first()
+            end_p = all_periods_qs.filter(id=ending_period_id).first()
+
+            if begin_p and end_p:
+                all_periods = list(all_periods_qs)
+                try:
+                    start_idx = next(
+                        i for i, p in enumerate(all_periods) if p.id == begin_p.id
+                    )
+                    end_idx = next(
+                        i for i, p in enumerate(all_periods) if p.id == end_p.id
+                    )
+                except StopIteration:
+                    start_idx = end_idx = 0
+
+                if start_idx > end_idx:
+                    start_idx, end_idx = end_idx, start_idx
+                periods_list = all_periods[start_idx : end_idx + 1]
+            else:
+                # Fallback: just the selected fiscal year's periods
+                periods_list = list(
+                    all_periods_qs.filter(quarter__fiscal_year=fiscal_year)
+                )
+        else:
+            # No explicit range: all periods of the selected fiscal year
+            periods_list = list(all_periods_qs.filter(quarter__fiscal_year=fiscal_year))
 
         currency_symbol = (
             self.get_company_for_user.currency if self.get_company_for_user else "USD"
         )
 
-        periods_list = list(periods)
+        if not periods_list:
+            return []
+
         targets_data = self.get_target_for_period_bulk(
             periods_list, forecast_type, user_id
         )
 
-        forecast_queryset = Forecast.objects.filter(
-            forecast_type=forecast_type, fiscal_year=fiscal_year
-        ).select_related("owner", "forecast_type", "period", "quarter")
+        forecast_queryset = Forecast.all_objects.filter(
+            forecast_type=forecast_type,
+            period_id__in=[p.id for p in periods_list],
+            company=self.get_company_for_user,
+        ).select_related("owner", "forecast_type", "period", "quarter", "fiscal_year")
 
         if user_id:
             forecast_queryset = forecast_queryset.filter(owner_id=user_id)
