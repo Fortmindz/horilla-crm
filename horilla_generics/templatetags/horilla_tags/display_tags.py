@@ -71,3 +71,16 @@ def format_currency(value, user):
         return user_currency.display_with_symbol(value)
 
     return str(value)
+
+
+@register.filter
+def shortname(value):
+    if not value:
+        return ""
+
+    words = value.strip().split()
+
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+
+    return words[0][0].upper()

@@ -15,16 +15,22 @@
             hx-target="#splitViewDetailPanelContent"
             hx-swap="innerHTML"
             hx-push-url="true">
-            <img class="svg-themed w-4 h-4" src="{% static 'assets/icons/menuarrow.svg' %}" alt="{% trans 'Previous' %}" />
+            <i
+              class="fa-solid fa-chevron-left"
+              aria-hidden="true"
+              style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background-color: var(--menu-arrow-bg); color: var(--menu-arrow-fg); font-size: 10px; line-height: 1; -webkit-text-stroke: 0.9px currentColor; paint-order: stroke fill;"></i>
           </a>
         {% endif %}
         {% if has_next %}
-          <a class="p-1.5 rounded hover:bg-gray-100 -rotate-180" title="{% trans 'Next' %}"
+          <a class="p-1.5 rounded hover:bg-gray-100" title="{% trans 'Next' %}"
             hx-get="{% url app_label|add:':'|add:url_name next_id %}?simple_detail=1"
             hx-target="#splitViewDetailPanelContent"
             hx-swap="innerHTML"
             hx-push-url="true">
-            <img class="svg-themed w-4 h-4" src="{% static 'assets/icons/menuarrow.svg' %}" alt="{% trans 'Next' %}" />
+            <i
+              class="fa-solid fa-chevron-right"
+              aria-hidden="true"
+              style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background-color: var(--menu-arrow-bg); color: var(--menu-arrow-fg); font-size: 10px; line-height: 1; -webkit-text-stroke: 0.9px currentColor; paint-order: stroke fill;"></i>
           </a>
         {% endif %}
       </div>
