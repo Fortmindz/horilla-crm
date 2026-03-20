@@ -7,11 +7,16 @@ application registry and UI.
 
 from horilla.utils.translation import gettext_lazy as _
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __module_name__ = "Dashboards"
 __release_date__ = ""
 __description__ = _("Module for building and customizing interactive dashboards.")
 __icon__ = "assets/icons/icon6.svg"
+
+__1_4_0__ = _(
+    "Added configurable Y-axis metrics for charts reusing KPI options, plus new "
+    "chart types: Area, Tree Map, Heat Map, Radar, Sankey, and Scatter."
+)
 
 __1_3_0__ = _(
     "Added advanced visualization capabilities including multi-series charts, "
