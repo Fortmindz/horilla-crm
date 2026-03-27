@@ -6,6 +6,7 @@ Features: Period-based forecasts, trend analysis, user/aggregated views, optimiz
 
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
 
 from horilla.auth.models import User
 
@@ -20,10 +21,10 @@ from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import FiscalYearInstance, Period
 from horilla_core.services.fiscal_year_service import FiscalYearService
 from horilla_crm.forecast.models import ForecastType
-from horilla_generics.views import HorillaTabView, HorillaView
+from horilla_generics.views import HorillaTabView
 
 
-class ForecastView(LoginRequiredMixin, HorillaView):
+class ForecastView(LoginRequiredMixin, TemplateView):
     """Main forecast dashboard view with fiscal year and user filtering capabilities."""
 
     template_name = "forecast_view.html"
@@ -104,7 +105,7 @@ class ForecastView(LoginRequiredMixin, HorillaView):
     ),
     name="dispatch",
 )
-class ForecastNavbarView(LoginRequiredMixin, HorillaView):
+class ForecastNavbarView(LoginRequiredMixin, TemplateView):
     """Dynamically load forecast navbar/filters."""
 
     template_name = "forecast_navbar.html"
@@ -151,12 +152,6 @@ class ForecastNavbarView(LoginRequiredMixin, HorillaView):
 
         query_params = self.request.GET.copy()
         query_string = query_params.urlencode() if query_params else ""
-
-        # Periods for period range filter (all periods, not just current fiscal year).
-        #
-        # IMPORTANT: Even when "show_all_companies" is enabled, period definitions are company-scoped.
-        # Using Period.objects would disable the company filter in that mode and the dropdown would show
-        # duplicated labels from multiple companies. So we always scope periods to the active company.
         periods_qs = Period.all_objects.select_related(
             "quarter", "quarter__fiscal_year"
         ).order_by("quarter__fiscal_year__start_date", "period_number")

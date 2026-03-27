@@ -10,6 +10,7 @@ from functools import cached_property
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils import timezone
 from django.views import View
+from django.views.generic import TemplateView
 
 from horilla.auth.models import User
 
@@ -94,7 +95,7 @@ class ForecastTargetView(LoginRequiredMixin, HorillaView):
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(permission_required("forecast.view_forecasttarget"), name="dispatch")
-class ForecastTargetFiltersView(LoginRequiredMixin, HorillaView):
+class ForecastTargetFiltersView(LoginRequiredMixin, TemplateView):
     """Load forecast type and period filter dropdowns dynamically."""
 
     template_name = "forecast_target/forecast_target_filters.html"
