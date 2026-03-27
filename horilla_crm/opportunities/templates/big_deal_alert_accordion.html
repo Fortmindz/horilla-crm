@@ -14,28 +14,32 @@
                 </div>
 
                 <div class="flex items-center gap-4">
-                    {% has_perm "horilla_automations.change_horillaautomation" as can_edit %}
-                    {% if can_edit %}
-                    <button
-                        hx-get="{% url 'opportunities:big_deal_automation_update' automation.pk %}"
-                        hx-target="#modalBox"
-                        hx-swap="innerHTML"
-                        onclick="openModal(); event.stopPropagation();">
-                        <img src="{% static 'assets/icons/a1.svg' %}" alt="{% trans 'Edit' %}" width="20" height="20" />
-                    </button>
-                    {% endif %}
-                    {% has_perm "horilla_automations.delete_horillaautomation" as can_delete %}
-                    {% if can_delete %}
-                    <button
-                        hx-get="{% url 'horilla_automations:automation_delete_view' automation.pk %}"
-                        hx-target="#deleteModeBox"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        hx-vals='{"check_dependencies": "false"}'
-                        onclick="openDeleteModeModal(); event.stopPropagation();">
-                        <img src="{% static 'assets/icons/a4.svg' %}" alt="{% trans 'Delete' %}" width="20" height="20" />
-                    </button>
-                    {% endif %}
+                    <div class="flex tablebtn">
+                        {% has_perm "horilla_automations.change_horillaautomation" as can_edit %}
+                        {% if can_edit %}
+                        <button
+                            class="w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
+                            hx-get="{% url 'opportunities:big_deal_automation_update' automation.pk %}"
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            onclick="openModal(); event.stopPropagation();">
+                            <img src="{% static 'assets/icons/edit.svg' %}" alt="{% trans 'Edit' %}" width="15" height="15" />
+                        </button>
+                        {% endif %}
+                        {% has_perm "horilla_automations.delete_horillaautomation" as can_delete %}
+                        {% if can_delete %}
+                        <button
+                            class="w-10 h-7 bg-dark-25 flex-1 flex justify-center border-r border-r-[white] hover:bg-dark-50 transition duration-300 items-center"
+                            hx-get="{% url 'horilla_automations:automation_delete_view' automation.pk %}"
+                            hx-target="#deleteModeBox"
+                            hx-swap="innerHTML"
+                            hx-trigger="click"
+                            hx-vals='{"check_dependencies": "false"}'
+                            onclick="openDeleteModeModal(); event.stopPropagation();">
+                            <img src="{% static 'assets/icons/a4.svg' %}" alt="{% trans 'Delete' %}" width="15" height="15" />
+                        </button>
+                        {% endif %}
+                    </div>
                     <svg class="w-4 transform transition-transform"
                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                         stroke="currentColor">
