@@ -614,26 +614,19 @@ def register_model_for_feature(
     registered = False
     for feature_name in enabled_features:
         if feature_name in FEATURE_CONFIG:
-            # If feature has selective registration, allow explicit registration to extend it:
-            # add this model to include_models and to the registry (so other apps can add
-            # models to the feature after the initial register_feature(include_models=[...])).
+
             if not FEATURE_AUTO_REGISTER_ALL.get(feature_name, True):
                 included_models = FEATURE_INCLUDE_MODELS.get(feature_name, [])
                 if model_class not in included_models:
-                    included_models.append(model_class)
-                    FEATURE_INCLUDE_MODELS[feature_name] = included_models
                     logger.debug(
-                        "Added model %s.%s to include_models for feature '%s' (explicit registration)",
+                        "Skipped model %s.%s for selective feature '%s' (not in include_models)",
                         app_label,
                         model_name,
                         feature_name,
                     )
+                    continue
 
             registry_key = FEATURE_CONFIG[feature_name]
-
-            # Do not apply excluded_app here: explicit registration via
-            # register_model_for_feature/register_models_for_feature is intentional.
-            # excluded_app only affects auto-registration in register_feature().
 
             if model_class not in FEATURE_REGISTRY[registry_key]:
                 FEATURE_REGISTRY[registry_key].append(model_class)

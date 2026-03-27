@@ -21,11 +21,4 @@ register_models_for_feature(
 register_feature(
     "template_reverse",
     "template_reverse_models",
-    auto_register_all=True,
-    include_models=[
-        ("horilla_core", "company"),
-        ("horilla_core", "department"),
-        ("horilla_core", "role"),
-        ("horilla_core", "horillauser"),
-    ],
 )
