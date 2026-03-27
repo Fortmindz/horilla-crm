@@ -244,8 +244,7 @@ class BusinessHourDetailView(LoginRequiredMixin, HorillaModalDetailView):
         {
             "action": "Delete",
             "src": "assets/icons/a4.svg",
-            "img_class": "w-3 h-3 flex gap-4 brightness-0 saturate-100",
-            "image_style": "filter: invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%)",
+            "img_class": "svg-themed w-3 h-3",
             "permission": "horilla_core.delete_businesshour",
             "attrs": """
                     class="w-24 justify-center px-4 py-2 bg-[white] rounded-md text-xs flex items-center gap-2 border border-primary-500 hover:border-primary-600 transition duration-300 disabled:cursor-not-allowed text-primary-600"
