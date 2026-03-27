@@ -3,8 +3,11 @@
 {% load horilla_tags %}
 <div class="bg-white rounded-lg shadow p-6 min-w-[500px]">
     <div class="flex justify-between items-center mb-2">
-        <h3 class="text-md font-semibold mb-2">{% trans "Hard Delete Confirmation" %}</h3>
+        <h3 class="text-md font-semibold">{% trans "Hard Delete Confirmation" %}</h3>
     </div>
+        <p class="text-sm text-gray-600 mb-1">
+            {% trans "Are you sure you want to  delete the selected records?" %}
+        </p>
         <p class="text-sm text-gray-600 mb-2">
             {% trans "Deletable Records" %} : <strong>{{ can_delete_count }}</strong>
         </p>
@@ -115,6 +118,11 @@
                 <input type="hidden" name="delete_type" value="hard_non_dependent">
                 <input type="hidden" name="view_id" value='{{ view_id|safe }}'>
 
+                <button type="button" onclick="closeConfirm(this)"
+                class="text-sm px-6 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white]">
+                {% trans "Cancel" %}
+                </button>
+
                 <button type="submit"
                 class="text-sm px-6 py-2 bg-[#21b442] text-white rounded-md hover:bg-[#198230] transition duration-300" hx-indicator="#confirm-delete-spinner">
                 <span class="flex items-center gap-2">
@@ -128,9 +136,6 @@
 
 
                 {% endif %}
-                <button onclick="closeConfirm(this)"
-                    class="text-sm px-6 py-2 bg-primary-600 rounded-md hover:bg-primary-800 transition duration-300 text-[white]">
-                    {% trans "Cancel" %}
-                </button>
+
             </div>
       </div>
