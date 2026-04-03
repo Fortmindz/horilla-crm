@@ -296,6 +296,7 @@ class CampaignKanbanView(LoginRequiredMixin, HorillaKanbanView):
         }
 
 
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["campaigns.view_campaign", "campaigns.view_own_campaign"]

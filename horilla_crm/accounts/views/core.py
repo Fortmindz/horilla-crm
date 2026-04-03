@@ -395,6 +395,7 @@ class AccountsKanbanView(LoginRequiredMixin, HorillaKanbanView):
         }
 
 
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["accounts.view_account", "accounts.view_own_account"]
