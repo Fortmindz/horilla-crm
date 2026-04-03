@@ -387,6 +387,7 @@ class UserFormView(LoginRequiredMixin, HorillaMultiStepFormView):
         return user.has_perm(f"{User._meta.app_label}.add_{User._meta.model_name}")
 
 
+@method_decorator(htmx_required, name="dispatch")
 class GetCompanyRelatedFieldsView(LoginRequiredMixin, View):
     """HTMX endpoint to get role, department, and currency fields based on selected company"""
 

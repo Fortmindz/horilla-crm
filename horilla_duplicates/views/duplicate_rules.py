@@ -10,6 +10,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 # First-party / Horilla imports
 from horilla.http import HttpResponse
 from horilla.urls import reverse_lazy
+from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla apps
@@ -36,6 +37,7 @@ class DuplicateRuleView(LoginRequiredMixin, HorillaView):
     list_url = reverse_lazy("horilla_duplicates:duplicate_rule_list_view")
 
 
+@method_decorator(htmx_required, name="dispatch")
 class DuplicateRuleNavView(LoginRequiredMixin, HorillaNavView):
     """
     Navbar view for Duplicate Rules
@@ -65,6 +67,7 @@ class DuplicateRuleNavView(LoginRequiredMixin, HorillaNavView):
         return None
 
 
+@method_decorator(htmx_required, name="dispatch")
 class DuplicateRuleListView(LoginRequiredMixin, HorillaListView):
     """
     List view of Duplicate Rules
@@ -133,6 +136,7 @@ class DuplicateRuleListView(LoginRequiredMixin, HorillaListView):
     ]
 
 
+@method_decorator(htmx_required, name="dispatch")
 class DuplicateRuleFormView(LoginRequiredMixin, HorillaSingleFormView):
     """
     Form view for creating and updating Duplicate Rule with optional conditions
@@ -175,6 +179,7 @@ class DuplicateRuleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         return HttpResponse("<script>$('#reloadButton').click();</script>")
 
 
+@method_decorator(htmx_required, name="dispatch")
 class DuplicateRuleDetailView(LoginRequiredMixin, HorillaModalDetailView):
     """
     Detail view for DuplicateRule

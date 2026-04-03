@@ -414,6 +414,7 @@ class RoleNavbar(LoginRequiredMixin, HorillaNavView):
         return None
 
 
+@method_decorator(htmx_required, name="dispatch")
 class RolesHierarchyView(LoginRequiredMixin, TemplateView):
     """
     TemplateView for role settings page.
