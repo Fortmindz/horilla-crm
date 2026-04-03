@@ -84,6 +84,8 @@ INSTALLED_APPS = [
     "horilla_keys",
     "horilla_theme",
     "horilla_duplicates",
+    "horilla_processes.approvals",
+    "horilla_processes.reviews",
 ]
 
 
