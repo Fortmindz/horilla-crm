@@ -48,7 +48,6 @@ from horilla_generics.views import (
 )
 from horilla_generics.views.card import HorillaCardView
 from horilla_generics.views.timeline import HorillaTimelineView
-from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
 
@@ -516,11 +515,9 @@ class AccountDetailViewTabs(LoginRequiredMixin, HorillaDetailTabView):
     Tab Views for account detail view
     """
 
-    def __init__(self, **kwargs):
-        request = getattr(_thread_local, "request", None)
-        self.request = request
+    def _prepare_detail_tabs(self):
         self.object_id = self.request.GET.get("object_id")
-        super().__init__(**kwargs)
+        super()._prepare_detail_tabs()
 
     urls = {
         "details": "accounts:account_details_tab_view",
