@@ -74,6 +74,30 @@ class HorillaView(TemplateView):
         self._validate_required_urls()
         return super().dispatch(request, *args, **kwargs)
 
+    def get_layout_url(self):
+        """Resolve which layout URL should be loaded based on request."""
+        layout = self.request.GET.get("layout")
+
+        mapping = {
+            "kanban": self.kanban_url,
+            "group_by": self.group_by_url,
+            "card": self.card_url,
+            "timeline": self.timeline_url,
+            "split_view": self.split_view_url,
+            "chart": self.chart_url,
+            "list": self.list_url,
+        }
+
+        # If valid layout and URL exists
+        if layout in mapping and mapping[layout]:
+            return mapping[layout]
+
+        # Fallback logic (same as your template)
+        if not self.list_url and self.kanban_url:
+            return self.kanban_url
+
+        return self.list_url
+
     def get_context_data(self, **kwargs):
         """Add nav/list/kanban/group_by/card/split_view URLs and filter_form trigger to template context."""
         context = super().get_context_data(**kwargs)
@@ -88,6 +112,7 @@ class HorillaView(TemplateView):
         context["timeline_url"] = getattr(self, "timeline_url", "") or ""
         context["split_view_url"] = getattr(self, "split_view_url", "") or ""
         context["chart_url"] = getattr(self, "chart_url", "") or ""
+        context["layout_url"] = self.get_layout_url()
         return context
 
 

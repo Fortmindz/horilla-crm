@@ -9,14 +9,15 @@
         >
             <div id="navBar" class="w-full" hx-get="{{ nav_url}}?{{ request.GET.urlencode}}" hx-trigger="load"></div>
             <!-- main content -->
+            {% with query=request.GET.urlencode %}
             <div
                 class="p-5 h-full pt-24"
                 id="mainSession"
-                hx-get="{% if request.GET.layout == 'kanban' %}{{ kanban_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% elif request.GET.layout == 'group_by' and group_by_url %}{{ group_by_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% elif request.GET.layout == 'card' and card_url %}{{ card_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% elif request.GET.layout == 'timeline' and timeline_url %}{{ timeline_url }}?{{ request.GET.urlencode}}{% elif request.GET.layout == 'split_view' and split_view_url %}{{ split_view_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% elif request.GET.layout == 'chart' and chart_url %}{{ chart_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% elif not list_url and kanban_url %}{{ kanban_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% else %}{{ list_url }}?{{ request.GET.urlencode}}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}{% endif %}"
+                hx-get="{{ layout_url }}?{{ query }}{% if filter_form %}&hx_trigger={{filter_form}}{% endif %}"
                 hx-trigger="load"
                 hx-indicator="#loading-indicator"
                 hx-disinherit="*"
-            >
+                >
                 <div
                     id="loading-indicator"
                     class="htmx-indicator"
@@ -27,6 +28,7 @@
                     </div>
                 </div>
             </div>
+            {% endwith %}
         </div>
     </div>
 {% endblock content %}
