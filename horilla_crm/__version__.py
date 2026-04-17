@@ -2,11 +2,18 @@
 
 from horilla.utils.translation import gettext_lazy as _
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __module_name__ = "CRM"
-__release_date__ = "13 March 2026"
+__release_date__ = "17 April 2026"
 __description__ = _("CRM module for managing leads, contacts, and opportunities.")
 __icon__ = "assets/icons/icon2.svg"
+
+__1_4_0__ = _(
+    "Enhanced CRM fixtures with additional fields. Improved UI refinements "
+    "including navbar z-index fixes, KPI color consistency, and standardized "
+    "template formatting across leads, accounts, campaigns, contacts, "
+    "and opportunities modules."
+)
 
 __1_3_0__ = _(
     "Introduced advanced CRM visualization capabilities including chart views, "

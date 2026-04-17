@@ -19,6 +19,7 @@ from horilla.utils.decorators import (
 )
 from horilla.utils.translation import gettext_lazy as _
 from horilla_activity.views import HorillaActivitySectionView
+from horilla_cadences.views import CadenceRecordTabView
 from horilla_core.utils import is_owner
 from horilla_crm.leads.filters import LeadFilter
 from horilla_crm.leads.models import Lead, LeadStatus
@@ -903,6 +904,7 @@ class LeadsDetailViewTabView(LoginRequiredMixin, HorillaDetailTabView):
                 self.urls = {
                     "details": "leads:leads_details_tab",
                     "activity": "leads:lead_activity_detail_view",
+                    "cadences": "leads:lead_cadences_tab",
                     "related_lists": "leads:lead_related_lists",
                     "notes_attachments": "leads:leads_notes_attachments",
                     "history": "leads:leads_history_tab_view",
@@ -920,6 +922,17 @@ class LeadsActivityTabView(LoginRequiredMixin, HorillaActivitySectionView):
     """
 
     model = Lead
+
+
+@method_decorator(
+    permission_required_or_denied(["leads.view_lead", "leads.view_own_lead"]),
+    name="dispatch",
+)
+class LeadCadenceTabView(CadenceRecordTabView):
+    """Cadence tab view for lead detail."""
+
+    app_label = "leads"
+    model_name = "Lead"
 
 
 @method_decorator(

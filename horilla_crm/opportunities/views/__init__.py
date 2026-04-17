@@ -2,6 +2,7 @@
 
 from horilla_crm.opportunities.views.core import (
     OpportunityActivityTabView,
+    OpportunityCadenceTabView,
     OpportunityChangeOwnerForm,
     OpportunityContactRoleDeleteView,
     OpportunityContactRoleFormview,
@@ -99,6 +100,7 @@ __all__ = [
     "OpportunityDetailViewTabView",
     "OpportunityDetailTab",
     "OpportunityActivityTabView",
+    "OpportunityCadenceTabView",
     "OpportunitiesNotesAndAttachments",
     "OpportunityHistoryTabView",
     "OpportunityRelatedLists",

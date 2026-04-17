@@ -122,6 +122,11 @@ urlpatterns = [
         name="opportunity_related_lists",
     ),
     path(
+        "opportunity-cadences-tab/<int:pk>/",
+        views.OpportunityCadenceTabView.as_view(),
+        name="opportunity_cadences_tab",
+    ),
+    path(
         "opportunity-history-tab-view/<int:pk>/",
         views.OpportunityHistoryTabView.as_view(),
         name="opportunity_history_tab_view",

@@ -109,6 +109,11 @@ urlpatterns = [
         name="account_related_list_tab_view",
     ),
     path(
+        "account-cadences-tab/<int:pk>/",
+        views.AccountCadenceTab.as_view(),
+        name="account_cadences_tab",
+    ),
+    path(
         "account-history-tab-view/<int:pk>/",
         views.AccountHistoryTab.as_view(),
         name="account_history_tab_view",

@@ -26,6 +26,7 @@ from horilla.utils.decorators import (
 )
 from horilla.utils.translation import gettext_lazy as _
 from horilla_activity.views import HorillaActivitySectionView
+from horilla_cadences.views import CadenceRecordTabView
 from horilla_core.utils import is_owner
 from horilla_crm.accounts.filters import AccountFilter
 from horilla_crm.accounts.models import Account, PartnerAccountRelationship
@@ -522,6 +523,7 @@ class AccountDetailViewTabs(LoginRequiredMixin, HorillaDetailTabView):
     urls = {
         "details": "accounts:account_details_tab_view",
         "activity": "accounts:account_activity_tab_view",
+        "cadences": "accounts:account_cadences_tab",
         "related_lists": "accounts:account_related_list_tab_view",
         "notes_attachments": "accounts:account_notes_attachements",
         "history": "accounts:account_history_tab_view",
@@ -558,6 +560,19 @@ class AccountActivityTab(LoginRequiredMixin, HorillaActivitySectionView):
     """
 
     model = Account
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["accounts.view_account", "accounts.view_own_account"]
+    ),
+    name="dispatch",
+)
+class AccountCadenceTab(CadenceRecordTabView):
+    """Cadence tab view for account detail."""
+
+    app_label = "accounts"
+    model_name = "Account"
 
 
 @method_decorator(

@@ -24,6 +24,7 @@ from horilla.utils.decorators import (
 )
 from horilla.utils.translation import gettext_lazy as _
 from horilla_activity.views import HorillaActivitySectionView
+from horilla_cadences.views import CadenceRecordTabView
 from horilla_core.utils import is_owner
 from horilla_crm.contacts.filters import ContactFilter
 from horilla_crm.contacts.models import Contact, ContactAccountRelationship
@@ -491,6 +492,7 @@ class ContactDetailViewTabs(LoginRequiredMixin, HorillaDetailTabView):
     urls = {
         "details": "contacts:contact_details_tab",
         "activity": "contacts:contact_activity_tab",
+        "cadences": "contacts:contact_cadences_tab",
         "related_lists": "contacts:contact_related_list_tab",
         "notes_attachments": "contacts:contacts_notes_attachements",
         "history": "contacts:contact_history_tab",
@@ -534,6 +536,19 @@ class ContactActivityTab(LoginRequiredMixin, HorillaActivitySectionView):
     """
 
     model = Contact
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["contacts.view_contact", "contacts.view_own_contact"]
+    ),
+    name="dispatch",
+)
+class ContactCadenceTab(CadenceRecordTabView):
+    """Cadence tab view for contact detail."""
+
+    app_label = "contacts"
+    model_name = "Contact"
 
 
 @method_decorator(

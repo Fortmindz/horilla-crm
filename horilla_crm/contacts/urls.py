@@ -105,6 +105,11 @@ urlpatterns = [
         name="contact_related_list_tab",
     ),
     path(
+        "contact-cadences-tab/<int:pk>/",
+        views.ContactCadenceTab.as_view(),
+        name="contact_cadences_tab",
+    ),
+    path(
         "create-contact-account-relation/",
         views.AddRelatedAccountsFormView.as_view(),
         name="create_contact_account_relation",

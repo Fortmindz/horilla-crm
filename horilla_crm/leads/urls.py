@@ -42,6 +42,11 @@ urlpatterns = [
         views.LeadRelatedLists.as_view(),
         name="lead_related_lists",
     ),
+    path(
+        "lead-cadences-tab/<int:pk>/",
+        views.LeadCadenceTabView.as_view(),
+        name="lead_cadences_tab",
+    ),
     path("leads-edit/<int:pk>/", views.LeadFormView.as_view(), name="leads_edit"),
     path(
         "leads-create-single/",
