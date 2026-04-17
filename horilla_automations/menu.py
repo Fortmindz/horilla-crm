@@ -28,5 +28,6 @@ class AutomationSettings:
             "hx-select": "#automation-view",
             "hx-select-oob": "#settings-sidebar",
             "perm": "horilla_automation.view_horillaautomation",
+            "order": 1,
         },
     ]

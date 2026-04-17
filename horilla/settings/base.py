@@ -30,6 +30,7 @@ env = environ.Env(
     SECRET_KEY=(str, "django-insecure-default-key"),
     ALLOWED_HOSTS=(list, ["*"]),
     CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:8000"]),
+    SITE_URL=(str, ""),
 )
 
 # Read from .env file if exists
@@ -43,6 +44,8 @@ ENVIRONMENT = env("ENVIRONMENT")
 SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+# Public-facing HTTPS URL for Google Calendar webhook push notifications.
+SITE_URL = env("SITE_URL")
 
 # -----------------------------------------------------------------------------
 #  Installed Apps Organization
@@ -86,6 +89,7 @@ INSTALLED_APPS = [
     "horilla_duplicates",
     "horilla_processes.approvals",
     "horilla_processes.reviews",
+    "horilla_cadences",
 ]
 
 
