@@ -146,6 +146,13 @@ class Activity(HorillaCoreModel):
         verbose_name=_("Call Type"),
     )
     notes = models.TextField(null=True, blank=True, verbose_name=_("Notes"))
+    google_event_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name=_("Google Calendar Event ID"),
+    )
     call_purpose = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("Call Purpose")
     )

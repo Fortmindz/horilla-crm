@@ -4,9 +4,9 @@
 import datetime
 import json
 
-from django.contrib import messages
-
 # Third-party imports (Django)
+from django.apps import apps
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils import timezone
 from django.utils.functional import cached_property  # type: ignore
@@ -14,26 +14,32 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
+# First-party imports (Horilla)
 from horilla.http import HttpResponse, JsonResponse
 from horilla.shortcuts import render
-
-# First-party imports (Horilla)
-from horilla.urls import reverse_lazy
+from horilla.urls import reverse, reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
     permission_required_or_denied,
 )
 from horilla.utils.translation import gettext as _
-from horilla_activity.models import Activity
 
 # First-party / Horilla apps
+from horilla_activity.models import Activity
+from horilla_calendar.forms import CustomCalendarForm
+from horilla_calendar.models import (
+    CustomCalendar,
+    CustomCalendarCondition,
+    UserAvailability,
+    UserCalendarPreference,
+)
 from horilla_core.utils import get_user_field_permission
+from horilla_dashboard.views.dashboard_helper import apply_conditions
+from horilla_dashboard.views.helper import get_queryset_for_module
 from horilla_generics.templatetags.horilla_tags._shared import format_datetime_value
 from horilla_generics.views import HorillaSingleDeleteView, HorillaSingleFormView
 from horilla_utils.middlewares import _thread_local
-
-from .models import UserAvailability, UserCalendarPreference
 
 # Default sidebar/checkbox colors per calendar type (keep in sync with calendar UI).
 DEFAULT_CALENDAR_TYPE_COLORS = {
@@ -42,6 +48,148 @@ DEFAULT_CALENDAR_TYPE_COLORS = {
     "meeting": "#F50CCE",
     "unavailability": "#F5E614",
 }
+
+
+def _calendar_display_value(obj, field_name):
+    try:
+        val = getattr(obj, field_name)
+    except Exception:
+        return str(obj.pk)
+    if val is None:
+        return str(obj.pk)
+    return str(val)
+
+
+def _combine_for_calendar(start_val, end_val, user):
+    """Build ISO start/end and display strings for FullCalendar from model values."""
+    if start_val is None:
+        return None, None, None, None
+
+    if isinstance(start_val, datetime.datetime):
+        start_dt = start_val
+        if timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt)
+        start_iso = start_dt.isoformat()
+        start_disp = format_datetime_value(start_dt, user=user)
+    else:
+        start_d = start_val
+        start_dt = timezone.make_aware(
+            datetime.datetime.combine(start_d, datetime.time.min)
+        )
+        start_iso = start_dt.isoformat()
+        start_disp = format_datetime_value(start_dt, user=user)
+
+    if end_val is None:
+        if isinstance(start_val, datetime.datetime):
+            end_dt = start_dt + datetime.timedelta(hours=1)
+        else:
+            end_dt = timezone.make_aware(
+                datetime.datetime.combine(
+                    start_val + datetime.timedelta(days=1), datetime.time.min
+                )
+            )
+    elif isinstance(end_val, datetime.datetime):
+        end_dt = end_val
+        if timezone.is_naive(end_dt):
+            end_dt = timezone.make_aware(end_dt)
+    else:
+        end_dt = timezone.make_aware(
+            datetime.datetime.combine(end_val, datetime.time.max)
+        )
+
+    end_iso = end_dt.isoformat()
+    end_disp = format_datetime_value(end_dt, user=user)
+    return start_iso, end_iso, start_disp, end_disp
+
+
+def events_for_custom_calendar(request, cc):
+    """Turn a CustomCalendar config into FullCalendar event dicts."""
+    module_name = cc.module.model
+    model = None
+    for app_config in apps.get_app_configs():
+        try:
+            model = apps.get_model(
+                app_label=app_config.label, model_name=module_name.lower()
+            )
+            break
+        except LookupError:
+            continue
+    if not model:
+        return []
+
+    queryset = get_queryset_for_module(request.user, model)
+    conditions = cc.conditions.all().order_by("sequence")
+    queryset = apply_conditions(queryset, conditions)
+
+    out = []
+    title_field = cc.display_name_field
+    start_field = cc.start_date_field
+    end_field = cc.end_date_field or ""
+
+    for obj in queryset.iterator():
+        try:
+            start_raw = getattr(obj, start_field)
+        except Exception:
+            continue
+        if start_raw is None:
+            continue
+        end_raw = None
+        if end_field:
+            try:
+                end_raw = getattr(obj, end_field)
+            except Exception:
+                end_raw = None
+
+        title = _calendar_display_value(obj, title_field)
+        start_iso, end_iso, start_disp, end_disp = _combine_for_calendar(
+            start_raw, end_raw, request.user
+        )
+        if not start_iso:
+            continue
+        if isinstance(start_raw, datetime.datetime):
+            start_day = timezone.localtime(start_raw).date()
+        else:
+            start_day = start_raw
+        if isinstance(end_raw, datetime.datetime):
+            end_day = timezone.localtime(end_raw).date()
+        elif end_raw:
+            end_day = end_raw
+        else:
+            end_day = start_day
+        if end_day and start_day and end_day < start_day:
+            end_day = start_day
+        start_iso = start_day.isoformat()
+        # FullCalendar all-day end is exclusive; add one day so the end date is inclusive.
+        end_iso = (end_day + datetime.timedelta(days=1)).isoformat()
+
+        detail_url = None
+        if hasattr(obj, "get_detail_url"):
+            try:
+                detail_url = str(obj.get_detail_url())
+            except Exception:
+                detail_url = None
+
+        cal_type = f"custom_{cc.pk}"
+        out.append(
+            {
+                "title": title,
+                "start": start_iso,
+                "end": end_iso,
+                "start_display": start_disp,
+                "end_display": end_disp,
+                "allDay": True,
+                "calendarType": cal_type,
+                "description": "",
+                "id": f"{cal_type}_{obj.pk}",
+                "url": detail_url,
+                "deleteUrl": None,
+                "detailUrl": detail_url,
+                "backgroundColor": cc.color,
+                "borderColor": cc.color,
+                "textColor": "#FFFFFF",
+            }
+        )
+    return out
 
 
 class CalendarView(LoginRequiredMixin, TemplateView):
@@ -80,6 +228,10 @@ class CalendarView(LoginRequiredMixin, TemplateView):
         }
 
         display_only = self.request.GET.get("display_only")
+        custom_calendars = CustomCalendar.objects.filter(
+            user=self.request.user, is_active=True
+        ).order_by("name")
+
         if display_only and display_only in [cal["id"] for cal in context["calendars"]]:
             UserCalendarPreference.objects.filter(user=self.request.user).update(
                 is_selected=False
@@ -89,6 +241,30 @@ class CalendarView(LoginRequiredMixin, TemplateView):
             ).update(is_selected=True)
             for calendar in context["calendars"]:
                 calendar["selected"] = calendar["id"] == display_only
+            CustomCalendar.objects.filter(user=self.request.user).update(
+                is_selected=False
+            )
+        elif (
+            display_only
+            and isinstance(display_only, str)
+            and display_only.startswith("custom_")
+        ):
+            try:
+                custom_pk = int(display_only.replace("custom_", "", 1))
+            except ValueError:
+                custom_pk = None
+            if custom_pk is not None and custom_calendars.filter(pk=custom_pk).exists():
+                UserCalendarPreference.objects.filter(user=self.request.user).update(
+                    is_selected=False
+                )
+                for calendar in context["calendars"]:
+                    calendar["selected"] = False
+                CustomCalendar.objects.filter(user=self.request.user).update(
+                    is_selected=False
+                )
+                CustomCalendar.objects.filter(
+                    user=self.request.user, pk=custom_pk
+                ).update(is_selected=True)
         else:
             for calendar in context["calendars"]:
                 pref = preferences.filter(calendar_type=calendar["id"]).first()
@@ -98,6 +274,10 @@ class CalendarView(LoginRequiredMixin, TemplateView):
             self.request.user, Activity, "status"
         )
         context["status_field_permission"] = status_field_permission
+
+        context["custom_calendars"] = CustomCalendar.objects.filter(
+            user=self.request.user, is_active=True
+        ).order_by("name")
 
         return context
 
@@ -116,51 +296,81 @@ class SaveCalendarPreferencesView(LoginRequiredMixin, View):
             valid_types = {"task", "event", "meeting", "unavailability"}
             company = getattr(request, "active_company", None) or request.user.company
 
-            if calendar_type and color and calendar_type in valid_types:
-                preference, created = UserCalendarPreference.objects.update_or_create(
-                    user=request.user,
-                    calendar_type=calendar_type,
-                    defaults={"color": color, "is_selected": True, "company": company},
-                )
-                if not created:
-                    preference.color = color
-                    if not preference.company:
-                        preference.company = company
-                    preference.save()
+            if calendar_type and color:
+                if calendar_type in valid_types:
+                    preference, created = (
+                        UserCalendarPreference.objects.update_or_create(
+                            user=request.user,
+                            calendar_type=calendar_type,
+                            defaults={
+                                "color": color,
+                                "is_selected": True,
+                                "company": company,
+                            },
+                        )
+                    )
+                    if not created:
+                        preference.color = color
+                        if not preference.company:
+                            preference.company = company
+                        preference.save()
+                elif isinstance(calendar_type, str) and calendar_type.startswith(
+                    "custom_"
+                ):
+                    try:
+                        pk = int(calendar_type.replace("custom_", "", 1))
+                    except ValueError:
+                        pk = None
+                    if pk is not None:
+                        CustomCalendar.objects.filter(user=request.user, pk=pk).update(
+                            color=color, is_selected=True
+                        )
 
             if "calendar_types" in data:
                 UserCalendarPreference.objects.filter(user=request.user).update(
                     is_selected=False
                 )
-                if calendar_types:
-                    if not all(ct in valid_types for ct in calendar_types):
-                        return JsonResponse(
-                            {"status": "error", "message": "Invalid calendar type"},
-                            status=400,
-                        )
-                    for ct in calendar_types:
-                        defaults = {
-                            "is_selected": True,
-                            "company": company,
-                        }
-                        if not UserCalendarPreference.objects.filter(
-                            user=request.user, calendar_type=ct
-                        ).exists():
-                            defaults["color"] = DEFAULT_CALENDAR_TYPE_COLORS[ct]
-                        preference, created = (
-                            UserCalendarPreference.objects.update_or_create(
-                                user=request.user,
-                                calendar_type=ct,
-                                company=company,
-                                defaults=defaults,
-                            )
-                        )
+                CustomCalendar.objects.filter(user=request.user).update(
+                    is_selected=False
+                )
+                calendar_types = data.get("calendar_types") or []
+                standard_types = [ct for ct in calendar_types if ct in valid_types]
+                custom_pks = []
+                for ct in calendar_types:
+                    if isinstance(ct, str) and ct.startswith("custom_"):
+                        try:
+                            custom_pks.append(int(ct.replace("custom_", "", 1)))
+                        except ValueError:
+                            continue
 
-                        if not created:
-                            preference.is_selected = True
-                            if not preference.company:
-                                preference.company = company
-                            preference.save(update_fields=["is_selected", "company"])
+                for ct in standard_types:
+                    defaults = {
+                        "is_selected": True,
+                        "company": company,
+                    }
+                    if not UserCalendarPreference.objects.filter(
+                        user=request.user, calendar_type=ct
+                    ).exists():
+                        defaults["color"] = DEFAULT_CALENDAR_TYPE_COLORS[ct]
+                    preference, created = (
+                        UserCalendarPreference.objects.update_or_create(
+                            user=request.user,
+                            calendar_type=ct,
+                            company=company,
+                            defaults=defaults,
+                        )
+                    )
+
+                    if not created:
+                        preference.is_selected = True
+                        if not preference.company:
+                            preference.company = company
+                        preference.save(update_fields=["is_selected", "company"])
+
+                if custom_pks:
+                    CustomCalendar.objects.filter(
+                        user=request.user, pk__in=custom_pks
+                    ).update(is_selected=True)
 
             messages.success(request, _("Preferences saved successfully"))
 
@@ -186,16 +396,29 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                 return JsonResponse({"status": "success", "events": []})
 
             if not selected_types:
-                selected_types = UserCalendarPreference.objects.filter(
-                    user=request.user, is_selected=True
-                ).values_list("calendar_type", flat=True)
+                selected_types = list(
+                    UserCalendarPreference.objects.filter(
+                        user=request.user, is_selected=True
+                    ).values_list("calendar_type", flat=True)
+                )
+                selected_types += [
+                    f"custom_{pk}"
+                    for pk in CustomCalendar.objects.filter(
+                        user=request.user, is_selected=True, is_active=True
+                    ).values_list("id", flat=True)
+                ]
                 if not selected_types:
                     selected_types = ["task", "event", "meeting", "unavailability"]
 
             events = []
             if selected_types:
-                # Fetch Activity events
-                activity_types = [t for t in selected_types if t != "unavailability"]
+                # Fetch Activity events (exclude unavailability and custom calendars)
+                activity_types = [
+                    t
+                    for t in selected_types
+                    if t != "unavailability"
+                    and not (isinstance(t, str) and t.startswith("custom_"))
+                ]
                 if activity_types:
                     activities = (
                         Activity.objects.filter(
@@ -304,8 +527,15 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                             if unavailability.to_datetime
                             else None
                         )
+                        # Use the event title for Google-sourced events; fall back to "User Unavailable"
+                        if unavailability.reason and unavailability.reason.startswith(
+                            "[Google]"
+                        ):
+                            event_title = unavailability.reason[len("[Google] ") :]
+                        else:
+                            event_title = "User Unavailable"
                         event = {
-                            "title": "User Unavailable",
+                            "title": event_title,
                             "start": unavailability.from_datetime.isoformat(),
                             "end": (
                                 unavailability.to_datetime.isoformat()
@@ -333,6 +563,19 @@ class GetCalendarEventsView(LoginRequiredMixin, View):
                             "textColor": "#FFFFFF",
                         }
                         events.append(event)
+
+                custom_ids = []
+                for t in selected_types:
+                    if isinstance(t, str) and t.startswith("custom_"):
+                        try:
+                            custom_ids.append(int(t.replace("custom_", "", 1)))
+                        except ValueError:
+                            continue
+                if custom_ids:
+                    for cc in CustomCalendar.objects.filter(
+                        user=request.user, pk__in=custom_ids, is_active=True
+                    ):
+                        events.extend(events_for_custom_calendar(request, cc))
 
             return JsonResponse({"status": "success", "events": events})
         except Exception as e:
@@ -402,13 +645,52 @@ class MarkCompletedView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
+class CustomCalendarFormView(LoginRequiredMixin, HorillaSingleFormView):
+    """Create or update a user-defined module-backed calendar with filter conditions."""
+
+    model = CustomCalendar
+    form_class = CustomCalendarForm
+
+    condition_fields = ["field", "operator", "value"]
+    condition_model = CustomCalendarCondition
+    condition_related_name = "conditions"
+
+    condition_order_by = ["sequence"]
+    content_type_field = "module"
+    condition_hx_include = "#id_module"
+
+    hidden_fields = ["is_selected"]
+    full_width_fields = ["name", "color"]
+    save_and_new = False
+    view_id = "customcalendar-form-view"
+    modal_height = True
+    return_response = HttpResponse(
+        "<script>$('#reloadMainContent').click();closeModal();</script>"
+    )
+
+    @cached_property
+    def form_url(self):
+        pk = self.kwargs.get("pk")
+        if pk:
+            return reverse_lazy(
+                "horilla_calendar:custom_calendar_update", kwargs={"pk": pk}
+            )
+        return reverse_lazy("horilla_calendar:custom_calendar_create")
+
+    def form_valid(self, form):
+        if not form.instance.pk:
+            form.instance.user = self.request.user
+        return super().form_valid(form)
+
+
+@method_decorator(htmx_required, name="dispatch")
 class UserAvailabilityFormView(LoginRequiredMixin, HorillaSingleFormView):
     """View to handle marking user unavailability via a form."""
 
     model = UserAvailability
     form_title = _("Mark Unavailability")
     modal_height = False
-    hidden_fields = ["user", "company", "is_active"]
+    hidden_fields = ["user", "company", "is_active", "google_event_id"]
     full_width_fields = ["from_datetime", "to_datetime", "reason"]
     save_and_new = False
 
@@ -485,6 +767,22 @@ class UserAvailabilityDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     """View to handle deletion of user unavailability records."""
 
     model = UserAvailability
+
+    def get_post_delete_response(self):
+        return HttpResponse(
+            "<script>htmx.trigger('#reloadMainContent','click');</script>"
+        )
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_calendar.delete_customcalendar"),
+    name="dispatch",
+)
+class CustomCalendarDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """View to handle deletion of custom calendar records."""
+
+    model = CustomCalendar
 
     def get_post_delete_response(self):
         return HttpResponse(

@@ -1,6 +1,7 @@
 """ "URL configuration for the  app."""
 
 from horilla.urls import path
+from horilla_calendar.google_calendar import views as gcal_views
 
 from . import views
 
@@ -34,5 +35,63 @@ urlpatterns = [
         "delete-mark-availability/<int:pk>/",
         views.UserAvailabilityDeleteView.as_view(),
         name="delete_mark_unavailability",
+    ),
+    path(
+        "custom-calendar-create/",
+        views.CustomCalendarFormView.as_view(),
+        name="custom_calendar_create",
+    ),
+    path(
+        "custom-calendar-update/<int:pk>/",
+        views.CustomCalendarFormView.as_view(),
+        name="custom_calendar_update",
+    ),
+    path(
+        "custom-calendar-delete/<int:pk>/",
+        views.CustomCalendarDeleteView.as_view(),
+        name="custom_calendar_delete",
+    ),
+    # Google Integration admin settings (Settings → Integrations)
+    path(
+        "google-integration/settings/",
+        gcal_views.GoogleIntegrationSettingsView.as_view(),
+        name="google_integration_settings",
+    ),
+    # Google Calendar integration
+    path(
+        "google-calendar/settings/",
+        gcal_views.GoogleCalendarSettingsView.as_view(),
+        name="google_calendar_settings",
+    ),
+    path(
+        "google-calendar/authorize/",
+        gcal_views.GoogleCalendarAuthorizeView.as_view(),
+        name="google_calendar_authorize",
+    ),
+    path(
+        "google-calendar/callback/",
+        gcal_views.GoogleCalendarCallbackView.as_view(),
+        name="google_calendar_callback",
+    ),
+    path(
+        "google-calendar/disconnect/",
+        gcal_views.GoogleCalendarDisconnectView.as_view(),
+        name="google_calendar_disconnect",
+    ),
+    path(
+        "google-calendar/register-webhook/",
+        gcal_views.GoogleCalendarRegisterWebhookView.as_view(),
+        name="google_calendar_register_webhook",
+    ),
+    path(
+        "google-calendar/sync-direction/",
+        gcal_views.GoogleCalendarSyncDirectionView.as_view(),
+        name="google_calendar_sync_direction",
+    ),
+    # Google Calendar push-notification webhook (called by Google, not users)
+    path(
+        "webhook/google/",
+        gcal_views.GoogleCalendarWebhookView.as_view(),
+        name="google_calendar_webhook",
     ),
 ]

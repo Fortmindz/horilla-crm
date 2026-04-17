@@ -18,6 +18,7 @@ class HorillaCalendarConfig(AppLauncher):
     url_namespace = "horilla_calendar"
 
     auto_import_modules = [
+        "registration",
         "menu",
         "signals",
     ]
