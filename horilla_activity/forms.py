@@ -477,8 +477,16 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
             # Hide non-visible fields
             for name, field in self.fields.items():
                 if name not in visible_fields:
-                    field.widget = forms.HiddenInput()
                     field.required = False
+                    if isinstance(field, forms.ModelMultipleChoiceField):
+                        # A single HiddenInput is invalid for M2M (POST is not a list of PKs),
+                        # which surfaces as "Enter a list of values" on save.
+                        field.widget = forms.MultipleHiddenInput()
+                        if self.instance.pk:
+                            related = getattr(self.instance, name)
+                            field.initial = list(related.values_list("pk", flat=True))
+                    else:
+                        field.widget = forms.HiddenInput()
 
     def clean(self):
         cleaned_data = super().clean()
