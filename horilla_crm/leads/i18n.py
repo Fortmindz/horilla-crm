@@ -1,6 +1,7 @@
 """Internationalization strings for CRM leads module."""
 
-from django.utils.translation import gettext_lazy as _
+# First-party / Horilla imports
+from horilla.utils.translation import gettext_lazy as _
 
 _("CRM")
 _("CRM module for managing leads, contacts, and opportunities.")

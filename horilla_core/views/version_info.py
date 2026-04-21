@@ -1,0 +1,47 @@
+"""Views for displaying version information of Horilla and its modules."""
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import Http404
+from django.shortcuts import render
+from django.views.generic import TemplateView
+
+from horilla.utils.version import collect_all_versions
+
+
+class VersionInfotemplateView(LoginRequiredMixin, TemplateView):
+    """
+    View to display version information of Horilla and its modules.
+    When GET details=core|0|1|... is present, returns fragment for contentModal (HTMX).
+    """
+
+    template_name = "version_info/info.html"
+    fragment_template_name = "version_info/version_details_fragment.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        module_versions = collect_all_versions()
+        context["core_module"] = module_versions["module_versions"][0]
+        context["other_modules"] = module_versions["module_versions"][1:]
+        return context
+
+    def get(self, request, *args, **kwargs):
+        details = request.GET.get("details")
+        if details is not None:
+            module_versions = collect_all_versions()
+            versions = module_versions["module_versions"]
+            if details == "core":
+                module = versions[0]
+            else:
+                try:
+                    idx = int(details)
+                    if idx < 0 or idx >= len(versions) - 1:
+                        raise Http404("Invalid module index")
+                    module = versions[1 + idx]
+                except ValueError:
+                    raise Http404("Invalid details parameter")
+            return render(
+                request,
+                self.fragment_template_name,
+                {"module": module},
+            )
+        return super().get(request, *args, **kwargs)

@@ -8,15 +8,16 @@ import sys
 
 # Third-party imports (Django)
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 
-# First-party / Horilla imports
 from horilla_automations.methods import trigger_automations
 from horilla_automations.models import HorillaAutomation
 from horilla_automations.tasks import execute_automation_task
+
+# First-party / Horilla imports
+from horilla_core.models import HorillaContentType
 from horilla_utils.middlewares import _thread_local
 
 # Try to import Celery task, but don't fail if Celery is not available
@@ -25,7 +26,7 @@ try:
 except Exception as e:
     logger = logging.getLogger(__name__)
     logger.warning(
-        f"Celery tasks not available, will use synchronous execution: {str(e)}"
+        "Celery tasks not available, will use synchronous execution: %s", str(e)
     )
     CELERY_AVAILABLE = False
     execute_automation_task = None
@@ -71,13 +72,13 @@ def trigger_automations_on_save(sender, instance, created, **kwargs):
     if sender == HorillaAutomation:
         return
 
-    # Skip if this is a ContentType or other system models
-    if sender in [ContentType]:
+    # Skip if this is a HorillaContentType or other system models
+    if sender in [HorillaContentType]:
         return
 
     try:
         # Check if there are any automations for this model
-        content_type = ContentType.objects.get_for_model(instance)
+        content_type = HorillaContentType.objects.get_for_model(instance)
         has_automations = HorillaAutomation.objects.filter(model=content_type).exists()
 
         if not has_automations:
@@ -114,18 +115,24 @@ def trigger_automations_on_save(sender, instance, created, **kwargs):
                     request_info=request_info,
                 )
                 logger.debug(
-                    f"Queued automation task: {result.id} for {sender.__name__} {instance.pk}"
+                    "Queued automation task: %s for %s %s",
+                    result.id,
+                    sender.__name__,
+                    instance.pk,
                 )
                 return
             except Exception as celery_error:
                 logger.warning(
-                    f"Failed to queue Celery task, falling back to sync: {str(celery_error)}"
+                    "Failed to queue Celery task, falling back to sync: %s",
+                    celery_error,
                 )
+
                 try:
                     trigger_automations(instance, trigger_type=trigger_type, user=user)
                 except Exception as sync_error:
                     logger.error(
-                        f"Error in synchronous automation execution: {str(sync_error)}",
+                        "Error in synchronous automation execution: %s",
+                        sync_error,
                         exc_info=True,
                     )
         else:
@@ -134,13 +141,16 @@ def trigger_automations_on_save(sender, instance, created, **kwargs):
                 trigger_automations(instance, trigger_type=trigger_type, user=user)
             except Exception as sync_error:
                 logger.error(
-                    f"Error in synchronous automation execution: {str(sync_error)}",
+                    "Error in synchronous automation execution: %s",
+                    sync_error,
                     exc_info=True,
                 )
 
     except Exception as e:
         logger.error(
-            f"Error in trigger_automations_on_save for {sender.__name__}: {str(e)}",
+            "Error in trigger_automations_on_save for %s : %s",
+            sender.__name__,
+            str(e),
             exc_info=True,
         )
 
@@ -158,13 +168,13 @@ def trigger_automations_on_delete(sender, instance, **kwargs):
     if sender == HorillaAutomation:
         return
 
-    # Skip if this is a ContentType or other system models
-    if sender in [ContentType]:
+    # Skip if this is a HorillaContentType or other system models
+    if sender in [HorillaContentType]:
         return
 
     try:
         # Check if there are any automations for this model
-        content_type = ContentType.objects.get_for_model(instance)
+        content_type = HorillaContentType.objects.get_for_model(instance)
         has_automations = HorillaAutomation.objects.filter(
             model=content_type, trigger="on_delete"
         ).exists()
@@ -200,18 +210,23 @@ def trigger_automations_on_delete(sender, instance, **kwargs):
                     request_info=request_info,
                 )
                 logger.debug(
-                    f"Queued delete automation task: {result.id} for {sender.__name__} {instance.pk}"
+                    "Queued delete automation task: %s for %s %s",
+                    result.id,
+                    sender.__name__,
+                    instance.pk,
                 )
                 return
             except Exception as celery_error:
                 logger.warning(
-                    f"Failed to queue Celery task, falling back to sync: {str(celery_error)}"
+                    "Failed to queue Celery task, falling back to sync: %s",
+                    celery_error,
                 )
                 try:
                     trigger_automations(instance, trigger_type="on_delete", user=user)
                 except Exception as sync_error:
                     logger.error(
-                        f"Error in synchronous delete automation execution: {str(sync_error)}",
+                        "Error in synchronous delete automation execution: %s",
+                        sync_error,
                         exc_info=True,
                     )
         else:
@@ -220,12 +235,15 @@ def trigger_automations_on_delete(sender, instance, **kwargs):
                 trigger_automations(instance, trigger_type="on_delete", user=user)
             except Exception as sync_error:
                 logger.error(
-                    f"Error in synchronous delete automation execution: {str(sync_error)}",
+                    "Error in synchronous delete automation execution: %s",
+                    sync_error,
                     exc_info=True,
                 )
 
     except Exception as e:
         logger.error(
-            f"Error in trigger_automations_on_delete for {sender.__name__}: {str(e)}",
+            "Error in trigger_automations_on_delete for %s : %s ",
+            sender.__name__,
+            str(e),
             exc_info=True,
         )

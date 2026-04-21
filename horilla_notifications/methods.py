@@ -1,9 +1,13 @@
+"""
+This module provides helper methods for creating notifications and limiting content types for notifications in the Horilla framework. It includes a function to create notifications with optional linking to related objects, and a function to limit
+"""
+
 # Notification helper methods
 
-from django.contrib.contenttypes.models import ContentType
-from django.db import models
+from horilla_core.models import HorillaContentType
 
-from horilla.registry.feature import FEATURE_REGISTRY
+# First-party / Horilla apps
+from horilla_notifications.models import Notification
 
 
 def create_notification(
@@ -31,14 +35,13 @@ def create_notification(
     object_id = None
     if instance is not None:
         try:
-            content_type = ContentType.objects.get_for_model(instance)
+            content_type = HorillaContentType.objects.get_for_model(instance)
             object_id = instance.pk
         except Exception:
             pass
 
     try:
         # Lazy import to avoid circular import
-        from horilla_notifications.models import Notification
 
         notification = Notification(
             user=user,
@@ -53,15 +56,3 @@ def create_notification(
         return notification
     except Exception:
         return None
-
-
-def limit_content_types():
-    """
-    Limit ContentType choices to only models that have
-    'mail_template_includable = True'.
-    """
-    includable_models = []
-    for model in FEATURE_REGISTRY["notification_template_models"]:
-        includable_models.append(model._meta.model_name.lower())
-
-    return models.Q(model__in=includable_models)

@@ -10,15 +10,15 @@ This module provides middleware for:
 import logging
 
 # Django imports
-from django.http import HttpResponse, HttpResponseNotAllowed
-from django.shortcuts import redirect, render
-from django.urls import Resolver404, resolve
 from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
-# Local application imports
-from horilla.exceptions import HorillaHttp404
+from horilla.http import HttpNotFound, HttpResponse, HttpResponseNotAllowed
 from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
+from horilla.shortcuts import redirect, render
+
+# First-party imports (Horilla)
+from horilla.urls import Resolver404, resolve
 
 from .models import Company
 
@@ -73,15 +73,15 @@ class HorillaExceptionMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        """Process requests and catch HorillaHttp404 exceptions."""
+        """Process requests and catch HttpNotFound exceptions."""
         try:
             return self.get_response(request)
-        except HorillaHttp404 as exc:
+        except HttpNotFound as exc:
             return exc.as_response(request)
 
     def process_exception(self, request, exception):
-        """Handle HorillaHttp404 exceptions raised outside __call__."""
-        if isinstance(exception, HorillaHttp404):
+        """Handle HttpNotFound exceptions raised outside __call__."""
+        if isinstance(exception, HttpNotFound):
             return exception.as_response(request)
         return None
 
@@ -99,7 +99,7 @@ class Horilla405Middleware:
 
         if isinstance(response, HttpResponseNotAllowed):
             """Render a custom 405 error page."""
-            return render(request, "error/405.html", status=405)
+            return render(request, "405.html", status=405)
 
         return response
 
@@ -216,7 +216,8 @@ class EnsureSectionMiddleware(MiddlewareMixin):
         # Get current section value
         current_section = request.GET.get("section", "").strip()
 
-        # Check if section parameter is missing or empty
+        # If a section is already present in the request, do not modify it.
+        # Only when the section parameter is missing or empty, derive it from the path.
         if not current_section:
             section = self.get_section_from_path(request.path)
 
@@ -227,20 +228,6 @@ class EnsureSectionMiddleware(MiddlewareMixin):
 
                 new_url = f"{request.path}?{query_params.urlencode()}"
                 return redirect(new_url)
-        else:
-            # Validate if the current section exists in menu_registry
-            valid_sections = self.get_valid_sections()
-
-            # If current section is invalid, try to get the correct one
-            if current_section not in valid_sections:
-                section = self.get_section_from_path(request.path)
-
-                if section:
-                    query_params = request.GET.copy()
-                    query_params["section"] = section
-
-                    new_url = f"{request.path}?{query_params.urlencode()}"
-                    return redirect(new_url)
 
         return None
 
@@ -260,6 +247,16 @@ class EnsureSectionMiddleware(MiddlewareMixin):
     def get_section_from_path(self, path):
         """Extract section by matching path with menu_registry URLs"""
         try:
+            # Special case: root path mapped to home view
+            # If the resolved URL name is 'home_view', we want section to be 'home'
+            try:
+                resolved_root = resolve(path)
+                if getattr(resolved_root, "url_name", None) == "home_view":
+                    return "home"
+            except Resolver404:
+                # If root cannot be resolved, fall back to normal logic
+                pass
+
             # First, try to match by URL
             for menu_cls in menu_registry:
                 menu_url = str(getattr(menu_cls, "url", ""))

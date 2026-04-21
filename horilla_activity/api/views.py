@@ -5,8 +5,6 @@ This module mirrors horilla_core and accounts API patterns including search, fil
 bulk update, bulk delete, permissions, and documentation, adapted for activity-specific logic.
 """
 
-from django.contrib.contenttypes.models import ContentType
-from django.db import models
 from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -14,6 +12,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from horilla.db import models
 from horilla_activity.api.docs import (
     ACTIVITY_BY_ASSIGNED_DOCS,
     ACTIVITY_BY_OWNER_DOCS,
@@ -32,6 +31,7 @@ from horilla_activity.models import Activity
 from horilla_core.api.docs import BULK_DELETE_DOCS, BULK_UPDATE_DOCS
 from horilla_core.api.mixins import BulkOperationsMixin, SearchFilterMixin
 from horilla_core.api.permissions import IsCompanyMember
+from horilla_core.models import HorillaContentType
 
 # Define common Swagger parameters and bodies consistent with horilla_core/accounts
 search_param = openapi.Parameter(
@@ -152,10 +152,10 @@ class ActivityViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelView
 
         try:
             if content_type_id:
-                ct = ContentType.objects.get(id=content_type_id)
+                ct = HorillaContentType.objects.get(id=content_type_id)
             else:
                 app_label, model = content_type_str.split(".")
-                ct = ContentType.objects.get(app_label=app_label, model=model)
+                ct = HorillaContentType.objects.get(app_label=app_label, model=model)
         except Exception:
             return Response(
                 {"error": "Invalid content type"}, status=status.HTTP_400_BAD_REQUEST
@@ -264,8 +264,8 @@ class ActivityViewSet(SearchFilterMixin, BulkOperationsMixin, viewsets.ModelView
     @swagger_auto_schema(operation_description=ACTIVITY_PENDING_DOCS)
     @action(detail=False, methods=["get"])
     def pending(self, request):
-        """Get activities marked as pending"""
-        queryset = self.filter_queryset(self.get_queryset().filter(status="pending"))
+        """Get activities not yet completed (excludes status=completed only)."""
+        queryset = self.filter_queryset(self.get_queryset().exclude(status="completed"))
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)

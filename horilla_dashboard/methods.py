@@ -1,24 +1,3 @@
 """
 Helper methods used by the horilla_dashboard app.
-
-This module contains small helper functions used to support dashboard
-configuration and model choice restrictions.
 """
-
-# Third-party imports (Django)
-from django.db import models
-
-# First-party / Horilla imports
-from horilla.registry.feature import FEATURE_REGISTRY
-
-
-def limit_content_types():
-    """
-    Limit ContentType choices to only models that have
-    'dashboard_component_models = True'.
-    """
-    includable_models = []
-    for model in FEATURE_REGISTRY["dashboard_component_models"]:
-        includable_models.append(model._meta.model_name.lower())
-
-    return models.Q(model__in=includable_models)

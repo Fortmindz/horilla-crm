@@ -1,18 +1,31 @@
 """App configuration for dashboard app."""
 
-from django.apps import AppConfig
-from django.utils.translation import gettext_lazy as _
+from horilla.apps import AppLauncher
+from horilla.utils.translation import gettext_lazy as _
 
 
-class HorillaDashboardConfig(AppConfig):
+class HorillaDashboardConfig(AppLauncher):
     """
     HorillaDashboardConfig App Configuration
     """
+
+    default = True
 
     default_auto_field = "django.db.models.BigAutoField"
     name = "horilla_dashboard"
     verbose_name = _("Dashboard")
 
+    url_prefix = "dashboard/"
+    url_module = "horilla_dashboard.urls"
+    url_namespace = "horilla_dashboard"
+
+    auto_import_modules = [
+        "registration",
+        "signals",
+        "menu",
+    ]
+
+    # Define API paths for this app
     def get_api_paths(self):
         """
         Return API path configurations for this app.
@@ -28,25 +41,3 @@ class HorillaDashboardConfig(AppConfig):
                 "namespace": "horilla_dashboard",
             }
         ]
-
-    def ready(self):
-        try:
-            __import__("horilla_dashboard.registration")
-
-            # Auto-register this app's URLs and add to installed apps
-            from django.urls import include, path
-
-            from horilla.urls import urlpatterns
-
-            # Add app URLs to main urlpatterns
-            urlpatterns.append(
-                path("dashboard/", include("horilla_dashboard.urls")),
-            )
-
-            __import__("horilla_dashboard.menu")
-            __import__("horilla_dashboard.signals")
-        except Exception as e:
-            import logging
-
-            logging.warning("HorillaDashboardConfig.ready failed: %s", e)
-        super().ready()

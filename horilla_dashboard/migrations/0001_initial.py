@@ -3,8 +3,8 @@
 import django.core.validators
 import django.db.models.deletion
 import django.utils.timezone
-import horilla_core.models
-import horilla_dashboard.methods
+import horilla.utils.upload
+import horilla.registry.limiters
 from django.conf import settings
 from django.db import migrations, models
 
@@ -247,7 +247,7 @@ class Migration(migrations.Migration):
                     models.ImageField(
                         blank=True,
                         null=True,
-                        upload_to=horilla_core.models.upload_path,
+                        upload_to=horilla.utils.upload.upload_path,
                         verbose_name="KPI Icon",
                     ),
                 ),
@@ -293,7 +293,7 @@ class Migration(migrations.Migration):
                     "module",
                     models.ForeignKey(
                         blank=True,
-                        limit_choices_to=horilla_dashboard.methods.limit_content_types,
+                        limit_choices_to=horilla.registry.limiters.ContentTypeLimiter('dashboard_component_models'),
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         to="horilla_core.horillacontenttype",

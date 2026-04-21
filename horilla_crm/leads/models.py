@@ -14,20 +14,22 @@ from colorfield.fields import ColorField
 
 # Third-party imports (Django)
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
-from django.urls import reverse_lazy
 from django.utils import timezone
-from django.utils.safestring import mark_safe
-from django.utils.translation import gettext_lazy as _
+from django.utils.dateparse import parse_date, parse_datetime
 from django_countries.fields import CountryField
 
+from horilla.core.exceptions import ValidationError
+
 # First-party / Horilla imports
+from horilla.db import models
 from horilla.registry.permission_registry import permission_exempt_model
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import Company, HorillaCoreModel
 from horilla_mail.models import HorillaMailConfiguration
 from horilla_utils.methods import render_template
@@ -42,7 +44,13 @@ class LeadStatus(HorillaCoreModel):
 
     name = models.CharField(max_length=100, verbose_name=_("Status Name"))
     order = models.IntegerField(default=0, verbose_name=_("Status Order"))
-    color = ColorField(default="#f39022", verbose_name=_("Status Color"))
+    color = ColorField(
+        default=None,
+        null=True,
+        blank=True,
+        verbose_name=_("Status Color"),
+        help_text=_("Leave blank for default (primary theme colour)."),
+    )
     is_final = models.BooleanField(default=False, verbose_name=_("Is Final Stage"))
     probability = models.DecimalField(
         max_digits=5,
@@ -67,7 +75,7 @@ class LeadStatus(HorillaCoreModel):
             path="lead_status/is_final_col.html",
             context={"instance": self},
         )
-        return mark_safe(html)
+        return html
 
     def clean(self):
         if self.order < 0:
@@ -236,6 +244,9 @@ class Lead(HorillaCoreModel):
         ("other", _("Other")),
     ]
 
+    title = models.CharField(max_length=100, blank=True, verbose_name=_("Title"))
+    first_name = models.CharField(max_length=100, verbose_name=_("First Name"))
+    last_name = models.CharField(max_length=100, verbose_name=_("Last Name"))
     lead_owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -243,9 +254,6 @@ class Lead(HorillaCoreModel):
         verbose_name=_("Lead Owner"),
         related_name="lead",
     )
-    title = models.CharField(max_length=100, blank=True, verbose_name=_("Title"))
-    first_name = models.CharField(max_length=100, verbose_name=_("First Name"))
-    last_name = models.CharField(max_length=100, verbose_name=_("Last Name"))
     email = models.EmailField(validators=[EmailValidator()], verbose_name=_("Email"))
     contact_number = models.CharField(
         max_length=100, blank=True, verbose_name=_("Contact Number")
@@ -282,7 +290,9 @@ class Lead(HorillaCoreModel):
     requirements = models.TextField(
         blank=True, null=True, verbose_name=_("Requirements")
     )
-    is_convert = models.BooleanField(default=False, null=True, blank=True)
+    is_convert = models.BooleanField(
+        default=False, null=True, blank=True, editable=False
+    )
     lead_score = models.IntegerField(
         default=0, verbose_name=_("Lead Score"), null=True, blank=True
     )
@@ -302,14 +312,15 @@ class Lead(HorillaCoreModel):
     def __str__(self):
         return f"{str(self.title)}-{self.id}"
 
-    @property
-    def get_annual_revenue_calc(self):
+    def save(self, *args, **kwargs):
         """
-        This method to get annual revenue
+        Override save method to auto-generate title if not provided
         """
-        return self.annual_revenue * 3
+        if not self.title:
+            owner_name = getattr(self.lead_owner, "username", str(self.lead_owner))
+            self.title = f"{self.lead_company}/{self.first_name}/{owner_name}"
 
-    LEAD_PROPERTY_LABELS = {"annual_revenue_calc": _("Annual Revenue 3x")}
+        super().save(*args, **kwargs)
 
     DYNAMIC_METHODS = ["get_edit_url"]
     # Get field details
@@ -539,7 +550,7 @@ class ScoringRule(HorillaCoreModel):
             path="scoring_rule/is_active_col.html", context={"instance": self}
         )
 
-        return mark_safe(html)
+        return html
 
     def get_edit_url(self):
         """
@@ -656,51 +667,120 @@ class ScoringCondition(HorillaCoreModel):
         Returns True if the condition is met, False otherwise
         """
         try:
-            # Get the field value from the instance
-            field_value = getattr(instance, self.field, None)
+            field = instance._meta.get_field(self.field)
+            raw_value = getattr(instance, self.field, None)
+            field_type = getattr(field, "get_internal_type", lambda: "")()
+            is_date_field = field_type == "DateField"
+            is_datetime_field = field_type == "DateTimeField"
+            value = self.value or ""
+            op = self.operator
 
-            # Convert field_value to string for comparison
-            if field_value is None:
-                field_value = ""
-            else:
-                field_value = str(field_value)
+            # Filter-style and date/datetime: exact, gt, lt, between, isnull, isnotnull
+            if is_date_field or is_datetime_field:
+                if op in ("isnull", "is_empty"):
+                    return raw_value is None
+                if op in ("isnotnull", "is_not_empty"):
+                    return raw_value is not None
+                if op in ("exact", "equals", "gt", "lt", "between"):
+                    if op == "exact":
+                        op = "equals"
+                    if op == "equals":
+                        comp = (
+                            parse_date(value)
+                            if is_date_field
+                            else parse_datetime(value)
+                        )
+                        if comp is None:
+                            return str(raw_value) == value
+                        return raw_value is not None and raw_value == comp
+                    if op == "gt":
+                        comp = (
+                            parse_date(value)
+                            if is_date_field
+                            else parse_datetime(value)
+                        )
+                        return (
+                            comp is not None
+                            and raw_value is not None
+                            and raw_value > comp
+                        )
+                    if op == "lt":
+                        comp = (
+                            parse_date(value)
+                            if is_date_field
+                            else parse_datetime(value)
+                        )
+                        return (
+                            comp is not None
+                            and raw_value is not None
+                            and raw_value < comp
+                        )
+                    if op == "between":
+                        parts = [p.strip() for p in value.split(",", 1) if p.strip()]
+                        if len(parts) >= 2:
+                            start_val = (
+                                parse_date(parts[0])
+                                if is_date_field
+                                else parse_datetime(parts[0])
+                            )
+                            end_val = (
+                                parse_date(parts[1])
+                                if is_date_field
+                                else parse_datetime(parts[1])
+                            )
+                            if start_val and end_val and raw_value is not None:
+                                return start_val <= raw_value <= end_val
+                        return False
 
-            # Perform comparison based on operator
-            if self.operator == "equals":
-                return field_value == self.value
-            if self.operator == "not_equals":
-                return field_value != self.value
-            if self.operator == "contains":
-                return self.value.lower() in field_value.lower()
-            if self.operator == "not_contains":
-                return self.value.lower() not in field_value.lower()
-            if self.operator == "starts_with":
-                return field_value.lower().startswith(self.value.lower())
-            if self.operator == "ends_with":
-                return field_value.lower().endswith(self.value.lower())
-            if self.operator == "greater_than":
+            # Map filter-style to legacy for non-date
+            if op == "exact":
+                op = "equals"
+            if op == "gt":
+                op = "greater_than"
+            if op == "lt":
+                op = "less_than"
+            if op == "isnull":
+                op = "is_empty"
+            if op == "isnotnull":
+                op = "is_not_empty"
+
+            field_value = "" if raw_value is None else str(raw_value)
+
+            if op == "equals":
+                return field_value == value
+            if op == "not_equals":
+                return field_value != value
+            if op == "contains":
+                return value.lower() in field_value.lower()
+            if op == "not_contains":
+                return value.lower() not in field_value.lower()
+            if op == "starts_with":
+                return field_value.lower().startswith(value.lower())
+            if op == "ends_with":
+                return field_value.lower().endswith(value.lower())
+            if op == "greater_than":
                 try:
-                    return float(field_value) > float(self.value)
+                    return float(field_value) > float(value)
                 except (ValueError, TypeError):
                     return False
-            if self.operator == "greater_than_equal":
+            if op == "greater_than_equal":
                 try:
-                    return float(field_value) >= float(self.value)
+                    return float(field_value) >= float(value)
                 except (ValueError, TypeError):
                     return False
-            if self.operator == "less_than":
+            if op == "less_than":
                 try:
-                    return float(field_value) < float(self.value)
+                    return float(field_value) < float(value)
                 except (ValueError, TypeError):
                     return False
-            if self.operator == "less_than_equal":
+            if op == "less_than_equal":
                 try:
-                    return float(field_value) <= float(self.value)
+                    return float(field_value) <= float(value)
                 except (ValueError, TypeError):
                     return False
-            if self.operator == "is_empty":
+            if op == "is_empty":
                 return not field_value or field_value.strip() == ""
-            if self.operator == "is_not_empty":
+            if op == "is_not_empty":
                 return bool(field_value and field_value.strip())
 
             return False

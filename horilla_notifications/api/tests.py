@@ -2,11 +2,11 @@
 Tests for horilla_notifications API
 """
 
-from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
 from horilla.auth.models import User
+from horilla.urls import reverse
 from horilla_notifications.models import Notification
 
 

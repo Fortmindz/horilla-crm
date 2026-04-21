@@ -4,17 +4,24 @@ Celery tasks for asynchronous automation execution in the Horilla automations sy
 This module provides background tasks for:
 - Executing automations asynchronously without blocking the main thread
 - Sending emails and notifications in the background
+- Running time-based (scheduled) automations across all modules
 """
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
-from django.contrib.contenttypes.models import ContentType
+from dateutil.relativedelta import relativedelta
+from django.utils import timezone
 
 from horilla.auth.models import User
-from horilla_automations.methods import execute_automation, trigger_automations
-from horilla_automations.models import HorillaAutomation
-from horilla_core.models import Company
+from horilla_automations.methods import (
+    evaluate_automation_conditions,
+    execute_automation,
+    trigger_automations,
+)
+from horilla_automations.models import AutomationRunLog, HorillaAutomation
+from horilla_core.models import Company, HorillaContentType
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -66,7 +73,7 @@ def execute_automation_task(
     Celery task to execute automations asynchronously.
 
     Args:
-        content_type_id: ID of the ContentType for the instance
+        content_type_id: ID of the HorillaContentType for the instance
         object_id: ID of the instance that triggered the automation
         trigger_type: Type of trigger ('on_create', 'on_update', 'on_delete')
         user_id: ID of the user who triggered the automation (optional)
@@ -75,11 +82,13 @@ def execute_automation_task(
     """
     try:
         # Get the content type and instance
-        content_type = ContentType.objects.get(pk=content_type_id)
+        content_type = HorillaContentType.objects.get(pk=content_type_id)
         model_class = content_type.model_class()
 
         if not model_class:
-            logger.error(f"Model class not found for content_type_id {content_type_id}")
+            logger.error(
+                "Model class not found for content_type_id %s", content_type_id
+            )
             return f"Model class not found for content_type_id {content_type_id}"
 
         # Get the instance
@@ -92,12 +101,15 @@ def execute_automation_task(
                 # For delete triggers, the instance is already deleted
                 # We'll still try to execute automations, but condition evaluation will be skipped
                 logger.info(
-                    f"Instance {object_id} of {model_class.__name__} already deleted, "
-                    f"proceeding with delete automation"
+                    "Instance %s of %s already deleted, proceeding with delete automation",
+                    object_id,
+                    model_class.__name__,
                 )
             else:
                 logger.warning(
-                    f"Instance {object_id} of {model_class.__name__} not found, skipping automation"
+                    "Instance %s of %s not found, skipping automation",
+                    object_id,
+                    model_class.__name__,
                 )
                 return f"Instance {object_id} not found"
 
@@ -107,7 +119,7 @@ def execute_automation_task(
             try:
                 user = User.objects.get(pk=user_id)
             except User.DoesNotExist:
-                logger.warning(f"User {user_id} not found")
+                logger.warning("User %s not found", user_id)
 
         # Get company if provided
         company = None
@@ -115,7 +127,7 @@ def execute_automation_task(
             try:
                 company = Company.objects.get(pk=company_id)
             except Company.DoesNotExist:
-                logger.warning(f"Company {company_id} not found")
+                logger.warning("Company %s not found", company_id)
 
         # Set up thread local for context
         request_info = request_info or {}
@@ -146,15 +158,19 @@ def execute_automation_task(
                         )
                     except Exception as e:
                         logger.error(
-                            f"Error executing delete automation {automation.title}: {str(e)}",
+                            "Error executing delete automation %s : %s",
+                            automation.title,
+                            str(e),
                             exc_info=True,
                         )
             else:
                 trigger_automations(instance, trigger_type=trigger_type, user=user)
 
             logger.info(
-                f"Successfully executed automations for {model_class.__name__} "
-                f"(id={object_id}, trigger={trigger_type})"
+                "Successfully executed automations for %s (id=%s, trigger=%s)",
+                model_class.__name__,
+                object_id,
+                trigger_type,
             )
             return f"Automations executed for {model_class.__name__} {object_id}"
 
@@ -165,20 +181,180 @@ def execute_automation_task(
 
     except Exception as e:
         logger.error(
-            f"Error executing automation task for {trigger_type} (content_type_id={content_type_id}, object_id={object_id}): {str(e)}",
+            "Error executing automation task for %s (content_type_id=%s, object_id=%s ): %s",
+            trigger_type,
+            content_type_id,
+            object_id,
+            str(e),
             exc_info=True,
         )
         # Don't retry for certain errors (like instance not found)
         if "not found" in str(e).lower() or "DoesNotExist" in str(type(e).__name__):
-            logger.warning(f"Skipping retry for non-retryable error: {str(e)}")
+            logger.warning("Skipping retry for non-retryable error: %s", str(e))
             return f"Task failed: {str(e)}"
         # Retry on other failures
         try:
             raise self.retry(exc=e, countdown=60)
         except Exception as retry_error:
-            logger.error(f"Failed to retry task: {str(retry_error)}")
+            logger.error("Failed to retry task: %s", retry_error)
             return f"Task failed and retry failed: {str(e)}"
         # Note: raise self.retry() will cause Celery to retry the task,
         # so this function will be called again. The return below ensures
         # all code paths that complete normally return a value.
         return f"Task failed: {str(e)}"
+
+
+@shared_task
+def run_scheduled_automations():
+    """
+    Scan and execute all due scheduled automations.
+
+    How it works:
+    - Looks for automations with trigger='scheduled'
+    - For each automation:
+      - Compute the target date: today + (offset sign applied)
+      - Find instances whose automation.schedule_date_field == target date
+      - Evaluate automation conditions
+      - Execute automation with trigger_type='scheduled'
+      - Record an AutomationRunLog to prevent duplicates
+    Run this task periodically (e.g., hourly or daily) via Celery Beat.
+    """
+    now = timezone.now()
+    today = now.date()
+    current_time = now.time()
+
+    logger.info("=== run_scheduled_automations started at %s ===", now)
+
+    automations = HorillaAutomation.objects.filter(trigger="scheduled", is_active=True)
+
+    logger.info("Found %s scheduled automations", automations.count())
+
+    for automation in automations:
+        try:
+            content_type = automation.model
+            model_class = content_type.model_class()
+            if not model_class:
+                logger.warning("Model class not found for automation %s", automation.id)
+                continue
+
+            # If a preferred run time is set, skip until that time passes
+            if (
+                automation.schedule_run_time
+                and current_time < automation.schedule_run_time
+            ):
+                logger.info(
+                    "Skipping automation %s until %s",
+                    automation.id,
+                    automation.schedule_run_time,
+                )
+                continue
+
+            # Determine target date based on offset and direction
+            offset_amount = automation.schedule_offset_amount or 0
+            direction = automation.schedule_offset_direction or "before"
+            unit = automation.schedule_offset_unit or "days"
+
+            if unit == "months":
+                delta = relativedelta(months=offset_amount)
+            elif unit == "weeks":
+                delta = timedelta(weeks=offset_amount)
+            else:
+                delta = timedelta(days=offset_amount)
+
+            # We match instances whose date_field equals the computed date for "run today":
+            # - direction='before': run N units before date_field => date_field = today + delta
+            # - direction='after' : run N units after  date_field => date_field = today - delta
+            target_date = today + delta if direction == "before" else today - delta
+
+            # Build queryset: instances where date_field == target_date
+            date_field = automation.schedule_date_field
+            if not date_field:
+                logger.warning(
+                    "Automation %s missing schedule_date_field, skipping", automation.id
+                )
+                continue
+
+            try:
+                # Validate field exists on model
+                model_class._meta.get_field(date_field)
+            except Exception:
+                logger.error(
+                    "Automation %s references unknown field '%s' on %s",
+                    automation.id,
+                    date_field,
+                    model_class.__name__,
+                )
+                continue
+
+            filter_kwargs = {f"{date_field}": target_date}
+            queryset = model_class.objects.filter(**filter_kwargs)
+
+            logger.info(
+                "Automation %s targeting %s instances for date %s",
+                automation.id,
+                queryset.count(),
+                target_date,
+            )
+
+            for instance in queryset:
+                # Prevent duplicates for the same instance and scheduled target date.
+                # This allows re-running if the instance's date field changes.
+                if AutomationRunLog.objects.filter(
+                    automation=automation,
+                    content_type=content_type,
+                    object_id=str(instance.pk),
+                    scheduled_for=target_date,
+                ).exists():
+                    continue
+
+                # Evaluate conditions using existing engine
+                try:
+                    if not evaluate_automation_conditions(automation, instance):
+                        continue
+                except Exception as e:
+                    logger.error(
+                        "Condition evaluation failed for automation %s on %s(%s): %s",
+                        automation.id,
+                        model_class.__name__,
+                        instance.pk,
+                        e,
+                        exc_info=True,
+                    )
+                    continue
+
+                # Execute with trigger_type='scheduled'
+                try:
+                    execute_automation(
+                        automation, instance, user=None, trigger_type="scheduled"
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Execution failed for automation %s on %s(%s): %s",
+                        automation.id,
+                        model_class.__name__,
+                        instance.pk,
+                        e,
+                        exc_info=True,
+                    )
+                    continue
+
+                AutomationRunLog.objects.create(
+                    automation=automation,
+                    content_type=content_type,
+                    object_id=str(instance.pk),
+                    run_date=today,
+                    scheduled_for=target_date,
+                    company=getattr(instance, "company", None)
+                    or getattr(automation, "company", None),
+                )
+
+        except Exception as e:
+            logger.error(
+                "Error processing scheduled automation %s: %s",
+                automation.id,
+                e,
+                exc_info=True,
+            )
+
+    logger.info("=== run_scheduled_automations completed ===")
+    return "Scheduled automations processed"

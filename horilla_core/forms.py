@@ -10,12 +10,15 @@ import logging
 # Third-party imports
 import pycountry
 from django import forms
-from django.core.exceptions import ValidationError
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.password_validation import validate_password
 
-# First-party / Horilla imports
+# First-party / Horilla apps
 from horilla.auth.models import User
+
+# First-party imports (Horilla)
+from horilla.core.exceptions import ValidationError
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_generics.forms import (
     HorillaModelForm,
@@ -283,6 +286,19 @@ class HolidayForm(HorillaModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        if "weekly_days" in self.errors:
+            choices = self.fields["weekly_days"].choices
+            valid = [c[0] for c in choices]
+            label_to_value = {str(c[1]): c[0] for c in choices}
+            values = cleaned_data.get("weekly_days")
+            if not isinstance(values, list):
+                values = self.data.getlist("weekly_days") if self.data else []
+
+            values = [label_to_value.get(v, v) for v in values]
+            if values and all(v in valid for v in values):
+                del self.errors["weekly_days"]
+                cleaned_data["weekly_days"] = values
+
         def clear_fields(field_list):
             for field in field_list:
                 if field in cleaned_data:
@@ -418,6 +434,7 @@ class DatedConversionRateForm(forms.Form):
                 )
 
     def clean(self):
+        """Validate conversion rates and start_date; check for duplicate DatedConversionRate."""
         cleaned_data = super().clean()
         start_date = cleaned_data.get("start_date")
         if start_date and self.company:
@@ -599,6 +616,19 @@ class BusinessHourForm(HorillaModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        if "week_days" in self.errors:
+            choices = self.fields["week_days"].choices
+            valid = [c[0] for c in choices]
+            label_to_value = {str(c[1]): c[0] for c in choices}
+            values = cleaned_data.get("week_days")
+            if not isinstance(values, list):
+                values = self.data.getlist("week_days") if self.data else []
+
+            values = [label_to_value.get(v, v) for v in values]
+            if values and all(v in valid for v in values):
+                del self.errors["week_days"]
+                cleaned_data["week_days"] = values
+
         def clear_fields(field_list):
             for field in field_list:
                 cleaned_data[field] = None
@@ -618,7 +648,8 @@ class BusinessHourForm(HorillaModelForm):
             ]
 
         if cleaned_data.get("business_hour_type") == "24_5":
-            if len(cleaned_data.get("week_days")) > 5:
+            week_days = cleaned_data.get("week_days") or []
+            if len(week_days) > 5:
                 self.add_error(
                     "week_days",
                     _("You can select a maximum of 5 days for 24×5 business hours."),
@@ -916,15 +947,15 @@ class UserFormClassSingle(HorillaModelForm):
         return confirm_password
 
     def clean_password(self):
-        """Validate password strength."""
+        """Validate password strength using Django's password validators."""
         password = self.cleaned_data.get("password")
 
         if not self.instance or not self.instance.pk:
             if not password:
                 raise ValidationError(_("Password is required for new users."))
 
-        if password and len(password) < 8:
-            raise ValidationError(_("Password must be at least 8 characters long."))
+        if password:
+            validate_password(password, user=self.instance)
 
         return password
 
@@ -979,6 +1010,7 @@ class CompanyMultistepFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
             "currency",
             "time_format",
             "date_format",
+            "date_time_format",
             "activate_multiple_currencies",
         ],
     }
@@ -1069,6 +1101,7 @@ class CompanyFormClassSingle(HorillaModelForm):
             "currency",
             "time_format",
             "date_format",
+            "date_time_format",
             "hq",
             "activate_multiple_currencies",
         ]
@@ -1159,6 +1192,7 @@ class AddUsersToRoleForm(forms.Form):
                 self.fields[field_name].widget.attrs.update({"class": "hidden-input"})
 
     def clean(self):
+        """Ensure no user is already assigned to the selected role."""
         cleaned_data = super().clean()
         role = cleaned_data.get("role")
         users = cleaned_data.get("users")
@@ -1183,6 +1217,111 @@ class AddUsersToRoleForm(forms.Form):
         return users
 
 
+class AddSuperUsersForm(forms.Form):
+    """Form to add users as superusers."""
+
+    users = forms.ModelMultipleChoiceField(
+        queryset=User.objects.all(),
+        label=_("Users"),
+        help_text=_("Select one or more users to grant superuser privileges."),
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "select2-pagination w-full",
+                "data-url": reverse_lazy(
+                    "horilla_generics:model_select2",
+                    kwargs={
+                        "app_label": "horilla_core",
+                        "model_name": str(User.__name__),
+                    },
+                ),
+                "data-placeholder": "Select users",
+                "multiple": "multiple",
+                "data-field-name": "users",
+                "id": "id_users",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.full_width_fields = kwargs.pop("full_width_fields", [])
+        self.dynamic_create_fields = kwargs.pop("dynamic_create_fields", [])
+        self.hidden_fields = kwargs.pop("hidden_fields", [])
+        self.condition_fields = kwargs.pop("condition_fields", [])
+        self.condition_model = kwargs.pop("condition_model", None)
+        self.condition_field_choices = kwargs.pop("condition_field_choices", {})
+        self.request = kwargs.pop("request", None)
+        self.condition_hx_include = kwargs.pop("condition_hx_include", "")
+        self.field_permissions = kwargs.pop("field_permissions", {})
+        self.save_and_new = kwargs.pop("save_and_new", "")
+        self.duplicate_mode = kwargs.pop("duplicate_mode", False)
+        super().__init__(*args, **kwargs)
+
+        # Filter users to only show non-superusers from the same company
+        company = (
+            getattr(self.request, "active_company", None) if self.request else None
+        ) or (
+            self.request.user.company
+            if self.request and self.request.user.is_authenticated
+            else None
+        )
+
+        if company:
+            self.fields["users"].queryset = User.objects.filter(
+                is_superuser=False, company=company
+            )
+        else:
+            self.fields["users"].queryset = User.objects.filter(is_superuser=False)
+
+        # Update the select2 URL to include is_superuser=false parameter
+        base_url = str(
+            reverse_lazy(
+                "horilla_generics:model_select2",
+                kwargs={
+                    "app_label": "horilla_core",
+                    "model_name": str(User.__name__),
+                },
+            )
+        )
+        self.fields["users"].widget.attrs["data-url"] = f"{base_url}?is_superuser=false"
+
+        for field_name in self.hidden_fields:
+            if field_name in self.fields:
+                self.fields[field_name].widget = forms.HiddenInput()
+                self.fields[field_name].widget.attrs.update({"class": "hidden-input"})
+
+    def clean(self):
+        """Ensure selected users are not already superusers."""
+        cleaned_data = super().clean()
+        users = cleaned_data.get("users")
+
+        if users:
+            # Check if any selected users are already superusers
+            already_superusers = users.filter(is_superuser=True)
+            if already_superusers.exists():
+                user_names = ", ".join(
+                    [
+                        user.get_full_name() or user.username
+                        for user in already_superusers
+                    ]
+                )
+                raise forms.ValidationError(
+                    _("The following user(s) are already superusers: {users}").format(
+                        users=user_names
+                    )
+                )
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        """Add superuser status to the selected users."""
+        users = self.cleaned_data["users"]
+        if commit:
+            for user in users:
+                user.is_superuser = True
+                user.save()
+        return users
+
+
 class RegionalFormattingForm(HorillaModelForm):
     """Form class for updating user's regional formatting settings."""
 
@@ -1201,6 +1340,7 @@ class RegionalFormattingForm(HorillaModelForm):
         ]
 
     def __init__(self, *args, **kwargs):
+        """Set HTMX attributes on fields for auto-save on change."""
         super().__init__(*args, **kwargs)
 
         hx_post_url = reverse_lazy("horilla_core:regional_formating_view")
@@ -1235,6 +1375,7 @@ class ChangePasswordForm(forms.Form):
     )
 
     def __init__(self, user, *args, **kwargs):
+        """Store user for current-password validation."""
         self.user = user
         super().__init__(*args, **kwargs)
 
@@ -1245,7 +1386,15 @@ class ChangePasswordForm(forms.Form):
             self.add_error("current_password", _("Current password is incorrect."))
         return current_password
 
+    def clean_new_password(self):
+        """Validate new password using Django's password validators."""
+        new_password = self.cleaned_data.get("new_password")
+        if new_password:
+            validate_password(new_password, user=self.user)
+        return new_password
+
     def clean(self):
+        """Validate new and confirm password match; ensure new differs from current."""
         cleaned_data = super().clean()
         new_password = cleaned_data.get("new_password")
         confirm_password = cleaned_data.get("confirm_password")
@@ -1271,6 +1420,10 @@ class ChangeUserCompanyForm(HorillaModelForm):
     """Form for changing user's company with dynamic role, department, and currency filtering"""
 
     class Meta:
+        """
+        Meta class for change user company form
+        """
+
         model = User
         fields = ["company", "role", "department", "currency"]
 
@@ -1355,8 +1508,8 @@ class ChangeUserCompanyForm(HorillaModelForm):
 
             if company:
                 return related_model.all_objects.filter(company=company, is_active=True)
-            else:
-                return related_model.all_objects.none()
+
+            return related_model.all_objects.none()
 
         return super()._get_fresh_queryset(field_name, related_model)
 

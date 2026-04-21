@@ -4,15 +4,18 @@ Includes `Report` and `ReportFolder` models with helper properties
 for presentation and serialization used by the reports UI.
 """
 
+# Standard library imports
 import json
 
+# Third-party imports (Django)
 from django.conf import settings
-from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
+# First-party imports (Horilla)
+from horilla.db import models
+from horilla.registry.limiters import limit_content_types
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel
-from horilla_reports.methods import limit_content_types
 from horilla_utils.methods import render_template
 
 
@@ -93,6 +96,11 @@ class Report(HorillaCoreModel):
         ("stacked_vertical", _("Stacked Vertical Chart")),
         ("stacked_horizontal", _("Stacked Horizontal Chart")),
         ("scatter", _("Scatter Chart")),
+        ("treemap", _("Treemap")),
+        ("area", _("Area Chart")),
+        ("heatmap", _("Heatmap")),
+        ("sankey", _("Sankey")),
+        ("radar", _("Radar Chart")),
     ]
     report_owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -106,7 +114,7 @@ class Report(HorillaCoreModel):
         HorillaContentType,
         on_delete=models.CASCADE,
         verbose_name=_("Module"),
-        limit_choices_to=limit_content_types,
+        limit_choices_to=limit_content_types("report_models"),
     )
     folder = models.ForeignKey(
         ReportFolder,
@@ -128,6 +136,12 @@ class Report(HorillaCoreModel):
     )
     chart_field_stacked = models.CharField(
         max_length=200, blank=True, null=True, verbose_name=_("Secondary Field")
+    )
+    chart_value_field = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        verbose_name=_("Value Field (Y-axis)"),
     )
 
     is_favourite = models.BooleanField(default=False)
@@ -249,6 +263,11 @@ class Report(HorillaCoreModel):
         for field in self.model_class._meta.get_fields():
             # Skip reverse relations and excluded field types
             if hasattr(field, "related_model") and field.related_model:
+                continue
+            # Skip id/pk and non-editable fields in report detail
+            if field.name in ("id", "pk"):
+                continue
+            if not getattr(field, "editable", True):
                 continue
 
             field_type = field.__class__.__name__

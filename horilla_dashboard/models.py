@@ -5,20 +5,21 @@ import json
 import logging
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.conf import settings
 from django.core.validators import MinValueValidator
-from django.db import models, transaction
-from django.urls import reverse_lazy
-from django.utils.safestring import mark_safe
-from django.utils.translation import gettext_lazy as _
+from django.db import transaction
 
+from horilla.apps import apps
+
+# First-party imports (Horilla)
+from horilla.db import models
+from horilla.registry.limiters import limit_content_types
 from horilla.registry.permission_registry import permission_exempt_model
-
-# First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
-from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
-from horilla_dashboard.methods import limit_content_types
+from horilla.utils.translation import gettext_lazy as _
+from horilla.utils.upload import upload_path
+from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_reports.models import Report
 from horilla_utils.methods import render_template
 
@@ -188,7 +189,7 @@ class Dashboard(HorillaCoreModel):
             path="is_default_dashboard.html", context={"instance": self}
         )
 
-        return mark_safe(html)
+        return html
 
     def save(self, *args, **kwargs):
         """Override save to ensure only one default dashboard per user/company"""
@@ -234,14 +235,12 @@ class DashboardComponent(HorillaCoreModel):
         ("donut", _("Donut")),
         ("stacked_vertical", _("Stacked Vertical Chart")),
         ("stacked_horizontal", _("Stacked Horizontal Chart")),
-    ]
-
-    METRIC_TYPES = [
-        ("count", _("Count")),
-        ("sum", _("Sum")),
-        ("average", _("Average")),
-        ("min", _("Minimum")),
-        ("max", _("Maximum")),
+        ("scatter", _("Scatter")),
+        ("heatmap", _("Heat Map")),
+        ("treemap", _("Tree Map")),
+        ("area", _("Area Chart")),
+        ("sankey", _("Sankey Chart")),
+        ("radar", _("Radar Chart")),
     ]
 
     dashboard = models.ForeignKey(
@@ -277,13 +276,12 @@ class DashboardComponent(HorillaCoreModel):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        limit_choices_to=limit_content_types,
+        limit_choices_to=limit_content_types("dashboard_component_models"),
         verbose_name=_("Module"),
     )
 
     metric_type = models.CharField(
-        max_length=50,
-        choices=METRIC_TYPES,
+        max_length=100,
         default="count",
         blank=True,
         null=True,
@@ -298,12 +296,19 @@ class DashboardComponent(HorillaCoreModel):
         max_length=100,
         blank=True,
         null=True,
-        verbose_name=_("Secondary Grouping (For Stacked)"),
+        verbose_name=_("Secondary Grouping"),
     )
 
-    columns = models.CharField(
-        max_length=100, blank=True, null=True, verbose_name=_("Table Columns")
+    # Y-axis metric configuration for chart components
+    y_axis_metric_type = models.CharField(
+        max_length=100,
+        default="count",
+        blank=True,
+        null=True,
+        verbose_name=_("Y-axis Metric Type"),
     )
+
+    columns = models.TextField(blank=True, null=True, verbose_name=_("Table Columns"))
 
     # Display and positioning
     sequence = models.PositiveIntegerField(
@@ -493,3 +498,61 @@ class ComponentCriteria(HorillaCoreModel):
 
     def __str__(self):
         return f"{self.component.name} - {self.field} {self.operator} {self.value}"
+
+
+class DefaultHomeLayoutOrder(models.Model):
+    """
+    Store layout order per user: for default home (dashboard=null) or for a
+    specific dashboard (dashboard set). Same model for both cases.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="layout_orders",
+        verbose_name=_("User"),
+    )
+    dashboard = models.ForeignKey(
+        "Dashboard",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="user_layout_orders",
+        verbose_name=_("Dashboard"),
+    )
+    order = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_(
+            'For default home: {"kpi": ["default-kpi-0", ...], "chartsAndTables": [...]}. '
+            'For dashboard: {"kpi": [id, ...], "components": [id, ...]}.'
+        ),
+    )
+
+    class Meta:
+        """
+        Meta class for DefaultHomeLayoutOrder. Enforce uniqueness of user-dashboard combination,
+        """
+
+        unique_together = ("user", "dashboard")
+        verbose_name = _("Default Home Layout Order")
+        verbose_name_plural = _("Default Home Layout Orders")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "dashboard"],
+                name="unique_user_dashboard_layout_order",
+            ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(dashboard__isnull=True),
+                name="unique_user_default_home_layout_order",
+            ),
+        ]
+
+    def __str__(self):
+        if self.dashboard_id:
+            return _("Layout order for %(user)s - %(dashboard)s") % {
+                "user": self.user,
+                "dashboard": self.dashboard,
+            }
+        return _("Default home layout order for %(user)s") % {"user": self.user}

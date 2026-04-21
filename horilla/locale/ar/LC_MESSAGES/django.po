@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: demoprojecttest\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-13 10:49+0000\n"
+"POT-Creation-Date: 2026-02-21 05:52+0000\n"
 "PO-Revision-Date: 2025-07-03 03:58\n"
 "Last-Translator: \n"
 "Language-Team: Arabic\n"
@@ -126,10 +126,165 @@ msgstr "فارغ"
 msgid "Is Not Empty"
 msgstr "غير فارغ"
 
+msgid ""
+"Module for automating mail and notifications based on model events and "
+"conditions."
+msgstr "وحدة لأتمتة البريد والإشعارات بناءً على أحداث النموذج والشروط."
+
+msgid "Automations"
+msgstr "الأتمتة"
+
+msgid "Mail & Notifications"
+msgstr "البريد والإشعارات"
+
+msgid "Equal (==)"
+msgstr "يساوي (==)"
+
+msgid "Not Equal (!=)"
+msgstr "لا يساوي (!=)"
+
+msgid "Less Than (<)"
+msgstr "أقل من (<)"
+
+msgid "Greater Than (>)"
+msgstr "أكبر من (>)"
+
+msgid "Less Than or Equal To (<=)"
+msgstr "أقل من أو يساوي (<=)"
+
+msgid "Greater Than or Equal To (>=)"
+msgstr "أكبر من أو يساوي (>=)"
+
+msgid "Title"
+msgstr "العنوان"
+
+msgid "Method Title"
+msgstr "عنوان الطريقة"
+
+msgid "Module"
+msgstr "الوحدة النمطية"
+
+msgid "Mail to/Notify to"
+msgstr "إرسال بريد إلى / إشعار إلى"
+
+msgid ""
+"Specify recipients for email/notifications. Supports:\n"
+"- Direct email: user@example.com\n"
+"- Self: 'self' (person who triggered)\n"
+"- Instance fields: 'instance.owner.email', 'instance.created_by', 'instance."
+"owner'\n"
+"- Multiple: comma-separated (e.g., 'self, instance.owner.email, "
+"admin@example.com')\n"
+"\n"
+"For notifications: Use user fields directly (e.g., 'instance.owner') or "
+"email addresses.\n"
+"The system will find users by email if an email address is provided."
+msgstr ""
+"حدد المستلمين للبريد الإلكتروني/الإشعارات. يدعم:\n"
+"- البريد المباشر: user@example.com\n"
+"- النفس: 'self' (الشخص الذي أطلق الحدث)\n"
+"- حقول النموذج: 'instance.owner.email'، 'instance.created_by'، 'instance.owner'\n"
+"- متعدد: مفصول بفواصل (مثال: 'self, instance.owner.email, admin@example.com')\n"
+"\n"
+"للإشعارات: استخدم حقول المستخدم مباشرة (مثال: 'instance.owner') أو عناوين البريد الإلكتروني.\n"
+"سيقوم النظام بالبحث عن المستخدمين بالبريد الإلكتروني إذا تم توفير عنوان بريد إلكتروني."
+
+msgid "Also Send to"
+msgstr "إرسال أيضاً إلى"
+
+msgid "Mail Detail Choice"
+msgstr "اختيار تفاصيل البريد"
+
+msgid "Trigger"
+msgstr "المشغّل"
+
+msgid "Mail Template"
+msgstr "قالب البريد"
+
+msgid "Notification Template"
+msgstr "قالب الإشعار"
+
+msgid "Outgoing Mail Server"
+msgstr "خادم البريد الصادر"
+
+msgid ""
+"Select the mail server to use for sending emails. If not selected, the "
+"primary mail server will be used."
+msgstr "حدد خادم البريد المستخدم لإرسال الرسائل. إذا لم يتم التحديد، سيُستخدم خادم البريد الأساسي."
+
+msgid "Choose Delivery Channel"
+msgstr "اختر قناة التسليم"
+
+msgid "Mail and Notification"
+msgstr "البريد والإشعار"
+
+msgid "Mail and Notifications"
+msgstr "البريد والإشعارات"
+
+msgid "Automation"
+msgstr "الأتمتة"
+
+msgid "Field Name"
+msgstr "اسم الحقل"
+
+msgid "Operator"
+msgstr "المعامل"
+
+msgid "Value"
+msgstr "القيمة"
+
+msgid "AND"
+msgstr "و"
+
+msgid "OR"
+msgstr "أو"
+
+msgid "Logical Operator"
+msgstr "المعامل المنطقي"
+
+msgid "Order"
+msgstr "الترتيب"
+
+msgid "Automation Condition"
+msgstr "شرط الأتمتة"
+
+msgid "Automation Conditions"
+msgstr "شروط الأتمتة"
+
+msgid "Load Automation"
+msgstr "تحميل الأتمتة"
+
+msgid "Close"
+msgstr "إغلاق"
+
+msgid "Mail Server"
+msgstr "خادم البريد"
+
+msgid "Select mail server"
+msgstr "اختر خادم البريد"
+
+msgid "Add an outgoing mail server in Mail to load automations."
+msgstr "أضف خادم بريد صادر في البريد لتحميل الأتمتة."
+
+msgid "Select All"
+msgstr "تحديد الكل"
+
+msgid "Create"
+msgstr "إنشاء"
+
+msgid "No default automations found."
+msgstr "لم يتم العثور على أتمتة افتراضية."
+
+msgid "Add an outgoing mail server to load automations."
+msgstr "أضف خادم بريد صادر لتحميل الأتمتة."
+
+msgid "Condition"
+msgstr "الشرط"
+
 msgid "Users"
 msgstr "المستخدمون"
 
-msgid "Add column to list"
+msgid "Add Column to List"
 msgstr "إضافة عمود إلى القائمة"
 
 msgid "Name"
@@ -238,17 +393,17 @@ msgstr "كلمة المرور مطلوبة للمستخدمين الجدد."
 msgid "Password must be at least 8 characters long."
 msgstr "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
 
-msgid "Role"
-msgstr "دور"
-
-msgid "Select the role to assign to users."
-msgstr "حدد الدور الذي تريد تعيينه للمستخدمين."
-
 msgid "Select one or more users to assign to the role."
 msgstr "حدد مستخدمًا واحدًا أو أكثر لتعيين الدور إليه."
 
 msgid "The following user(s) are already assigned to this role"
 msgstr "تم تعيين المستخدمين التاليين لهذا الدور بالفعل"
+
+msgid "Select one or more users to grant superuser privileges."
+msgstr "حدد مستخدمًا واحدًا أو أكثر لمنح صلاحيات المستخدم المتميز."
+
+msgid "The following user(s) are already superusers: {users}"
+msgstr "المستخدمون التاليون هم بالفعل مستخدمون متميزون: {users}"
 
 msgid "Enter current password"
 msgstr "أدخل كلمة المرور الحالية"
@@ -277,9 +432,6 @@ msgstr "يجب أن يتطابق تأكيد كلمة المرور مع كلمة 
 msgid "New password must be different from current password."
 msgstr "يجب أن تكون كلمة المرور الجديدة مختلفة عن كلمة المرور الحالية."
 
-msgid "Create"
-msgstr "إنشاء"
-
 msgid "Change"
 msgstr "تغيير"
 
@@ -289,10 +441,8 @@ msgstr "عرض"
 msgid "Delete"
 msgstr "حذف"
 
-#, fuzzy
-#| msgid "Create New"
 msgid "Create Own"
-msgstr "إنشاء جديد"
+msgstr "إنشاء السجل الخاص"
 
 msgid "Change Own"
 msgstr "تغيير السجل الخاص"
@@ -300,10 +450,8 @@ msgstr "تغيير السجل الخاص"
 msgid "View Own"
 msgstr "عرض السجل الخاص"
 
-#, fuzzy
-#| msgid "Delete"
 msgid "Delete Own"
-msgstr "حذف"
+msgstr "حذف السجل الخاص"
 
 msgid "Role does not exist"
 msgstr "الدور غير موجود"
@@ -373,11 +521,14 @@ msgstr "خطأ في تعيين الأذونات: {error}"
 msgid "Role Does not Exist"
 msgstr "الدور غير موجود"
 
+msgid "Add Super Users"
+msgstr "إضافة مستخدمين متميزين"
+
 msgid "First Name"
 msgstr "الاسم الأول"
 
-msgid "Super User Status"
-msgstr "حالة المستخدم الفائق"
+msgid "Successfully added {count} user(s) as superuser(s)."
+msgstr "تمت إضافة {count} مستخدم بنجاح كمستخدم متميز."
 
 msgid "Import Data"
 msgstr "استيراد البيانات"
@@ -483,6 +634,18 @@ msgstr "الملف المستورد"
 
 msgid "Error File"
 msgstr "ملف الأخطاء"
+
+msgid "Please select a module first"
+msgstr "الرجاء تحديد وحدة نمطية أولاً."
+
+msgid "Invalid module selected"
+msgstr "الوحدة النمطية المحددة غير صالحة."
+
+msgid "Selected module is not available for import"
+msgstr "الوحدة النمطية المحددة غير متاحة للاستيراد."
+
+msgid "Error loading fields"
+msgstr "خطأ في تحميل الحقول."
 
 msgid "Unauthorized. Please authenticate first."
 msgstr "غير مصرح. يرجى المصادقة أولاً."
@@ -626,6 +789,12 @@ msgstr "اختر تنسيق التاريخ المفضل لديك."
 msgid "Date Format"
 msgstr "تنسيق التاريخ"
 
+msgid "Select your preferred date time format."
+msgstr "اختر تنسيق التاريخ والوقت المفضل لديك."
+
+msgid "Date Time Format"
+msgstr "تنسيق التاريخ والوقت"
+
 msgid "Activate Multiple Currencies"
 msgstr "تفعيل العملات المتعددة"
 
@@ -661,6 +830,9 @@ msgstr "الوصف"
 
 msgid "Departments"
 msgstr "الأقسام"
+
+msgid "Role"
+msgstr "دور"
 
 msgid "Roles"
 msgstr "الأدوار"
@@ -698,12 +870,6 @@ msgstr "العملة المفضلة للمستخدم للعرض"
 msgid "Preferred Currency"
 msgstr "العملة المفضلة"
 
-msgid "Select your preferred date time format."
-msgstr "اختر تنسيق التاريخ والوقت المفضل لديك."
-
-msgid "Date Time Format"
-msgstr "تنسيق التاريخ والوقت"
-
 msgid "Select your preferred number grouping format."
 msgstr "اختر تنسيق تجميع الأعداد المفضل لديك."
 
@@ -712,6 +878,21 @@ msgstr "تجميع الأرقام"
 
 msgid "User"
 msgstr "المستخدم"
+
+msgid "Username"
+msgstr "اسم المستخدم"
+
+msgid "Last Name"
+msgstr "اسم العائلة"
+
+msgid "Email"
+msgstr "البريد الإلكتروني"
+
+msgid "Administrator"
+msgstr "مسؤول"
+
+msgid "Active"
+msgstr "نشط"
 
 msgid "Can View Global Import"
 msgstr "يمكنه عرض الاستيراد العام"
@@ -749,11 +930,20 @@ msgstr "يمكنه تعديل الملف الشخصي"
 msgid "User Profile"
 msgstr "ملف تعريف المستخدم"
 
+msgid "Kanban"
+msgstr "كانبان"
+
+msgid "Group By"
+msgstr "تجميع حسب"
+
 msgid "Column User"
 msgstr "مستخدم العمود"
 
 msgid "Name of the model (e.g., 'User') to group by."
 msgstr "اسم النموذج (مثل 'User') للتجميع حسبه."
+
+msgid "Whether this setting is for Kanban view or Group By view."
+msgstr "يحدد ما إذا كان هذا الإعداد مخصصاً لعرض كانبان أو عرض التجميع."
 
 msgid ""
 "Name of the field that can be used for grouping (ChoiceField or ForeignKey)."
@@ -1261,9 +1451,6 @@ msgstr "المدة (بالثواني)"
 msgid "Import Histories"
 msgstr "سجلات الاستيراد"
 
-msgid "Title"
-msgstr "العنوان"
-
 msgid "The title or name of the attachment."
 msgstr "عنوان أو اسم المرفق."
 
@@ -1357,6 +1544,9 @@ msgstr "إضافة عملة"
 msgid "Edit Currency Information"
 msgstr "تعديل معلومات العملة"
 
+msgid "Fetching conversion rate..."
+msgstr "جارٍ جلب معدل التحويل..."
+
 msgid "partner role"
 msgstr "دور الشريك"
 
@@ -1391,8 +1581,17 @@ msgstr ""
 "تم تعيين {len(users)} مستخدم(ين) بنجاح إلى الدور '{form."
 "cleaned_data['role']}'."
 
+msgid "The requested role does not exist."
+msgstr "الدور المطلوب غير موجود."
+
+msgid "Please select a role to continue."
+msgstr "الرجاء تحديد دور للمتابعة."
+
 msgid "The requested user does not exist."
 msgstr "المستخدم المطلوب غير موجود."
+
+msgid "Add Role"
+msgstr "إضافة دور"
 
 msgid "Scheduled Export - {}"
 msgstr "التصدير المجدول - {}"
@@ -1420,9 +1619,6 @@ msgstr "التعريب"
 
 msgid "Drag"
 msgstr "سحب"
-
-msgid "Close"
-msgstr "إغلاق"
 
 msgid "Permission Denied"
 msgstr "تم رفض الإذن"
@@ -1595,6 +1791,18 @@ msgstr "كل الحقوق محفوظة."
 msgid "Are you sure you want to delete this holiday?"
 msgstr "هل أنت متأكد أنك تريد حذف هذه العطلة؟"
 
+msgid "Select Fields for Template"
+msgstr "حدد الحقول للقالب"
+
+msgid "File Format"
+msgstr "تنسيق الملف"
+
+msgid "Download Template"
+msgstr "تحميل القالب"
+
+msgid "Unselect All"
+msgstr "إلغاء تحديد الكل"
+
 msgid "Download"
 msgstr "تحميل"
 
@@ -1687,9 +1895,6 @@ msgstr "إنشاء جديد وتحديث الموجود"
 
 msgid "Record match by"
 msgstr "سجل المباراة بواسطة"
-
-msgid "Module"
-msgstr "الوحدة النمطية"
 
 msgid "Import Action"
 msgstr "إجراء الاستيراد"
@@ -1864,9 +2069,6 @@ msgstr "تحديد المستخدمين"
 msgid "Search models..."
 msgstr "البحث عن النماذج..."
 
-msgid "Select All"
-msgstr "تحديد الكل"
-
 msgid "Field permissions not available for this model"
 msgstr "أذونات الحقول غير متاحة لهذا النموذج"
 
@@ -1895,6 +2097,8 @@ msgid ""
 "Required fields are always visible when creating or duplicating. Permissions "
 "for these fields apply only during editing."
 msgstr ""
+"الحقول المطلوبة تكون مرئية دائماً عند الإنشاء أو التكرار. تنطبق "
+"الأذونات لهذه الحقول فقط أثناء التعديل."
 
 msgid "Read Only"
 msgstr "قراءة فقط"
@@ -1905,10 +2109,8 @@ msgstr "قراءة وكتابة"
 msgid "Don't Show"
 msgstr "لا تُظهر"
 
-#, fuzzy
-#| msgid "Enter %(field)s"
 msgid "Mandatory field"
-msgstr "أدخل %(field)s"
+msgstr "حقل إلزامي"
 
 msgid "No fields found for this model."
 msgstr "لم يتم العثور على حقول لهذا النموذج."
@@ -1949,6 +2151,12 @@ msgstr "لم يتم العثور على نماذج مطابقة لبحثك."
 msgid "No models available."
 msgstr "لا توجد نماذج متاحة."
 
+msgid "Are you sure you want to remove superuser status from this user?"
+msgstr "هل أنت متأكد أنك تريد إزالة صلاحيات المستخدم المتميز من هذا المستخدم؟"
+
+msgid "Remove"
+msgstr "إزالة"
+
 msgid "No users available."
 msgstr "لا يوجد مستخدمين متاحين."
 
@@ -1961,11 +2169,8 @@ msgstr "اللغة والمنطقة الزمنية"
 msgid "Number Format"
 msgstr "تنسيق الأرقام"
 
-msgid "Role Hierarchy"
-msgstr "التسلسل الهرمي للأدوار"
-
-msgid "Add Role"
-msgstr "إضافة دور"
+msgid "roles"
+msgstr "الأدوار"
 
 msgid "No roles found"
 msgstr "لم يتم العثور على أدوار"
@@ -2069,9 +2274,6 @@ msgstr "أيقونة"
 msgid "Personal Information"
 msgstr "معلومات شخصية"
 
-msgid "Last Name"
-msgstr "اسم العائلة"
-
 msgid "Work Info"
 msgstr "معلومات العمل"
 
@@ -2123,6 +2325,9 @@ msgstr "معلومات العمل"
 msgid "Localization Information"
 msgstr "معلومات التوطين"
 
+msgid "Change Company"
+msgstr "تغيير الشركة"
+
 msgid "Invalid credentials. Please check and try again."
 msgstr "بيانات الاعتماد غير صالحة. يُرجى التحقق والمحاولة مرة أخرى."
 
@@ -2169,11 +2374,17 @@ msgid "Select %(field)s"
 msgstr "اختر %(field)s"
 
 msgid "This field is read-only and cannot be modified."
-msgstr ""
+msgstr "هذا الحقل للقراءة فقط ولا يمكن تعديله."
 
 #, python-format
 msgid "Enter %(field)s here..."
 msgstr "أدخل %(field)s هنا..."
+
+msgid "Group By Settings"
+msgstr "إعدادات التجميع"
+
+msgid "Kanban Settings"
+msgstr "إعدادات كانبان"
 
 msgid "Select Fields to Display"
 msgstr "حدد الحقول المراد عرضها"
@@ -2181,9 +2392,29 @@ msgstr "حدد الحقول المراد عرضها"
 msgid "Available Fields"
 msgstr "الحقول المتاحة"
 
+msgid "Search fields..."
+msgstr "البحث عن الحقول..."
+
 msgid "Visible Fields"
 msgstr "الحقول المرئية"
 
+msgid "Reset to Default"
+msgstr "إعادة تعيين إلى الافتراضي"
+
+msgid "Change Detail View Fields"
+msgstr "تغيير حقول عرض التفاصيل"
+
+msgid "Header Portion Fields"
+msgstr "حقول قسم الرأس"
+
+msgid "All fields added"
+msgstr "تمت إضافة جميع الحقول"
+
+msgid "No fields"
+msgstr "لا توجد حقول"
+
+msgid "Details Tab Fields"
+msgstr "حقول تبويب التفاصيل"
 msgid "Menu"
 msgstr "القائمة"
 
@@ -2217,10 +2448,8 @@ msgstr "لم يتم اختيار أي ملف"
 msgid "Clear"
 msgstr "مسح"
 
-#, fuzzy
-#| msgid "Create New"
 msgid "Save & New"
-msgstr "إنشاء جديد"
+msgstr "حفظ وجديد"
 
 msgid "Add Notes and Attachment"
 msgstr "إضافة ملاحظات ومرفقات"
@@ -2243,11 +2472,23 @@ msgstr "بحثنا عن"
 msgid "No search results found"
 msgstr "لم يتم العثور على نتائج بحث"
 
+msgid "Select Visible Items"
+msgstr "تحديد العناصر المرئية"
+
+msgid "Actions"
+msgstr "الإجراءات"
+
+msgid "No items in this group."
+msgstr "لا توجد عناصر في هذه المجموعة."
+
+msgid "Nothing to show yet. Please add your"
+msgstr "لا يوجد شيء لعرضه بعد. يُرجى إضافة"
+
+msgid "Add New"
+msgstr "إضافة جديد"
+
 msgid "Clear Filters"
 msgstr "مسح المرشحات"
-
-msgid "Email"
-msgstr "البريد الإلكتروني"
 
 msgid "Call"
 msgstr "يتصل"
@@ -2282,15 +2523,6 @@ msgstr "الإجراء الذي يقوم به"
 msgid "No history available for this object."
 msgstr "لا يوجد تاريخ متاح لهذا الكائن."
 
-msgid "Kanban Settings"
-msgstr "إعدادات كانبان"
-
-msgid "Nothing to show yet. Please add your"
-msgstr "لا يوجد شيء لعرضه بعد. يُرجى إضافة"
-
-msgid "Add New"
-msgstr "إضافة جديد"
-
 msgid "Select Columns to Export (Optional)"
 msgstr "تحديد الأعمدة للتصدير (اختياري)"
 
@@ -2318,17 +2550,14 @@ msgstr "تحديث جماعي"
 msgid "Bulk Delete"
 msgstr "حذف بالجملة"
 
-msgid "Selected"
-msgstr "مختارة"
+msgid "Edit List"
+msgstr "تعديل القائمة"
 
 msgid "Delete List"
 msgstr "حذف القائمة"
 
 msgid "Clear Session"
 msgstr "جلسة واضحة"
-
-msgid "Actions"
-msgstr "اجراء"
 
 #, python-format
 msgid ""
@@ -2366,11 +2595,11 @@ msgstr "بحث"
 msgid "Reload"
 msgstr "إعادة التحميل"
 
+msgid "Layout"
+msgstr "التخطيط"
+
 msgid "List"
 msgstr "قائمة"
-
-msgid "Kanban"
-msgstr "كانبان"
 
 msgid "Notes and Attachments"
 msgstr "الملاحظات والمرفقات"
@@ -2383,6 +2612,9 @@ msgstr "حجم الملف"
 
 msgid "Related To"
 msgstr "مرتبط بـ"
+
+msgid "Delete Attachment"
+msgstr "حذف المرفق"
 
 msgid "Bulk Reassign Dependencies"
 msgstr "إعادة تعيين التبعيات بشكل مجمع"
@@ -2477,6 +2709,15 @@ msgstr "اضبط على قيمة خالية"
 msgid "No dependent records found."
 msgstr "لم يتم العثور على سجلات تابعة."
 
+msgid "Add Quick Filter"
+msgstr "إضافة تصفية سريعة"
+
+msgid "Select Fields"
+msgstr "تحديد الحقول"
+
+msgid "No available fields to add as quick filter."
+msgstr "لا توجد حقول متاحة لإضافتها كتصفية سريعة."
+
 msgid "Hard Delete Confirmation"
 msgstr "تأكيد الحذف النهائي"
 
@@ -2500,9 +2741,6 @@ msgstr "لا"
 
 msgid "No fields available for bulk update."
 msgstr "لا توجد حقول متاحة للتحديث الجماعي."
-
-msgid "Remove"
-msgstr "إزالة"
 
 msgid "Choose the deletion mode for the selected records"
 msgstr "اختر وضع الحذف للسجلات المحددة"
@@ -2528,6 +2766,12 @@ msgstr "تطبيق"
 msgid "More Action"
 msgstr "المزيد من الإجراءات"
 
+msgid "All"
+msgstr "الكل"
+
+msgid "Are you sure you want to delete this quick filter"
+msgstr "هل أنت متأكد أنك تريد حذف هذه التصفية السريعة؟"
+
 msgid "Soft Delete Confirmation"
 msgstr "تأكيد الحذف المؤقت"
 
@@ -2536,6 +2780,9 @@ msgstr "لا توجد سجلات للحذف"
 
 msgid "No related lists found for this"
 msgstr "لم يتم العثور على قوائم ذات صلة بهذا"
+
+msgid "Edit List View"
+msgstr "تعديل عرض القائمة"
 
 msgid "New List View"
 msgstr "عرض القائمة الجديدة"
@@ -2546,11 +2793,36 @@ msgstr "لا توجد معلمات تصفية متاحة."
 msgid "List View Name"
 msgstr "اسم عرض القائمة"
 
+msgid "Make as public"
+msgstr "جعله عاماً"
+
 msgid "Conditions"
 msgstr "شروط"
 
 msgid "Add More"
 msgstr "إضافة المزيد"
+
+msgid ""
+"No grouping field specified or you don't have permission to view any "
+"grouping fields."
+msgstr ""
+"لم يتم تحديد حقل تجميع أو ليس لديك صلاحية لعرض أي حقول تجميع."
+
+
+#, python-format
+msgid "Field '%(field)s' is not a Choice field or ForeignKey field."
+msgstr "الحقل '%(field)s' ليس حقل اختيار أو حقل مفتاح خارجي."
+
+msgid "None"
+msgstr "لا شيء"
+
+#, python-format
+msgid "Invalid grouping field '%(field)s': %(err)s"
+msgstr "حقل التجميع '%(field)s' غير صالح: %(err)s"
+
+#, python-format
+msgid "Error grouping by field '%(field)s': %(err)s"
+msgstr "خطأ في التجميع حسب الحقل '%(field)s': %(err)s"
 
 msgid "You don't have permission to update this record."
 msgstr "ليس لديك الصلاحية لتحديث هذا السجل."
@@ -2593,24 +2865,21 @@ msgstr "تم التحديث"
 msgid "%(model)s %(action)s successfully!"
 msgstr "تم %(action)s %(model)s بنجاح!"
 
-#, fuzzy, python-format
-#| msgid "A user with this username already exists."
 msgid "A %(model)s with this %(field)s already exists."
-msgstr "يوجد بالفعل مستخدم بهذا الاسم."
+msgstr "يوجد بالفعل %(model)s بهذا %(field)s."
 
-#, fuzzy, python-format
-#| msgid "A user with this username already exists."
 msgid "A %(model)s with this combination of %(fields)s already exists."
-msgstr "يوجد بالفعل مستخدم بهذا الاسم."
+msgstr "يوجد بالفعل %(model)s بهذه المجموعة من %(fields)s."
 
-#, python-format
 msgid ""
 "This %(model)s could not be saved due to a duplicate entry. Please check "
 "your input and try again."
 msgstr ""
+"تعذر حفظ %(model)s هذا بسبب إدخال مكرر. يرجى التحقق من "
+"مدخلاتك والمحاولة مرة أخرى."
 
 msgid "An error occurred while saving. Please try again or contact support."
-msgstr ""
+msgstr "حدث خطأ أثناء الحفظ. يرجى المحاولة مرة أخرى أو التواصل مع الدعم."
 
 msgid ""
 "Selected record is not associated with any company. Activate a company to "
@@ -2620,11 +2889,50 @@ msgstr "السجل المحدد غير مرتبط بأي شركة. قم بتفع
 msgid "Notifications"
 msgstr "إشعارات"
 
+msgid ""
+"Message contains potentially dangerous content (XSS detected). Please remove "
+"any scripts or malicious code."
+msgstr ""
+"تحتوي الرسالة على محتوى يحتمل أن يكون خطيراً (تم اكتشاف XSS). يُرجى إزالة أي نصوص برمجية أو أكواد ضارة."
+
+msgid ""
+"URL contains potentially dangerous content (XSS detected). Please remove any "
+"scripts or malicious code."
+msgstr ""
+"يحتوي الرابط على محتوى يحتمل أن يكون خطيراً (تم اكتشاف XSS). يُرجى إزالة أي نصوص برمجية أو أكواد ضارة."
+
 msgid "Notification"
 msgstr "إشعار"
 
-msgid "No notifications"
-msgstr "لا الإخطارات"
+msgid "Template Title"
+msgstr "عنوان القالب"
+
+msgid "Message"
+msgstr "الرسالة"
+
+msgid "Related Model"
+msgstr "النموذج المرتبط"
+
+msgid "Notification Templates"
+msgstr "قوالب الإشعارات"
+
+msgid "Update Notification Template"
+msgstr "تحديث قالب الإشعار"
+
+msgid "Update Template"
+msgstr "تحديث القالب"
+
+msgid "Create Notification Template"
+msgstr "إنشاء قالب الإشعار"
+
+msgid "Save Template"
+msgstr "حفظ القالب"
+
+msgid "Notification template \"{}\" updated successfully."
+msgstr "تم تحديث قالب الإشعار \"{}\" بنجاح."
+
+msgid "Notification template \"{}\" created successfully."
+msgstr "تم إنشاء قالب الإشعار \"{}\" بنجاح."
 
 msgid "No unread notifications"
 msgstr "لا توجد إشعارات غير مقروءة"
@@ -2635,11 +2943,56 @@ msgstr "عرض الكل الإخطار"
 msgid "All Notifications"
 msgstr "جميع الإخطارات"
 
+msgid "No notifications"
+msgstr "لا توجد إشعارات"
+
+msgid "Insert Fields"
+msgstr "إدراج الحقول"
+
+msgid "Select fields to insert into your email template."
+msgstr "حدد الحقول لإدراجها في قالب البريد الإلكتروني."
+
+msgid "Instance"
+msgstr "النموذج"
+
+msgid "Request"
+msgstr "الطلب"
+
+msgid "Direct Fields"
+msgstr "الحقول المباشرة"
+
+msgid "User Fields"
+msgstr "حقول المستخدم"
+
+msgid "Company Fields"
+msgstr "حقول الشركة"
+
+msgid "Request Fields"
+msgstr "حقول الطلب"
+
+msgid "Related Fields"
+msgstr "الحقول المرتبطة"
+
+msgid "Reverse Related Fields"
+msgstr "الحقول المرتبطة العكسية"
+
+msgid "No fields available for this model"
+msgstr "لا توجد حقول متاحة لهذا النموذج."
+
+msgid "Insert Selected Fields"
+msgstr "إدراج الحقول المحددة"
+
+msgid "Select content type (optional)"
+msgstr "تحديد نوع المحتوى (اختياري)"
+
 msgid "No recent items"
 msgstr "لا توجد عناصر حديثة"
 
 msgid "icon"
 msgstr "أيقونة"
+
+msgid "All Company"
+msgstr "جميع الشركات"
 
 msgid "No companies available"
 msgstr "لا توجد شركات متاحة"
@@ -2649,9 +3002,6 @@ msgstr "تسجيل الخروج"
 
 msgid "Menu arrow"
 msgstr "سهم القائمة"
-
-msgid "Username"
-msgstr "اسم المستخدم"
 
 msgid "Load Demo Data"
 msgstr "تحميل البيانات التجريبية"

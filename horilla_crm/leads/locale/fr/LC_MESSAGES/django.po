@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:12+0000\n"
+"POT-Creation-Date: 2026-02-21 08:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,24 +17,23 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-
 msgid "Leads"
 msgstr "Prospects"
 
 msgid "CRM"
-msgstr ""
+msgstr "CRM"
 
 msgid "CRM module for managing leads, contacts, and opportunities."
-msgstr ""
+msgstr "Module CRM pour gérer les prospects, les contacts et les opportunités."
 
 msgid "Horilla CRM"
-msgstr ""
+msgstr "Horilla CRM"
 
 msgid "Welcome to Horilla CRM"
-msgstr ""
+msgstr "Bienvenue dans Horilla CRM"
 
 msgid "Please sign up to access Horilla CRM"
-msgstr ""
+msgstr "Veuillez vous inscrire pour accéder à Horilla CRM"
 
 msgid "Is Final Stage"
 msgstr "Est la phase finale"
@@ -59,6 +58,9 @@ msgstr "Ordre du statut"
 
 msgid "Status Color"
 msgstr "Couleur du statut"
+
+msgid "Leave blank for default (primary theme colour)."
+msgstr "Laisser vide pour la valeur par défaut (couleur principale du thème)."
 
 msgid "Probability"
 msgstr "Probabilité"
@@ -176,9 +178,6 @@ msgstr "Exigences"
 
 msgid "Lead Score"
 msgstr "Score du prospect"
-
-msgid "Annual Revenue 3x"
-msgstr "Chiffre d'affaires annuel x3"
 
 msgid "Incoming Mail"
 msgstr "Courrier entrant"
@@ -335,7 +334,8 @@ msgstr "Cliqué"
 msgid "Bounced"
 msgstr "Rebonds"
 
-msgid "Add column to list"
+
+msgid "Add Column to List"
 msgstr "Ajouter une colonne à la liste"
 
 msgid "Is Active"
@@ -380,22 +380,21 @@ msgstr "Veuillez d'abord sélectionner un compte"
 msgid "Select an account to see available opportunities"
 msgstr "Sélectionnez un compte pour voir les opportunités disponibles"
 
-#, fuzzy
-#| msgid "Success Message"
+
 msgid "Success"
-msgstr "Message de succès"
+msgstr "Succès"
 
 msgid "Your lead has been converted"
 msgstr "Votre prospect a été converti"
 
 msgid "Comapny"
-msgstr ""
+msgstr "Entreprise"
 
 msgid "User"
-msgstr ""
+msgstr "Utilisateur"
 
 msgid "crown"
-msgstr ""
+msgstr "Couronne"
 
 msgid "Go to Leads"
 msgstr "Aller aux prospects"
@@ -404,7 +403,7 @@ msgid "Manage Custom Stages"
 msgstr "Gérer les étapes personnalisées"
 
 msgid "Drag"
-msgstr ""
+msgstr "Glisser"
 
 msgid "Add Stage"
 msgstr "Ajouter une étape"
@@ -442,7 +441,7 @@ msgid "Points"
 msgstr "Points"
 
 msgid "Edit"
-msgstr ""
+msgstr "Modifier"
 
 msgid "Delete"
 msgstr "Supprimer"
@@ -529,7 +528,7 @@ msgid "Save"
 msgstr "Enregistrer"
 
 msgid "Loading..."
-msgstr ""
+msgstr "Chargement..."
 
 msgid "Page Not Found"
 msgstr "Page non trouvée"
@@ -551,12 +550,3 @@ msgstr "Emplacement"
 
 msgid "Change Owner"
 msgstr "Changer le propriétaire"
-
-#~ msgid "Export"
-#~ msgstr "Exporter"
-
-#~ msgid "Move"
-#~ msgstr "Déplacer"
-
-#~ msgid "Favourite"
-#~ msgstr "Favori"

@@ -15,11 +15,11 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.db import transaction
 from django.utils import timezone
 
-# Local application imports
+# First-party / Horilla imports
+from horilla.apps import apps
 from horilla_core.models import FiscalYear
 
 
@@ -246,8 +246,53 @@ class FiscalYearService:
             config, quarter.quarter_number, periods_info
         )
 
+        # Special handling for STANDARD fiscal year:
+        # periods should align with calendar months, not equal day splits.
+        if config.fiscal_year_type == "standard":
+            current_start = quarter.start_date
+
+            for i in range(1, quarter_periods + 1):
+                # Calculate natural month end for the current_start month
+                month_end = current_start + relativedelta(months=1) - timedelta(days=1)
+
+                # For all but the last period in the quarter, stop at month end
+                # For the last period, ensure we don't go past the quarter end date
+                if i < quarter_periods and month_end < quarter.end_date:
+                    current_end = month_end
+                else:
+                    current_end = quarter.end_date
+
+                fiscal_year_period_number = starting_period_number + i
+
+                # Name period based on month name and year (e.g., "January 2026")
+                period_name = f"{current_start.strftime('%B')} {current_start.year}"
+
+                try:
+                    period = Period.objects.get(
+                        company=quarter.company,
+                        quarter=quarter,
+                        period_number=fiscal_year_period_number,
+                    )
+                    period.name = period_name
+                    period.start_date = current_start
+                    period.end_date = current_end
+                    period.save(skip_auto_calculation=True)
+                except Period.DoesNotExist:
+                    period = Period(
+                        company=quarter.company,
+                        quarter=quarter,
+                        period_number=fiscal_year_period_number,
+                        name=period_name,
+                        start_date=current_start,
+                        end_date=current_end,
+                        is_active=True,
+                    )
+                    period.save(skip_auto_calculation=True)
+
+                current_start = current_end + timedelta(days=1)
+
         # Handle quarter-based formats (4-4-5, 4-5-4, 5-4-4)
-        if (
+        elif (
             config.format_type == "quarter_based"
             and "weeks_per_period_pattern" in periods_info
         ):
@@ -295,13 +340,13 @@ class FiscalYearService:
 
                 current_start = current_end + timedelta(days=1)
 
-        # Handle year-based and standard formats
+        # Handle year-based formats
         else:
             if config.format_type == "year_based":
                 # For year-based, each period is 4 weeks = 28 days
                 period_duration = 28
             else:
-                # For standard, divide quarter equally
+                # Fallback: divide quarter equally
                 quarter_duration = (quarter.end_date - quarter.start_date).days + 1
                 period_duration = quarter_duration // quarter_periods
 
@@ -514,6 +559,7 @@ class FiscalYearService:
                     next_fy.is_current = True
                     next_fy.save()
                     results["updated"].append(next_fy)
+                    current_fy = next_fy
                 else:
                     # Create next fiscal year if it doesn't exist (year has changed)
                     new_fy = FiscalYearService.create_next_fiscal_year_instance(
@@ -528,6 +574,7 @@ class FiscalYearService:
                         new_fy.save()
                         results["created"].append(new_fy)
                         results["updated"].append(new_fy)
+                        current_fy = new_fy
 
             # Always ensure next fiscal year exists (create in advance for planning)
             # This allows users to view and plan for the next fiscal year at any time
@@ -543,7 +590,60 @@ class FiscalYearService:
                 if new_fy:
                     results["created"].append(new_fy)
 
+            # After ensuring fiscal years are correct, update Quarter/Period is_current flags
+            if current_fy and config.company:
+                FiscalYearService._update_current_quarter_and_period(
+                    config.company, current_fy, current_date
+                )
+
         return results
+
+    @staticmethod
+    def _update_current_quarter_and_period(company, fiscal_year_instance, current_date):
+        """
+        Ensure that Quarter.is_current and Period.is_current reflect the given date.
+
+        This is used by check_and_update_fiscal_years so that templates relying on
+        is_current (e.g. forecast views) always see an up-to-date "current" flag.
+        """
+        Quarter = apps.get_model("horilla_core", "Quarter")
+        Period = apps.get_model("horilla_core", "Period")
+
+        # Update current quarter within this fiscal year
+        quarters_qs = Quarter.objects.filter(
+            company=company, fiscal_year=fiscal_year_instance
+        )
+
+        current_quarter = quarters_qs.filter(
+            start_date__lte=current_date, end_date__gte=current_date
+        ).first()
+
+        if current_quarter:
+            # Mark only this quarter as current
+            quarters_qs.exclude(id=current_quarter.id).update(is_current=False)
+            if not current_quarter.is_current:
+                current_quarter.is_current = True
+                current_quarter.save(update_fields=["is_current"])
+        else:
+            # No matching quarter – clear flags for safety
+            quarters_qs.update(is_current=False)
+
+        # Update current period across all quarters in this fiscal year
+        periods_qs = Period.objects.filter(
+            company=company, quarter__fiscal_year=fiscal_year_instance
+        )
+
+        current_period = periods_qs.filter(
+            start_date__lte=current_date, end_date__gte=current_date
+        ).first()
+
+        if current_period:
+            periods_qs.exclude(id=current_period.id).update(is_current=False)
+            if not current_period.is_current:
+                current_period.is_current = True
+                current_period.save(update_fields=["is_current"])
+        else:
+            periods_qs.update(is_current=False)
 
     @staticmethod
     def create_next_fiscal_year_instance(config, current_end_date):

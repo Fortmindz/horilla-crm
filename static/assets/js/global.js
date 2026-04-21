@@ -192,7 +192,6 @@ function openContentModalSecond() { ModalManager.open("contentModalSecond", "con
 function closeContentModalSecond() { ModalManager.close("contentModalSecond", "contentModalBoxSecond"); }
 function openDetailModal() { ModalManager.open("detailModal", "detailModalBox"); }
 function closeDetailModal() { ModalManager.close("detailModal", "detailModalBox"); }
-document.body.addEventListener("openNotificationDetailModal", function () { openModal(); });
 function openModal() { ModalManager.open("dbmodal", "modalBox"); }
 function closeModal() { ModalManager.close("dbmodal", "modalBox"); }
 function openhorillaModal() { ModalManager.open("horillaModal", "horillaModalBox"); }
@@ -205,6 +204,7 @@ function openDeleteModeModal() { ModalManager.open("deleteModeModal", "deleteMod
 function closeDeleteModeModal() { ModalManager.close("deleteModeModal", "deleteModeBox"); }
 function openExport() { ModalManager.open("exportModal", "exportBox"); }
 function closeExport() { ModalManager.close("exportModal", "exportBox", false); }
+document.body.addEventListener("openNotificationDetailModal", function () { openModal(); });
 
 function closeConfirm(button) {
     const modal = button.closest(".modal-wrapper");
@@ -284,6 +284,42 @@ const SidebarManager = {
         return pathParts[0] || 'horilla_core';
     },
 
+    /** Find a subsection link whose href path matches or is a prefix of the current path, or whose first path segment matches (e.g. detail view under same app as list link). */
+    getSubsectionLinkMatchingUrl() {
+        const currentPath = window.location.pathname;
+        const currentNorm = currentPath.replace(/\/+$/, "") || "/";
+        const currentFirst = (currentNorm.split("/").filter(Boolean))[0] || "";
+        let $exactFound = null;
+        let exactLongest = 0;
+        let $segmentFound = null;
+        let segmentLongest = 0;
+        $("ul a.sidebar-link").each(function () {
+            const href = $(this).attr("href");
+            if (!href) return;
+            const linkPath = href.indexOf("?") >= 0 ? href.split("?")[0] : href;
+            const path = linkPath.startsWith("http") ? new URL(linkPath).pathname : (linkPath.startsWith("/") ? linkPath : "/" + linkPath);
+            const pathNorm = path.replace(/\/+$/, "") || "/";
+            const linkFirst = (pathNorm.split("/").filter(Boolean))[0] || "";
+            const exactMatch = currentNorm === pathNorm || (currentNorm.length > pathNorm.length && currentNorm.indexOf(pathNorm) === 0 && (pathNorm === "/" || currentNorm.charAt(pathNorm.length) === "/"));
+            const firstSegmentMatch = linkFirst && currentFirst === linkFirst;
+            if (exactMatch && pathNorm.length >= exactLongest) {
+                exactLongest = pathNorm.length;
+                $exactFound = $(this);
+            } else if (firstSegmentMatch && pathNorm.length >= segmentLongest) {
+                segmentLongest = pathNorm.length;
+                $segmentFound = $(this);
+            }
+        });
+        return ($exactFound && $exactFound.length ? $exactFound : null) || ($segmentFound && $segmentFound.length ? $segmentFound : null);
+    },
+
+    /** App label for sidebar logic; from DOM (URL-matching link) so it works after full load and HTMX. */
+    getResolvedAppLabel() {
+        const $link = this.getSubsectionLinkMatchingUrl();
+        if ($link && $link.length) return $link.attr("id") || this.getAppLabelFromUrl();
+        return this.getAppLabelFromUrl();
+    },
+
     getSectionFromAppLabel(appLabel) {
         const APP_SECTION_MAPPING = window.APP_SECTION_MAPPING || {};
         for (const [section, apps] of Object.entries(APP_SECTION_MAPPING)) {
@@ -291,19 +327,22 @@ const SidebarManager = {
                 return section;
             }
         }
-        return 'home';
+        const $link = $(`ul a.sidebar-link#${CSS.escape(appLabel)}`);
+        if ($link.length) return $link.attr("data-section") || "home";
+        return "home";
     },
 
     getActiveSection() {
         const urlParams = new URLSearchParams(window.location.search);
-        const sectionFromUrl = urlParams.get('section');
-
+        const sectionFromUrl = urlParams.get("section");
         if (sectionFromUrl) return sectionFromUrl;
 
-        const appLabel = this.getAppLabelFromUrl();
-        const sectionFromApp = this.getSectionFromAppLabel(appLabel);
+        const $link = this.getSubsectionLinkMatchingUrl();
+        if ($link && $link.length) return $link.attr("data-section") || "home";
 
-        return sectionFromApp || localStorage.getItem("currentActiveSection") || 'home';
+        const appLabel = this.getResolvedAppLabel();
+        const sectionFromApp = this.getSectionFromAppLabel(appLabel);
+        return sectionFromApp || localStorage.getItem("currentActiveSection") || "home";
     },
 
     getSectionSpecificSubsectionId(sectionId) {
@@ -347,7 +386,7 @@ const SidebarManager = {
         const sidebarClicked = localStorage.getItem("sidebarClicked") === "true";
         const activeSubItemId = this.getSectionSpecificSubsectionId(sectionId);
         const lastActiveSection = localStorage.getItem("lastActiveSection");
-        const appLabel = this.getAppLabelFromUrl();
+        const appLabel = this.getResolvedAppLabel();
 
         const isSectionSwitch = lastActiveSection && lastActiveSection !== sectionId;
 
@@ -555,7 +594,7 @@ const updateActionButtonsVisibility = debounce(function (viewId) {
     const totalSelectedCount = table.selectedRecordIds.length;
     const hasSelections = totalSelectedCount > 0;
 
-    $(`#export-all-btn-${viewId}, #bulk-update-btn-${viewId}, #unselect-all-btn-${viewId}, #bulk-delete-btn-${viewId}, [id^="bulk-action-"][id$="-${viewId}"],#total-selected-count-${viewId}`)
+    $(`#export-all-btn-${viewId}, #bulk-update-btn-${viewId}, #unselect-all-btn-${viewId}, #bulk-delete-btn-${viewId}, [id^="bulk-action-"][id$="-${viewId}"]`)
         .toggle(hasSelections);
 
     if (hasSelections) {
@@ -898,32 +937,26 @@ function escapeHtml(text) {
     };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
-// Track processed messages to prevent duplicates
-var processedMessages = new Set();
-
 function showMessages() {
     var messages = [];
+    var seenInBatch = new Set();
 
-    // Collect all messages first
     $("#messages-container .message").each(function () {
         var $message = $(this);
         var messageText = $message.data("message");
         var messageKey = $message.data("level") + "|" + messageText;
 
-        // Only process messages that haven't been shown yet
-        if (!processedMessages.has(messageKey)) {
+        if (!seenInBatch.has(messageKey)) {
             messages.push({
                 level: $message.data("level"),
                 text: messageText
             });
-            processedMessages.add(messageKey);
+            seenInBatch.add(messageKey);
         }
-        // Always remove the message element to prevent reprocessing
         $message.remove();
     });
 
-    // Display messages sequentially
-    let delay = 0;
+    var delay = 0;
     messages.forEach(function(msg) {
         setTimeout(function() {
             Swal.fire({
@@ -946,17 +979,6 @@ function showMessages() {
 
         delay += 4500; // 4000ms timer + 500ms gap between messages
     });
-
-    // Clean up old processed messages after 10 seconds to prevent memory leak
-    setTimeout(function() {
-        var keysToRemove = [];
-        processedMessages.forEach(function(key) {
-            keysToRemove.push(key);
-        });
-        keysToRemove.forEach(function(key) {
-            processedMessages.delete(key);
-        });
-    }, 10000);
 }
 
 
@@ -1117,7 +1139,7 @@ function initializeSelect2Pagination() {
                 loadInitialData($this, url, initialData, fieldName, isMultiple);
             }
         } catch (error) {
-            console.error(`Error initializing Select2 for ${fieldName}:`, error);
+            console.error(`Error initializing Select2`, { fieldName }, error);
         }
     });
 }
@@ -1194,6 +1216,280 @@ window.reinitializeSelect2 = function () {
     safeInitializeSelect2();
 };
 
+function initFilterPanelDrag() {
+    var panel = document.getElementById("filterpanel");
+    var handle = panel && panel.querySelector(".filter-panel-drag-handle");
+    if (!panel || !handle) return;
+
+    // Setup drag tooltip: show on header, but not when hovering action icons
+    var dragTitle = handle.getAttribute("data-drag-title");
+    if (dragTitle) {
+        handle.setAttribute("title", dragTitle);
+        var iconButtons = handle.querySelectorAll("#filterPanelMinBtn, #filterPanelMaxBtn, .filter-panel-close");
+        iconButtons.forEach(function (btn) {
+            btn.addEventListener("mouseenter", function () {
+                handle.removeAttribute("title");
+            });
+            btn.addEventListener("mouseleave", function () {
+                handle.setAttribute("title", dragTitle);
+            });
+        });
+    }
+
+    var startX, startY, isDragging = false;
+
+    function onMouseMove(e) {
+        if (!isDragging) return;
+        panel.style.left = (e.clientX - startX) + "px";
+        panel.style.top = (e.clientY - startY) + "px";
+    }
+
+    function onMouseUp() {
+        if (!isDragging) return;
+        isDragging = false;
+        panel.classList.remove("filter-panel-dragging");
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+    }
+
+    handle.addEventListener("mousedown", function (e) {
+        if (e.button !== 0 || e.target.closest("button")) return;
+        e.preventDefault();
+        var rect = panel.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        panel.classList.add("filter-panel-dragging");
+        panel.style.left = rect.left + "px";
+        panel.style.top = rect.top + "px";
+        panel.style.right = "auto";
+        panel.style.width = rect.width + "px";
+        isDragging = true;
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+    });
+}
+
+var FILTER_PANEL_MIN_W = 288;
+var FILTER_PANEL_MIN_H = 192;
+var FILTER_PANEL_MAX_H = 0.85 * (typeof window !== "undefined" ? window.innerHeight : 800);
+
+function applyFilterPanelVisibilityPreference() {
+    if (typeof window === "undefined" || typeof localStorage === "undefined") return;
+    var panel = document.getElementById("filterpanel");
+    var container = document.getElementById("filtercontainer");
+    if (!panel || !container) return;
+
+    var storageKey = "filterPanelVisible:" + window.location.pathname;
+    var stored;
+    try {
+        stored = localStorage.getItem(storageKey);
+    } catch (e) {
+        stored = null;
+    }
+
+    if (stored === "closed") {
+        panel.classList.remove("visible");
+        container.classList.remove("visible");
+        panel.classList.add("hidden");
+    }
+}
+
+window.applyFilterPanelVisibilityPreference = applyFilterPanelVisibilityPreference;
+
+function initFilterPanelResize() {
+    var panel = document.getElementById("filterpanel");
+    if (!panel) return;
+    var resizeWRight = panel.querySelector(".filter-panel-resize-w:not(.filter-panel-resize-w-left)");
+    var resizeWLeft = panel.querySelector(".filter-panel-resize-w-left");
+    var resizeH = panel.querySelector(".filter-panel-resize-h");
+    if (!resizeWRight && !resizeWLeft && !resizeH) return;
+
+    function getMaxH() { return 0.85 * window.innerHeight; }
+
+    if (resizeWRight) {
+        resizeWRight.addEventListener("mousedown", function (e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            var rect = panel.getBoundingClientRect();
+            var startX = e.clientX;
+            var startW = rect.width;
+            var maxW = window.innerWidth - rect.left - 20;
+
+            panel.style.left = rect.left + "px";
+            panel.style.right = "auto";
+
+            function onMove(e) {
+                var dx = e.clientX - startX;
+                var newW = Math.max(FILTER_PANEL_MIN_W, Math.min(maxW, startW + dx));
+                panel.style.width = newW + "px";
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                panel.classList.remove("filter-panel-resizing");
+                if (window.updateFilterPanelSizeButtons) {
+                    window.updateFilterPanelSizeButtons(panel);
+                }
+            }
+            panel.classList.add("filter-panel-resizing");
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    if (resizeWLeft) {
+        resizeWLeft.addEventListener("mousedown", function (e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            var rect = panel.getBoundingClientRect();
+            var startX = e.clientX;
+            var startW = rect.width;
+            var rightEdge = rect.right;
+            var maxW = rightEdge - 20;
+
+            panel.style.right = (window.innerWidth - rightEdge) + "px";
+            panel.style.left = "auto";
+
+            function onMove(e) {
+                var dx = startX - e.clientX;
+                var newW = Math.max(FILTER_PANEL_MIN_W, Math.min(maxW, startW + dx));
+                panel.style.width = newW + "px";
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                panel.classList.remove("filter-panel-resizing");
+                if (window.updateFilterPanelSizeButtons) {
+                    window.updateFilterPanelSizeButtons(panel);
+                }
+            }
+            panel.classList.add("filter-panel-resizing");
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    if (resizeH) {
+        resizeH.addEventListener("mousedown", function (e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            var rect = panel.getBoundingClientRect();
+            var startY = e.clientY;
+            var startH = rect.height;
+
+            function onMove(e) {
+                var dy = e.clientY - startY;
+                var newH = Math.max(FILTER_PANEL_MIN_H, Math.min(getMaxH(), startH + dy));
+                panel.style.height = newH + "px";
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                panel.classList.remove("filter-panel-resizing");
+                if (window.updateFilterPanelSizeButtons) {
+                    window.updateFilterPanelSizeButtons(panel);
+                }
+            }
+            panel.classList.add("filter-panel-resizing");
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+}
+
+function initFilterPanelSizeControls() {
+    var panel = document.getElementById("filterpanel");
+    if (!panel) return;
+    var minBtn = document.getElementById("filterPanelMinBtn");
+    var maxBtn = document.getElementById("filterPanelMaxBtn");
+    if (!minBtn && !maxBtn) return;
+
+    var STORAGE_KEY = "filterPanelSizeMode";
+
+    function updateButtonsFor(panelEl, opts) {
+        var el = panelEl || panel;
+        if (!el) return;
+
+        var fromClick = opts && opts.fromClick;
+        var isNowMax;
+
+        if (fromClick) {
+            // When called from explicit min/max buttons, trust the classes they just set
+            isNowMax = el.classList.contains("filter-panel-max");
+        } else {
+            // When called from drag/resize, decide based on actual width
+            var rect = el.getBoundingClientRect();
+            var width = rect.width || 0;
+            var baseMin = (typeof FILTER_PANEL_MIN_W !== "undefined" ? FILTER_PANEL_MIN_W : 288);
+            var threshold = baseMin + 40; // a bit wider than min
+            isNowMax = width > threshold;
+            el.classList.toggle("filter-panel-max", isNowMax);
+            el.classList.toggle("filter-panel-min", !isNowMax);
+        }
+
+        // Persist mode so HTMX reloads and page refreshes keep current size
+        try {
+            localStorage.setItem(STORAGE_KEY, isNowMax ? "max" : "min");
+        } catch (e) {
+            // ignore storage issues
+        }
+
+        var isMax = isNowMax;
+
+        if (minBtn) {
+            // Show shrink only when currently in a "max" (wider) state
+            minBtn.style.display = isMax ? "inline-flex" : "none";
+        }
+        if (maxBtn) {
+            // Show expand when not already maximized
+            maxBtn.style.display = isMax ? "none" : "inline-flex";
+        }
+    }
+
+    // Expose so resize handlers can call it
+    window.updateFilterPanelSizeButtons = updateButtonsFor;
+
+    // Initial state: restore last mode from storage (default: min)
+    var savedMode = null;
+    try {
+        savedMode = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+        savedMode = null;
+    }
+
+    if (savedMode === "max") {
+        panel.classList.add("filter-panel-max");
+        panel.classList.remove("filter-panel-min");
+    } else {
+        panel.classList.add("filter-panel-min");
+        panel.classList.remove("filter-panel-max");
+    }
+    updateButtonsFor(panel, { fromClick: true });
+
+    if (minBtn) {
+        minBtn.onclick = function (e) {
+            e.stopPropagation();
+            panel.classList.remove("filter-panel-max");
+            panel.classList.add("filter-panel-min");
+            // Reset inline sizing so CSS min preset takes effect
+            panel.style.width = "";
+            panel.style.height = "";
+            updateButtonsFor(panel, { fromClick: true });
+        };
+    }
+
+    if (maxBtn) {
+        maxBtn.onclick = function (e) {
+            e.stopPropagation();
+            panel.classList.remove("filter-panel-min");
+            panel.classList.add("filter-panel-max");
+            panel.style.width = "";
+            panel.style.height = "";
+            updateButtonsFor(panel, { fromClick: true });
+        };
+    }
+}
+
 // Document Ready
 $(document).ready(function () {
     // Initialize components
@@ -1253,6 +1549,13 @@ $(document).ready(function () {
         });
     });
 
+    // Filter panel helpers
+    // Respect saved visibility (open/closed) state across reloads
+    applyFilterPanelVisibilityPreference();
+    initFilterPanelDrag();
+    initFilterPanelResize();
+    initFilterPanelSizeControls();
+
     // Event Listeners
     $(".filtermenu").on("click", function () {
         $("#filterpanel").toggleClass("hidden visible");
@@ -1261,6 +1564,9 @@ $(document).ready(function () {
     $(".closebtn").on("click", function () {
         $("#filterpanel").removeClass("visible").addClass("hidden");
     });
+
+    initFilterPanelDrag();
+    initFilterPanelResize();
 
     $("#tableBtn").on("click", function () {
         $("[id^='tableview']").removeClass("hidden");
@@ -1483,6 +1789,13 @@ document.body.addEventListener("htmx:afterSettle", function (event) {
     }
     SidebarManager.activateFirstSubsectionItem(currentSection);
 
+    if (event.detail && (event.detail.target.id === "mainSession" || event.detail.target.querySelector("#filterpanel"))) {
+        applyFilterPanelVisibilityPreference();
+        initFilterPanelDrag();
+        initFilterPanelResize();
+        initFilterPanelSizeControls();
+    }
+
     // Reinitialize Select2 after HTMX content loads
     var target = $(event.target);
 
@@ -1630,4 +1943,344 @@ document.addEventListener('DOMContentLoaded', function () {
             wrapper.classList.remove('active');
         }
     });
+
+    // Filter field lists (Available / Visible) in Add column to list and Add column to details
+    document.body.addEventListener('input', function (e) {
+        var input = e.target;
+        if (!input.matches || !input.matches('.field-list-search')) return;
+        var listId = input.getAttribute('data-filter-list');
+        if (!listId) return;
+        var ul = document.getElementById(listId);
+        if (!ul) return;
+        var query = (input.value || '').trim().toLowerCase();
+        var items = ul.querySelectorAll('li');
+        items.forEach(function (li) {
+            var text = (li.textContent || '').toLowerCase();
+            li.style.display = query === '' || text.indexOf(query) !== -1 ? '' : 'none';
+        });
+    });
+
+    // Add column to list: client-side move/reorder (no request until Save)
+    function syncColumnSelectFromVisible(form) {
+        var visibleList = document.getElementById('visibleFields');
+        var select = form && form.querySelector('select[name="visible_fields"]');
+        if (!visibleList || !select) return;
+        var items = visibleList.querySelectorAll('li[data-field-name]');
+        var order = [];
+        items.forEach(function (li) {
+            order.push({ value: li.getAttribute('data-field-name'), text: li.getAttribute('data-verbose-name') });
+        });
+        select.innerHTML = '';
+        order.forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.value;
+            opt.selected = true;
+            opt.textContent = o.text;
+            select.appendChild(opt);
+        });
+    }
+    function columnLiAsAvailable(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var linkClass = form.getAttribute('data-available-link-class') || 'field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'add');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.appendChild(a);
+    }
+    function columnLiAsVisible(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var linkClass = form.getAttribute('data-visible-link-class') || 'field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem]';
+        var wrap = document.createElement('div');
+        wrap.className = 'flex justify-between items-center relative';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'remove');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        var btnWrap = document.createElement('div');
+        btnWrap.className = 'flex absolute right-0 h-full';
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.setAttribute('data-action', 'move_up');
+        up.className = 'field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300';
+        up.innerHTML = '<i class="fa-solid fa-angle-up"></i>';
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.setAttribute('data-action', 'move_down');
+        down.className = 'field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]';
+        down.innerHTML = '<i class="fa-solid fa-angle-down"></i>';
+        btnWrap.appendChild(up);
+        btnWrap.appendChild(down);
+        wrap.appendChild(a);
+        wrap.appendChild(btnWrap);
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.appendChild(wrap);
+    }
+    document.body.addEventListener('click', function (e) {
+        var form = e.target.closest('#fieldSelectorForm');
+        var trigger = e.target.closest('.field-list-move');
+        if (!form || !trigger) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var action = trigger.getAttribute('data-action');
+        var li = trigger.closest('li[data-field-name]');
+        if (!li) return;
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var availableList = document.getElementById('availableFields');
+        var visibleList = document.getElementById('visibleFields');
+        var select = form.querySelector('select[name="visible_fields"]');
+        if (!availableList || !visibleList || !select) return;
+        if (action === 'add') {
+            columnLiAsVisible(li, form);
+            visibleList.appendChild(li);
+            var opt = document.createElement('option');
+            opt.value = fieldName;
+            opt.selected = true;
+            opt.textContent = verboseName;
+            select.appendChild(opt);
+        } else if (action === 'remove') {
+            columnLiAsAvailable(li, form);
+            availableList.appendChild(li);
+            var opts = select.querySelectorAll('option');
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i].value === fieldName) { opts[i].remove(); break; }
+            }
+        } else if (action === 'move_up') {
+            var prev = li.previousElementSibling;
+            if (prev) {
+                visibleList.insertBefore(li, prev);
+            } else {
+                visibleList.appendChild(li);
+            }
+            syncColumnSelectFromVisible(form);
+        } else if (action === 'move_down') {
+            var next = li.nextElementSibling;
+            if (next) {
+                visibleList.insertBefore(next, li);
+            } else {
+                visibleList.insertBefore(li, visibleList.firstChild);
+            }
+            syncColumnSelectFromVisible(form);
+        }
+    });
+
+    // Detail field selector: client-side move/reorder (no request until Save)
+    function syncDetailHiddenInputs(form, section) {
+        var visibleListId = section === 'header' ? 'headerVisibleFields' : 'detailsVisibleFields';
+        var containerId = section === 'header' ? 'header-fields-inputs' : 'details-fields-inputs';
+        var visibleList = document.getElementById(visibleListId);
+        var container = document.getElementById(containerId);
+        if (!visibleList || !container || !form) return;
+        var items = visibleList.querySelectorAll('li[data-field-name]');
+        var name = section === 'header' ? 'header_fields' : 'details_fields';
+        container.innerHTML = '';
+        items.forEach(function (item) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = item.getAttribute('data-field-name');
+            container.appendChild(input);
+        });
+    }
+    function syncDetailAvailablePlaceholder(availableList) {
+        if (!availableList) return;
+        var hasRealFields = availableList.querySelectorAll('li[data-field-name]').length > 0;
+        var placeholder = availableList.querySelector('li:not([data-field-name])');
+        var emptyText = availableList.getAttribute('data-empty-text') || 'All fields added';
+        if (hasRealFields && placeholder) {
+            placeholder.remove();
+        } else if (!hasRealFields && !placeholder) {
+            var li = document.createElement('li');
+            li.className = 'text-[.8rem] text-[#999] px-[10px] py-[8px]';
+            li.textContent = emptyText;
+            availableList.appendChild(li);
+        }
+    }
+    function detailFieldLiAsAvailable(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var section = li.getAttribute('data-section');
+        var linkClass = form.getAttribute('data-available-link-class') || 'detail-field-list-move hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem] mb-1 text-left';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'add');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.setAttribute('data-section', section);
+        li.appendChild(a);
+    }
+    function detailFieldLiAsVisible(li, form) {
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var section = li.getAttribute('data-section');
+        var linkClass = form.getAttribute('data-visible-link-class') || 'detail-field-list-move ps-8 pr-16 bg-primary-300 hover:border-primary-600 transition duration-300 hover:text-primary-600 px-[10px] py-[8px] w-full flex text-[#333] border border-[#dddddd] rounded-[5px] text-[.8rem]';
+        var wrap = document.createElement('div');
+        wrap.className = 'flex justify-between items-center relative';
+        var a = document.createElement('a');
+        a.href = '#';
+        a.setAttribute('role', 'button');
+        a.setAttribute('data-action', 'remove');
+        a.className = linkClass;
+        a.textContent = verboseName;
+        var btnWrap = document.createElement('div');
+        btnWrap.className = 'flex absolute right-0 h-full';
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.setAttribute('data-action', 'move_up');
+        up.className = 'detail-field-list-move border-[1px] border-r-[0px] border-[solid] w-8 text-primary-600 text-xs transition duration-300';
+        up.innerHTML = '<i class="fa-solid fa-angle-up"></i>';
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.setAttribute('data-action', 'move_down');
+        down.className = 'detail-field-list-move border-[1px] border-[solid] w-8 text-primary-600 text-xs transition duration-300 rounded-r-[5px]';
+        down.innerHTML = '<i class="fa-solid fa-angle-down"></i>';
+        btnWrap.appendChild(up);
+        btnWrap.appendChild(down);
+        wrap.appendChild(a);
+        wrap.appendChild(btnWrap);
+        li.innerHTML = '';
+        li.setAttribute('data-field-name', fieldName);
+        li.setAttribute('data-verbose-name', verboseName);
+        li.setAttribute('data-section', section);
+        li.appendChild(wrap);
+    }
+    document.body.addEventListener('click', function (e) {
+        var form = e.target.closest('#detailFieldSelectorForm');
+        var trigger = e.target.closest('.detail-field-list-move');
+        if (!form || !trigger) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var action = trigger.getAttribute('data-action');
+        var li = trigger.closest('li[data-section][data-field-name]');
+        if (!li) return;
+        var section = li.getAttribute('data-section');
+        var fieldName = li.getAttribute('data-field-name');
+        var verboseName = li.getAttribute('data-verbose-name');
+        var availableList = document.getElementById(section === 'header' ? 'headerAvailableFields' : 'detailsAvailableFields');
+        var visibleList = document.getElementById(section === 'header' ? 'headerVisibleFields' : 'detailsVisibleFields');
+        if (!availableList || !visibleList) return;
+        if (action === 'add') {
+            detailFieldLiAsVisible(li, form);
+            visibleList.appendChild(li);
+            syncDetailAvailablePlaceholder(availableList);
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'remove') {
+            detailFieldLiAsAvailable(li, form);
+            availableList.appendChild(li);
+            syncDetailAvailablePlaceholder(availableList);
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'move_up') {
+            var prev = li.previousElementSibling;
+            if (prev && prev.matches('li[data-field-name]')) {
+                visibleList.insertBefore(li, prev);
+            } else {
+                visibleList.appendChild(li);
+            }
+            syncDetailHiddenInputs(form, section);
+        } else if (action === 'move_down') {
+            var next = li.nextElementSibling;
+            if (next && next.matches('li[data-field-name]')) {
+                visibleList.insertBefore(next, li);
+            } else {
+                visibleList.insertBefore(li, visibleList.firstChild);
+            }
+            syncDetailHiddenInputs(form, section);
+        }
+    });
+
+    // Sync hidden inputs right before form submit so removed/moved fields are persisted
+    document.body.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (form && form.id === 'detailFieldSelectorForm') {
+            syncDetailHiddenInputs(form, 'header');
+            syncDetailHiddenInputs(form, 'details');
+        }
+    }, true);
 });
+
+/* ==========================================================================
+   Split view: active tile (red line) and sync on prev/next / HTMX load
+   Uses event delegation so it works when split view is loaded via navbar (HTMX).
+   ========================================================================== */
+(function () {
+    var ACTIVE_CLASS = 'split-view-tile-active';
+
+    function clearTileSelection() {
+        var list = document.getElementById('split-view-tiles');
+        if (!list) return;
+        var tiles = list.querySelectorAll('.split-view-tile');
+        tiles.forEach(function (el) {
+            el.classList.remove(ACTIVE_CLASS);
+        });
+    }
+
+    function setTileSelected(tile) {
+        if (!tile) return;
+        clearTileSelection();
+        tile.classList.add(ACTIVE_CLASS);
+        window._splitViewSelectedId = tile.getAttribute('data-id');
+    }
+
+    function setActiveTileById(id) {
+        if (!id) return;
+        var list = document.getElementById('split-view-tiles');
+        if (!list) return;
+        var t = list.querySelector('.split-view-tile[data-id="' + id + '"]');
+        if (t) {
+            clearTileSelection();
+            t.classList.add(ACTIVE_CLASS);
+            window._splitViewSelectedId = id;
+        }
+    }
+
+    // Tile click: delegate so it works when split view is loaded via HTMX (navbar)
+    document.body.addEventListener('click', function (e) {
+        var tile = e.target.closest('.split-view-tile');
+        if (!tile) return;
+        var list = document.getElementById('split-view-tiles');
+        if (!list || !list.contains(tile)) return;
+        if (!tile.getAttribute('hx-get')) return;
+        var tileId = tile.getAttribute('data-id');
+        if (!tileId) return;
+        setTileSelected(tile);
+    }, true);
+
+    // After detail panel swap: sync active tile (tile click or prev/next)
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        if (evt.detail.target.id !== 'splitViewDetailPanel') return;
+        var selectedId = window._splitViewSelectedId;
+        window._splitViewSelectedId = null;
+        clearTileSelection();
+        if (!selectedId) {
+            var container = evt.detail.target;
+            var el = container.querySelector && container.querySelector('[data-object-id]');
+            if (el) selectedId = el.getAttribute('data-object-id');
+        }
+        if (selectedId) {
+            var list = document.getElementById('split-view-tiles');
+            if (list) {
+                var t = list.querySelector('.split-view-tile[data-id="' + selectedId + '"]');
+                if (t) {
+                    t.classList.add(ACTIVE_CLASS);
+                    t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                }
+            }
+        }
+    });
+})();

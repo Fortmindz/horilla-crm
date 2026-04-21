@@ -8,16 +8,17 @@ import threading
 from decimal import Decimal
 
 # Third-party imports (Django)
-from django.apps import apps
-from django.db import models
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import Signal, receiver
-from django.http import HttpResponse
-from django.shortcuts import render
-from django.urls import reverse_lazy
+
+from horilla.apps import apps
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.db import models
+from horilla.shortcuts import render
+from horilla.urls import reverse_lazy
+from horilla_core.models import TeamRole
 from horilla_core.signals import company_currency_changed
 from horilla_crm.leads.signals import lead_stage_created
 from horilla_crm.opportunities.models import (
@@ -57,23 +58,13 @@ def handle_lead_stage_group_created(
     url = reverse_lazy(
         "opportunities:load_opp_stages", kwargs={"company_id": company.id}
     )
-    return HttpResponse(
-        f"""
-        <script>
-            closeModal();
-            $('#reloadButton').click();
-            openContentModal();
-            var div = document.createElement('div');
-            div.setAttribute('hx-get', '{url}');
-            div.setAttribute('hx-target', '#contentModalBox');
-            div.setAttribute('hx-trigger', 'load');
-            div.setAttribute('hx-swap', 'innerHTML');
-            document.body.appendChild(div);
-            htmx.process(div);
-        </script>
-        """,
-        headers={"X-Debug": "Modal transition in progress"},
+    response = render(
+        request,
+        "opportunity_stage/reload_and_load_url_script.html",
+        {"load_url": str(url)},
     )
+    response["X-Debug"] = "Modal transition in progress"
+    return response
 
 
 @receiver(company_currency_changed)
@@ -165,13 +156,20 @@ def sync_opportunity_owner(sender, instance, created, **kwargs):
     new_owner = instance.owner
     owner_changed = old_owner_id and old_owner_id != new_owner.id
 
+    # Resolve "Opportunity Owner" TeamRole for this company (FK requires instance)
+    owner_role, _ = TeamRole.objects.get_or_create(
+        company=instance.company,
+        team_role_name="Opportunity Owner",
+        defaults={"team_role_name": "Opportunity Owner"},
+    )
+
     # Create/update team member for new owner
     _team_member, _tm_created = OpportunityTeamMember.objects.update_or_create(
         opportunity=instance,
         user=new_owner,
         defaults={
-            "team_role": "Opportunity Owner",
-            "opportunity_access": "Read/Write",
+            "team_role": owner_role,
+            "opportunity_access": "edit",  # Read/Write
             "company": instance.company,
         },
     )

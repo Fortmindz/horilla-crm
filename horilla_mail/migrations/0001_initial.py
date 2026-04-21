@@ -2,9 +2,9 @@
 
 import django.db.models.deletion
 import django.utils.timezone
-import horilla_core.models
+import horilla.utils.upload
 import horilla_mail.fields
-import horilla_mail.methods
+import horilla.registry.limiters
 from django.conf import settings
 from django.db import migrations, models
 
@@ -170,7 +170,7 @@ class Migration(migrations.Migration):
                         default=django.utils.timezone.now, verbose_name="Updated At"
                     ),
                 ),
-                ("file", models.FileField(upload_to=horilla_core.models.upload_path)),
+                ("file", models.FileField(upload_to=horilla.utils.upload.upload_path)),
                 ("file_size", models.PositiveIntegerField(blank=True, null=True)),
                 ("mime_type", models.CharField(blank=True, max_length=100, null=True)),
                 ("is_inline", models.BooleanField(default=False)),
@@ -510,7 +510,7 @@ class Migration(migrations.Migration):
                     "content_type",
                     models.ForeignKey(
                         blank=True,
-                        limit_choices_to=horilla_mail.methods.limit_content_types,
+                        limit_choices_to=horilla.registry.limiters.ContentTypeLimiter('mail_template_models'),
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         to="horilla_core.horillacontenttype",

@@ -4,36 +4,22 @@ Models for the horilla_automations app
 
 # Third-party imports (Django)
 from django.conf import settings
-from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+from django.utils.html import format_html
 
-from horilla.registry.feature import FEATURE_REGISTRY
+from horilla.core.exceptions import ValidationError
+
+# First-party imports (Horilla)
+from horilla.db import models
+from horilla.registry.limiters import limit_content_types
 from horilla.registry.permission_registry import permission_exempt_model
+from horilla.urls import reverse_lazy
 from horilla.utils.choices import OPERATOR_CHOICES
-
-# First-party / Horilla core imports
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, HorillaCoreModel
-
-# First-party / Horilla app imports
 from horilla_mail.models import HorillaMailConfiguration, HorillaMailTemplate
 from horilla_notifications.models import NotificationTemplate
 
 # Create your horilla_automations models here.
-
-
-def limit_content_types():
-    """
-    Limit ContentType choices to only models that have
-    'automation_includable = True' or are registered for automation.
-    """
-    includable_models = []
-    for model in FEATURE_REGISTRY.get("automation_models", []):
-        includable_models.append(model._meta.model_name.lower())
-
-    return models.Q(model__in=includable_models)
-
-
 CONDITIONS = [
     ("equal", _("Equal (==)")),
     ("notequal", _("Not Equal (!=)")),
@@ -55,6 +41,7 @@ class HorillaAutomation(HorillaCoreModel):
         ("on_update", "On Update"),
         ("on_create_or_update", "Both Create and Update"),
         ("on_delete", "On Delete"),
+        ("scheduled", "Scheduled (time-based)"),
     ]
     SEND_OPTIONS = [
         ("mail", "Send as Mail"),
@@ -69,7 +56,7 @@ class HorillaAutomation(HorillaCoreModel):
     model = models.ForeignKey(
         HorillaContentType,
         on_delete=models.CASCADE,
-        limit_choices_to=limit_content_types,
+        limit_choices_to=limit_content_types("automation_models"),
         verbose_name=_("Module"),
     )
     mail_to = models.TextField(
@@ -128,6 +115,48 @@ class HorillaAutomation(HorillaCoreModel):
         verbose_name=_("Choose Delivery Channel"),
     )
 
+    schedule_date_field = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("Target Date Field"),
+        help_text=_(
+            "The date field on the record to schedule around (e.g., 'close_date', 'due_date'). "
+            "Required for scheduled automations."
+        ),
+    )
+    schedule_offset_amount = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name=_("Adjust By"),
+        help_text=_(
+            "How many days/weeks/months away from the Target Date.\n"
+            "Use 0 to send on the same day."
+        ),
+    )
+    schedule_offset_direction = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=[("before", _("Before")), ("after", _("After"))],
+        verbose_name=_("Timing"),
+        help_text=_(
+            "Before = send earlier than the Target Date.\n"
+            "After = send later than the Target Date."
+        ),
+    )
+    schedule_offset_unit = models.CharField(
+        max_length=16,
+        blank=True,
+        choices=[("days", _("Days")), ("weeks", _("Weeks")), ("months", _("Months"))],
+        verbose_name=_("Offset Unit"),
+        help_text=_("Choose Days, Weeks, or Months."),
+    )
+    schedule_run_time = models.TimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Run Time"),
+        help_text=_("Optional. Leave empty to run whenever the scheduler runs."),
+    )
+
     class Meta:
         """
         Meta class for HorillaAutomation model
@@ -136,7 +165,111 @@ class HorillaAutomation(HorillaCoreModel):
         verbose_name = _("Mail and Notification")
         verbose_name_plural = _("Mail and Notifications")
 
+    def get_template(self):
+        """
+        Returns the template content based on the selected delivery channel.
+        """
+        templates = {
+            "mail": self.mail_template,
+            "notification": self.notification_template,
+        }
+
+        if self.delivery_channel in templates:
+            return templates[self.delivery_channel]
+
+        return format_html(
+            "Mail Template: {}<br>Notification Template: {}",
+            self.mail_template,
+            self.notification_template,
+        )
+
+    def clean(self):
+        """Validate template fields based on delivery_channel."""
+        super().clean()
+        # Validate scheduled configuration if trigger is scheduled
+        if getattr(self, "trigger", None) == "scheduled":
+            errors = {}
+            if not self.schedule_date_field:
+                errors["schedule_date_field"] = _(
+                    "This field is required when Trigger is 'Scheduled'."
+                )
+            if self.schedule_offset_amount is None:
+                errors["schedule_offset_amount"] = _(
+                    "This field is required when Trigger is 'Scheduled'."
+                )
+            if not self.schedule_offset_direction:
+                errors["schedule_offset_direction"] = _(
+                    "This field is required when Trigger is 'Scheduled'."
+                )
+            if not self.schedule_offset_unit:
+                errors["schedule_offset_unit"] = _(
+                    "This field is required when Trigger is 'Scheduled'."
+                )
+            if errors:
+                raise ValidationError(errors)
+
+        if (
+            self.delivery_channel == "notification"
+            and not self.notification_template_id
+        ):
+            raise ValidationError(
+                {
+                    "notification_template": _(
+                        "Notification template is required when delivery channel is "
+                        "'Send as Notification'."
+                    )
+                }
+            )
+        if self.delivery_channel == "mail":
+            if not self.mail_template_id:
+                raise ValidationError(
+                    {
+                        "mail_template": _(
+                            "Mail template is required when delivery channel is "
+                            "'Send as Mail'."
+                        )
+                    }
+                )
+            if not self.mail_server_id:
+                raise ValidationError(
+                    {
+                        "mail_server": _(
+                            "Outgoing mail server is required when delivery channel is "
+                            "'Send as Mail'."
+                        )
+                    }
+                )
+        if self.delivery_channel == "both":
+            if not self.mail_template_id:
+                raise ValidationError(
+                    {
+                        "mail_template": _(
+                            "Mail template is required when delivery channel is "
+                            "'Send as Mail and Notification'."
+                        )
+                    }
+                )
+            if not self.notification_template_id:
+                raise ValidationError(
+                    {
+                        "notification_template": _(
+                            "Notification template is required when delivery channel is "
+                            "'Send as Mail and Notification'."
+                        )
+                    }
+                )
+            if not self.mail_server_id:
+                raise ValidationError(
+                    {
+                        "mail_server": _(
+                            "Outgoing mail server is required when delivery channel is "
+                            "'Send as Mail and Notification'."
+                        )
+                    }
+                )
+
     def save(self, *args, **kwargs):
+        self.full_clean()
         if not self.pk:
             self.method_title = self.title.replace(" ", "_").lower()
         return super().save(*args, **kwargs)
@@ -201,3 +334,45 @@ class AutomationCondition(HorillaCoreModel):
 
     def __str__(self):
         return f"{self.automation.title} - {self.field} {self.operator} {self.value}"
+
+
+@permission_exempt_model
+class AutomationRunLog(HorillaCoreModel):
+    """
+    Keeps track of scheduled automation executions to prevent duplicates.
+
+    We log both:
+    - run_date: when the task ran (today)
+    - scheduled_for: the target date value the instance matched (e.g., close_date)
+    This allows re-running when the instance date changes (e.g., close_date updated).
+    """
+
+    automation = models.ForeignKey(
+        HorillaAutomation,
+        on_delete=models.CASCADE,
+        related_name="run_logs",
+        verbose_name=_("Automation"),
+    )
+    content_type = models.ForeignKey(
+        HorillaContentType,
+        on_delete=models.CASCADE,
+        verbose_name=_("Content Type"),
+    )
+    object_id = models.CharField(max_length=64, verbose_name=_("Object ID"))
+    run_date = models.DateField(verbose_name=_("Run Date"))
+    scheduled_for = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name=_("Scheduled For"),
+        help_text=_(
+            "The instance date value that matched when this automation executed."
+        ),
+    )
+
+    class Meta:
+        verbose_name = _("Automation Run Log")
+        verbose_name_plural = _("Automation Run Logs")
+        unique_together = ("automation", "content_type", "object_id", "scheduled_for")
+
+    def __str__(self) -> str:
+        return f"{self.automation_id}:{self.content_type_id}:{self.object_id}@{self.run_date}"

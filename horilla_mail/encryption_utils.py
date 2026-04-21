@@ -10,7 +10,9 @@ import os
 
 from cryptography.fernet import Fernet
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
+
+# First-party (Horilla)
+from horilla.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
 

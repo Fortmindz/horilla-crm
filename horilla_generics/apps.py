@@ -1,36 +1,23 @@
 """
 Horilla generics app configuration.
 
-This module defines the AppConfig for the horilla_generics application and performs
+This module defines the AppLauncher for the horilla_generics application and performs
 application startup tasks such as URL registration and signal imports.
 """
 
-from django.apps import AppConfig
+from horilla.apps import AppLauncher
 
 
-class HorillaGenericsConfig(AppConfig):
+class HorillaGenericsConfig(AppLauncher):
     """App configuration for horilla_generics application."""
+
+    default = True
 
     default_auto_field = "django.db.models.BigAutoField"
     name = "horilla_generics"
 
-    def ready(self):
-        try:
-            # Auto-register this app's URLs and add to installed apps
-            from django.urls import include, path
+    url_prefix = "generics/"
+    url_module = "horilla_generics.urls"
+    url_namespace = "horilla_generics"
 
-            from horilla.urls import urlpatterns
-
-            urlpatterns.append(
-                path(
-                    "generics/",
-                    include("horilla_generics.urls", namespace="horilla_generics"),
-                ),
-            )
-            __import__("horilla_generics.signals")
-        except Exception as e:
-            import logging
-
-            logging.warning("HorillaGenericsConfig.ready failed: %s", e)
-
-        super().ready()
+    auto_import_modules = ["signals"]

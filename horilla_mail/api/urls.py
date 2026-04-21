@@ -2,9 +2,9 @@
 URL patterns for horilla_mail API, consistent with horilla_core
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_mail.api.views import (
     HorillaMailAttachmentViewSet,
     HorillaMailConfigurationViewSet,

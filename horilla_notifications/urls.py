@@ -7,11 +7,11 @@ This module defines URL patterns for notification-related views, including:
 - Opening/redirecting to notification URLs
 """
 
-# Third party imports (Django)
-from django.urls import path
+# First-party / Horilla imports
+from horilla.urls import path
 
 # Local application imports
-from . import notification_template, views
+from horilla_notifications import views
 
 app_name = "horilla_notifications"
 
@@ -44,42 +44,42 @@ urlpatterns = [
     # Notification Template Urls
     path(
         "notification-template-view/",
-        notification_template.NotificationTemplateView.as_view(),
+        views.NotificationTemplateView.as_view(),
         name="notification_template_view",
     ),
     path(
-        "notification_template_nav_view/",
-        notification_template.NotificationTemplateNavbar.as_view(),
+        "notification-template-nav-view/",
+        views.NotificationTemplateNavbar.as_view(),
         name="notification_template_nav_view",
     ),
     path(
-        "notification_template_list_view/",
-        notification_template.NotificationTemplateListView.as_view(),
+        "notification-template-list-view/",
+        views.NotificationTemplateListView.as_view(),
         name="notification_template_list_view",
     ),
     path(
-        "notification_template_detail_view/<int:pk>/",
-        notification_template.MailTemplateDetailView.as_view(),
+        "notification-template-detail-view/<int:pk>/",
+        views.NotificationTemplateDetailView.as_view(),
         name="notification_template_detail_view",
     ),
     path(
-        "notification_template_create_view/",
-        notification_template.NotificationTemplateCreateUpdateView.as_view(),
+        "notification-template-create-view/",
+        views.NotificationTemplateCreateUpdateView.as_view(),
         name="notification_template_create_view",
     ),
     path(
-        "notification_template_update_view/<int:pk>/",
-        notification_template.NotificationTemplateCreateUpdateView.as_view(),
+        "notification-template-update-view/<int:pk>/",
+        views.NotificationTemplateCreateUpdateView.as_view(),
         name="notification_template_update_view",
     ),
     path(
-        "notification_template_delete_view/<int:pk>/",
-        notification_template.NotificationTemplateDeleteView.as_view(),
+        "notification-template-delete-view/<int:pk>/",
+        views.NotificationTemplateDeleteView.as_view(),
         name="notification_template_delete_view",
     ),
     path(
         "field-selection/",
-        notification_template.NotificationTemplateFieldSelectionView.as_view(),
+        views.NotificationTemplateFieldSelectionView.as_view(),
         name="field_selection",
     ),
 ]

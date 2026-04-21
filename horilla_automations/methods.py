@@ -5,23 +5,60 @@ Methods for executing automations
 # Standard library imports
 import logging
 import threading
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 # Third-party imports (Django)
-from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.template import engines
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 # First-party / Horilla imports
 from horilla.auth.models import User
 from horilla_automations.models import HorillaAutomation
+from horilla_core.models import HorillaContentType
 from horilla_mail.models import HorillaMail, HorillaMailConfiguration
 from horilla_mail.services import HorillaMailManager
 from horilla_notifications.methods import create_notification
+from horilla_utils.methods import get_section_info_for_model
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
+
+
+def _get_model_list_view_url(model_class):
+    """
+    Resolve the list/view URL for a model by finding a settings menu item
+    whose permission matches the model's view permission (e.g. department -> department_view).
+    Returns a path string or None if not found.
+    """
+    try:
+        app_label = model_class._meta.app_label
+        model_name = model_class._meta.model_name
+        view_perm = f"{app_label}.view_{model_name}"
+        from horilla.menu.settings_menu import settings_registry
+
+        for cls in settings_registry:
+            items = getattr(cls(), "items", [])
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                perm = item.get("perm")
+                if perm != view_perm:
+                    continue
+                url = item.get("url")
+                if url is None:
+                    continue
+                path = str(url).strip()
+                if path and path != "#":
+                    if not path.startswith("/"):
+                        parsed = urlparse(path)
+                        path = parsed.path or path
+                    return path
+        return None
+    except Exception as e:
+        logger.debug("_get_model_list_view_url(%s): %s", model_class.__name__, str(e))
+        return None
 
 
 def evaluate_condition(condition, instance):
@@ -42,8 +79,10 @@ def evaluate_condition(condition, instance):
         # Get the field object to determine its type
         field = instance._meta.get_field(condition.field)
 
-        # Check if field is numeric
+        # Check if field is numeric / date / datetime
         is_numeric_field = False
+        is_date_field = False
+        is_datetime_field = False
         field_type = None
         if hasattr(field, "get_internal_type"):
             field_type = field.get_internal_type()
@@ -57,6 +96,8 @@ def evaluate_condition(condition, instance):
                 "FloatField",
             ]
             is_numeric_field = field_type in numeric_types
+            is_date_field = field_type == "DateField"
+            is_datetime_field = field_type == "DateTimeField"
 
         # Handle ForeignKey fields - get the ID
         if hasattr(field, "related_model"):
@@ -70,29 +111,82 @@ def evaluate_condition(condition, instance):
             else:
                 field_value = ""
         else:
-            # Convert field_value to string for comparison
+            # Convert field_value to string for comparison (unless we'll use date/datetime comparison)
             if field_value is None:
                 field_value = ""
             else:
                 field_value = str(field_value)
 
         value = condition.value or ""
+        op = condition.operator
+
+        # Filter-style operators for date/datetime: exact, gt, lt, between, isnull, isnotnull
+        if is_date_field or is_datetime_field:
+            if op == "isnull":
+                return field_value in (None, "") or (
+                    getattr(instance, condition.field, None) is None
+                )
+            if op == "isnotnull":
+                return getattr(instance, condition.field, None) is not None
+            if op in ("exact", "gt", "lt", "between"):
+                raw_value = getattr(instance, condition.field, None)
+                if op == "exact":
+                    comp_value = (
+                        parse_date(value) if is_date_field else parse_datetime(value)
+                    )
+                    if comp_value is None:
+                        return str(raw_value) == value
+                    return raw_value is not None and raw_value == comp_value
+                if op == "gt":
+                    comp_value = (
+                        parse_date(value) if is_date_field else parse_datetime(value)
+                    )
+                    if comp_value is None:
+                        return False
+                    return raw_value is not None and raw_value > comp_value
+                if op == "lt":
+                    comp_value = (
+                        parse_date(value) if is_date_field else parse_datetime(value)
+                    )
+                    if comp_value is None:
+                        return False
+                    return raw_value is not None and raw_value < comp_value
+                if op == "between":
+                    parts = [p.strip() for p in value.split(",") if p.strip()]
+                    if len(parts) >= 2:
+                        start_val = (
+                            parse_date(parts[0])
+                            if is_date_field
+                            else parse_datetime(parts[0])
+                        )
+                        end_val = (
+                            parse_date(parts[1])
+                            if is_date_field
+                            else parse_datetime(parts[1])
+                        )
+                        if (
+                            start_val is not None
+                            and end_val is not None
+                            and raw_value is not None
+                        ):
+                            return start_val <= raw_value <= end_val
+                    return False
 
         # For numeric fields with equals/not_equals, do numeric comparison
-        if is_numeric_field and condition.operator in ["equals", "not_equals"]:
+        if is_numeric_field and op in ["exact", "ne"]:
             try:
                 # Convert both to float for comparison (handles Decimal, Float, Integer)
                 field_num = float(field_value) if field_value else None
                 value_num = float(value) if value else None
 
-                if condition.operator == "equals":
+                if op == "equals":
                     # Handle None/empty values
                     if field_num is None and value_num is None:
                         return True
                     if field_num is None or value_num is None:
                         return False
                     return field_num == value_num
-                if condition.operator == "not_equals":
+                if op == "ne":
                     # Handle None/empty values
                     if field_num is None and value_num is None:
                         return False
@@ -104,47 +198,47 @@ def evaluate_condition(condition, instance):
                 pass
 
         # Perform comparison based on operator (string comparison for non-numeric or fallback)
-        if condition.operator == "equals":
+        if op == "exact":
             return field_value == value
-        if condition.operator == "not_equals":
+        if op == "ne":
             return field_value != value
-        if condition.operator == "contains":
+        if op == "icontains":
             return value.lower() in field_value.lower()
-        if condition.operator == "not_contains":
+        if op == "not_contains":
             return value.lower() not in field_value.lower()
-        if condition.operator == "starts_with":
+        if op == "istartswith":
             return field_value.lower().startswith(value.lower())
-        if condition.operator == "ends_with":
+        if op == "iendswith":
             return field_value.lower().endswith(value.lower())
-        if condition.operator == "greater_than":
+        if op == "gt":
             try:
                 return float(field_value) > float(value)
             except (ValueError, TypeError):
                 return False
-        if condition.operator == "greater_than_equal":
+        if op == "gte":
             try:
                 return float(field_value) >= float(value)
             except (ValueError, TypeError):
                 return False
-        if condition.operator == "less_than":
+        if op == "lt":
             try:
                 return float(field_value) < float(value)
             except (ValueError, TypeError):
                 return False
-        if condition.operator == "less_than_equal":
+        if op == "lte":
             try:
                 return float(field_value) <= float(value)
             except (ValueError, TypeError):
                 return False
-        if condition.operator == "is_empty":
+        if op == "isnull":
             return not field_value or field_value.strip() == ""
-        if condition.operator == "is_not_empty":
+        if op == "isnotnull":
             return bool(field_value and field_value.strip())
 
         return False
 
     except Exception as e:
-        logger.error(f"Error evaluating condition {condition}: {str(e)}")
+        logger.error("Error evaluating condition %s: %s", condition, str(e))
         return False
 
 
@@ -224,7 +318,7 @@ def resolve_mail_recipients(mail_to, instance, user):
                         break
 
                 # If value is a User object, get its email
-                if value and hasattr(value, "email"):
+                if value and hasattr(value, "email") and getattr(value, "email", None):
                     recipients.append(value.email)
                 # If value is already an email string
                 elif isinstance(value, str) and "@" in value:
@@ -234,10 +328,13 @@ def resolve_mail_recipients(mail_to, instance, user):
                 if "@" in recipient_spec:
                     recipients.append(recipient_spec)
         except Exception as e:
-            logger.error(f"Error resolving recipient '{recipient_spec}': {str(e)}")
+            logger.error("Error resolving recipient '%s': %s", recipient_spec, str(e))
             continue
 
-    return recipients
+    # De-duplicate and drop empties
+    return [
+        r for r in dict.fromkeys([r.strip() for r in recipients if r and r.strip()])
+    ]
 
 
 def resolve_notification_users(mail_to, instance, user):
@@ -301,7 +398,9 @@ def resolve_notification_users(mail_to, instance, user):
                         pass
         except Exception as e:
             logger.error(
-                f"Error resolving notification user '{recipient_spec}': {str(e)}",
+                "Error resolving notification user '%s': %s",
+                recipient_spec,
+                str(e),
                 exc_info=True,
             )
             continue
@@ -339,7 +438,9 @@ def execute_automation(automation, instance, user=None, trigger_type="on_create"
         if not skip_conditions:
             if not evaluate_automation_conditions(automation, instance):
                 logger.info(
-                    f"Automation {automation.title} conditions not met for instance {instance}"
+                    "Automation %s conditions not met for instance %s",
+                    automation.title,
+                    instance,
                 )
                 return
 
@@ -362,7 +463,7 @@ def execute_automation(automation, instance, user=None, trigger_type="on_create"
                         recipients.append(email)
 
         if not recipients:
-            logger.warning(f"Automation {automation.title} has no valid recipients")
+            logger.warning("Automation %s has no valid recipients", automation.title)
             return
 
         # Prepare context for template rendering
@@ -389,7 +490,7 @@ def execute_automation(automation, instance, user=None, trigger_type="on_create"
 
     except Exception as e:
         logger.error(
-            f"Error executing automation {automation.title}: {str(e)}", exc_info=True
+            "Error executing automation %s: %s", automation.title, str(e), exc_info=True
         )
 
 
@@ -406,16 +507,24 @@ def send_automation_email(automation, instance, recipients, context, user):
     """
     try:
         if not automation.mail_template:
-            logger.warning(f"Automation {automation.title} has no mail template")
+            logger.warning("Automation %s has no mail template", automation.title)
             return
 
         # Create HorillaMail instance
 
-        company = context.get("active_company") or (
-            user.company if hasattr(user, "company") and user else None
+        actor = (
+            user
+            or getattr(instance, "updated_by", None)
+            or getattr(instance, "created_by", None)
+            or getattr(automation, "updated_by", None)
+            or getattr(automation, "created_by", None)
         )
 
-        content_type = ContentType.objects.get_for_model(instance)
+        company = context.get("active_company") or (
+            actor.company if hasattr(actor, "company") and actor else None
+        )
+
+        content_type = HorillaContentType.objects.get_for_model(instance)
 
         # Get mail server - use the one selected in automation, or fall back to default
         sender = automation.mail_server
@@ -444,7 +553,8 @@ def send_automation_email(automation, instance, recipients, context, user):
             content_type=content_type,
             object_id=instance.pk,
             mail_status="draft",
-            created_by=user,
+            created_by=actor,
+            updated_by=actor,
             company=company,
             created_at=timezone.now(),
             updated_at=timezone.now(),
@@ -469,7 +579,7 @@ def send_automation_email(automation, instance, recipients, context, user):
 
                 from horilla_automations.tasks import MockRequest
 
-                mock_request = MockRequest(user, company, {})
+                mock_request = MockRequest(actor, company, {})
                 setattr(_thread_local, "request", mock_request)
 
                 # Send the mail using HorillaMailManager (uses horilla_backends)
@@ -478,11 +588,18 @@ def send_automation_email(automation, instance, recipients, context, user):
                 mail.refresh_from_db()
                 if mail.mail_status != "sent":
                     logger.error(
-                        f"Email failed to send via threading: {automation.title} (mail_id: {mail.pk}), status: {mail.mail_status}, message: {mail.mail_status_message}"
+                        "Email failed to send via threading: %s (mail_id: %s), status: %s, message: %s",
+                        automation.title,
+                        mail.pk,
+                        mail.mail_status,
+                        mail.mail_status_message,
                     )
             except Exception as e:
                 logger.error(
-                    f"Error sending email in thread for automation {automation.title} (mail_id: {mail.pk}): {str(e)}",
+                    "Error sending email in thread for automation %s (mail_id: %s ): %s",
+                    automation.title,
+                    mail.pk,
+                    str(e),
                     exc_info=True,
                 )
                 # Update mail status to failed
@@ -505,7 +622,9 @@ def send_automation_email(automation, instance, recipients, context, user):
 
     except Exception as e:
         logger.error(
-            f"Error sending automation email for {automation.title}: {str(e)}",
+            "Error sending automation email for %s: %s",
+            automation.title,
+            str(e),
             exc_info=True,
         )
 
@@ -527,13 +646,15 @@ def send_automation_notification(automation, instance, recipients, context, user
         if not notification_template and automation.mail_template:
             # Fallback to mail_template for backward compatibility
             logger.warning(
-                f"Automation {automation.title} has no notification template, using mail template as fallback"
+                "Automation %s has no notification template, using mail template as fallback",
+                automation.title,
             )
             notification_template = None  # Will use mail_template below
 
         if not notification_template and not automation.mail_template:
             logger.warning(
-                f"Automation {automation.title} has no notification template or mail template"
+                "Automation %s  has no notification template or mail template",
+                automation.title,
             )
             return
 
@@ -547,7 +668,7 @@ def send_automation_notification(automation, instance, recipients, context, user
 
         if not users_to_notify:
             logger.warning(
-                f"Automation {automation.title} has no valid users for notification"
+                "Automation %s has no valid users for notification", automation.title
             )
             return
 
@@ -555,9 +676,10 @@ def send_automation_notification(automation, instance, recipients, context, user
 
         # Use notification_template if available
         if notification_template:
-            message_template = notification_template.message or ""
+            message_template = (notification_template.message or "").strip()
             notification_message = ""
             if message_template:
+                message_template = "{% load horilla_tags %}\n" + message_template
                 notification_message = django_engine.from_string(
                     message_template
                 ).render(context)
@@ -568,15 +690,17 @@ def send_automation_notification(automation, instance, recipients, context, user
             )
         else:
             # Fallback to mail_template for backward compatibility
-            subject_template = automation.mail_template.subject or ""
-            body_template = automation.mail_template.body or ""
+            subject_template = (automation.mail_template.subject or "").strip()
+            body_template = (automation.mail_template.body or "").strip()
 
             notification_message = ""
             if subject_template:
+                subject_template = "{% load horilla_tags %}\n" + subject_template
                 subject = django_engine.from_string(subject_template).render(context)
                 notification_message = subject
 
             if body_template:
+                body_template = "{% load horilla_tags %}\n" + body_template
                 body = django_engine.from_string(body_template).render(context)
                 if notification_message:
                     notification_message += f"\n{body}"
@@ -590,18 +714,59 @@ def send_automation_notification(automation, instance, recipients, context, user
             )
 
         instance_url = None
-        if hasattr(instance, "get_detail_url"):
-            try:
-                url = instance.get_detail_url()
-                if url:
-                    instance_url = str(url)
-                    if instance_url and not instance_url.startswith("/"):
-                        parsed = urlparse(instance_url)
-                        instance_url = parsed.path or instance_url
-            except Exception as e:
-                logger.debug(f"Could not get detail_url: {str(e)}")
+        for attr in dir(instance):
+            if attr.startswith("get_detail_"):
+                method = getattr(instance, attr)
+                if callable(method):
+                    try:
+                        url = method()
+                        if url and str(url).strip() and str(url) != "#":
+                            instance_url = str(url).strip()
+                            if not instance_url.startswith("/"):
+                                parsed = urlparse(instance_url)
+                                instance_url = parsed.path or instance_url
+                            break
+                    except Exception as e:
+                        logger.debug("get_detail_* %s: %s", attr, str(e))
+                        continue
 
-        # If still no URL, try to construct a generic detail view URL
+        # If no detail URL, use the model's list/view URL with filter so the instance is focused
+        if not instance_url:
+            try:
+                model_class = instance.__class__
+                # Prefer settings menu entry (e.g. Department -> department_view) so we get
+                # the correct list view even when there is no section in sub_section_menu
+                instance_url = _get_model_list_view_url(model_class)
+                if not instance_url:
+                    section_info = get_section_info_for_model(model_class)
+                    base_url = (section_info.get("url") or "").strip()
+                    if base_url and base_url != "#":
+                        section = section_info.get("section") or ""
+                        if not base_url.startswith("/"):
+                            parsed = urlparse(base_url)
+                            base_url = parsed.path or base_url
+                        instance_url = (
+                            f"{base_url}?{urlencode({'section': section})}"
+                            if section
+                            else base_url
+                        )
+                # Append filter so the list view shows this instance (id=exact)
+                if instance_url and getattr(instance, "pk", None) is not None:
+                    filter_params = {
+                        "apply_filter": "true",
+                        "layout": "list",
+                        "field": "id",
+                        "operator": "exact",
+                        "value": str(instance.pk),
+                    }
+                    sep = "&" if "?" in instance_url else "?"
+                    instance_url = f"{instance_url}{sep}{urlencode(filter_params)}"
+            except Exception as e:
+                logger.debug(
+                    "Could not get list/section URL for %s: %s",
+                    instance.__class__.__name__,
+                    str(e),
+                )
 
         created_count = 0
         try:
@@ -614,27 +779,35 @@ def send_automation_notification(automation, instance, recipients, context, user
                             message=notification_message,
                             sender=user,
                             url=instance_url,
+                            instance=instance,
                             read=False,
                         )
                         if notification:
                             created_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Error creating notification for user {notification_user.username}: {str(e)}",
+                            "Error creating notification for user %s: %s",
+                            notification_user.username,
+                            str(e),
                             exc_info=True,
                         )
                         continue
 
             logger.info(
-                f"Created {created_count} notifications for automation '{automation.title}' "
-                f"(instance: {instance}, URL: {instance_url or 'none'})"
+                "Created %s notifications for automation '%s' (instance: %s, URL: %s )",
+                created_count,
+                automation.title,
+                instance,
+                instance_url or "none",
             )
         except Exception as e:
-            logger.error(f"Error creating notifications: {str(e)}", exc_info=True)
+            logger.error("Error creating notifications: %s", str(e), exc_info=True)
 
     except Exception as e:
         logger.error(
-            f"Error sending automation notification for {automation.title}: {str(e)}",
+            "Error sending automation notification for %s: %s",
+            automation.title,
+            str(e),
             exc_info=True,
         )
 
@@ -649,7 +822,7 @@ def trigger_automations(instance, trigger_type="on_create", user=None):
         user: User who triggered the automation (optional)
     """
     try:
-        content_type = ContentType.objects.get_for_model(instance)
+        content_type = HorillaContentType.objects.get_for_model(instance)
 
         # Get company from instance if it has one
         company = None
@@ -688,10 +861,12 @@ def trigger_automations(instance, trigger_type="on_create", user=None):
                 execute_automation(automation, instance, user, trigger_type)
             except Exception as e:
                 logger.error(
-                    f"Error executing automation {automation.title}: {str(e)}",
+                    "Error executing automation %s: %s",
+                    automation.title,
+                    str(e),
                     exc_info=True,
                 )
                 continue
 
     except Exception as e:
-        logger.error(f"Error triggering automations: {str(e)}", exc_info=True)
+        logger.error("Error triggering automations: %s", str(e), exc_info=True)

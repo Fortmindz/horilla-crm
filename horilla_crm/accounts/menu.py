@@ -3,10 +3,15 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla CRM Accounts app
 """
 
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+# Third party imports (Django)
 
 from horilla.menu import floating_menu, main_section_menu, sub_section_menu
+
+# First party / Horilla imports
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+
+# Local Imports
 from horilla_crm.accounts.models import Account
 
 

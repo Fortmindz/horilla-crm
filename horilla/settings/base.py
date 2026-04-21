@@ -30,6 +30,7 @@ env = environ.Env(
     SECRET_KEY=(str, "django-insecure-default-key"),
     ALLOWED_HOSTS=(list, ["*"]),
     CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:8000"]),
+    SITE_URL=(str, ""),
 )
 
 # Read from .env file if exists
@@ -43,6 +44,8 @@ ENVIRONMENT = env("ENVIRONMENT")
 SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+# Public-facing HTTPS URL for Google Calendar webhook push notifications.
+SITE_URL = env("SITE_URL")
 
 # -----------------------------------------------------------------------------
 #  Installed Apps Organization
@@ -78,10 +81,15 @@ INSTALLED_APPS = [
     "horilla_utils",
     "horilla_notifications",
     "horilla_mail",
+    "horilla_automations",
     "horilla_activity",
     "horilla_calendar",
     "horilla_keys",
-    "horilla_automations",
+    "horilla_theme",
+    "horilla_duplicates",
+    "horilla_processes.approvals",
+    "horilla_processes.reviews",
+    "horilla_cadences",
 ]
 
 
@@ -97,6 +105,15 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
+    # Rate limiting to mitigate resource starvation and DoS
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+    },
 }
 
 # JWT Settings
@@ -133,7 +150,7 @@ MIDDLEWARE = [
 ]
 
 
-ROOT_URLCONF = "horilla.urls"
+ROOT_URLCONF = "horilla.urls.project"
 
 
 TEMPLATES = [
@@ -167,8 +184,7 @@ ASGI_APPLICATION = "horilla.asgi.application"
 # -----------------------------------------------------------------------------
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-        # "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
         # "CONFIG": {
         #     "hosts": [("127.0.0.1", 6379)],  # Redis server
         # },

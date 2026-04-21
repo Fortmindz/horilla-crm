@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:06+0000\n"
+"POT-Creation-Date: 2026-02-21 08:11+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -21,11 +21,29 @@ msgstr ""
 msgid "Opportunities"
 msgstr "Verkaufschancen"
 
-msgid "Threshold updated successfully"
-msgstr "Schwellenwert erfolgreich aktualisiert"
+msgid "Big Deal Alerts"
+msgstr "Großgeschäfts-Alarme"
 
-msgid "Big Deal Alert"
+msgid "Update Big Deal Alert"
 msgstr "Großes Geschäfts-Alarm"
+
+
+msgid "Create Big Deal Alert"
+msgstr "Großes Geschäfts-Alarm"
+
+
+msgid "duplicated"
+msgstr "Duplizieren"
+
+msgid "updated"
+msgstr "Aktualisieren"
+
+msgid "created"
+msgstr "Erstellen"
+
+#, python-format
+msgid "%(model)s %(action)s successfully!"
+msgstr "%(model)s erfolgreich %(action)s!"
 
 msgid "At least one valid condition row must be provided."
 msgstr "Es muss mindestens eine gültige Bedingungszeile angegeben werden."
@@ -179,30 +197,6 @@ msgstr "Kontaktrolle der Verkaufschance"
 msgid "Opportunity Contact Roles"
 msgstr "Kontaktrollen der Verkaufschance"
 
-msgid "Account Manager"
-msgstr "Kundenbetreuer"
-
-msgid "Channel Manager"
-msgstr "Channel Manager"
-
-msgid "Executive Sponsor"
-msgstr "Executive Sponsor"
-
-msgid "Lead Qualifier"
-msgstr "Lead-Qualifizierer"
-
-msgid "Pre-Sales Consultant"
-msgstr "Pre-Sales Berater"
-
-msgid "Sales Manager"
-msgstr "Verkaufsleiter"
-
-msgid "Sales Rep"
-msgstr "Vertriebsmitarbeiter"
-
-msgid "Opportunity Owner"
-msgstr "Besitzer der Verkaufschance"
-
 msgid "Read Only"
 msgstr "Nur Lesen"
 
@@ -353,47 +347,6 @@ msgstr "Verkaufsaufteilungen"
 
 msgid "Opportunity Splits"
 msgstr "Verkaufsaufteilungen"
-
-msgid "Alert Name"
-msgstr "Alarmname"
-
-msgid "Trigger Amount"
-msgstr "Auslösebetrag"
-
-msgid "Trigger Probability"
-msgstr "Auslösewahrscheinlichkeit"
-
-msgid "Trigger alert when opportunity probability reaches this percentage"
-msgstr ""
-"Alarm auslösen, wenn die Wahrscheinlichkeit der Verkaufschance diesen "
-"Prozentsatz erreicht"
-
-msgid "Sender Name"
-msgstr "Name des Absenders"
-
-msgid "Sender Email"
-msgstr "E-Mail des Absenders"
-
-msgid "Notify Emails"
-msgstr "Benachrichtige E-Mails"
-
-msgid "Comma-separated emails to notify"
-msgstr "Kommagetrennte E-Mail-Adressen zur Benachrichtigung"
-
-msgid "Notify CC Emails"
-msgstr "Benachrichtige CC-E-Mails"
-
-msgid "Notify BCC Emails"
-msgstr "Benachrichtige BCC-E-Mails"
-
-msgid "Notify Opportunity Owner"
-msgstr "Benachrichtige Besitzer der Verkaufschance"
-
-msgid "Active"
-msgstr "Aktiv"
-
-msgid "Big Deal Alerts"
-msgstr "Großgeschäfts-Alarme"
 
 msgid "Is Active"
 msgstr "Ist aktiv"
@@ -551,8 +504,71 @@ msgstr "Angebot/Preisangebot"
 msgid "Negotiation/Review"
 msgstr "Verhandlung/Überprüfung"
 
-msgid " Nothing to show yet. Please add your Deal Alerts."
+msgid "Trigger Amount"
+msgstr "Auslösebetrag"
+
+msgid "Trigger Probability"
+msgstr "Auslösewahrscheinlichkeit"
+
+msgid "Is Null"
+msgstr "Ist leer"
+
+msgid "Is Not Null"
+msgstr "Ist nicht leer"
+
+msgid "Notify Emails"
+msgstr "Benachrichtige E-Mails"
+
+msgid "Notify CC Emails"
+msgstr "Benachrichtige CC-E-Mails"
+
+msgid "Mail Template"
+msgstr "E-Mail-Vorlage"
+
+msgid "Sender Email"
+msgstr "E-Mail des Absenders"
+
+
+msgid "Trigger"
+msgstr "Auslösebetrag"
+
+msgid "Delivery Channel"
+msgstr "Lieferkanal"
+
+
+msgid "Nothing to show yet. Please add your big deal alerts"
 msgstr "Noch nichts zu zeigen. Bitte fügen Sie Ihre Deal-Alarme hinzu."
+
+
+msgid "Select Closed Stage"
+msgstr "Team auswählen"
+
+msgid "Close"
+msgstr "Schließen"
+
+
+msgid "Please select whether this opportunity is Closed Won or Closed Lost:"
+msgstr "Phasentyp – Offen, Abgeschlossen Gewonnen oder Abgeschlossen Verloren"
+
+msgid "Current stage:"
+msgstr "Aktuelle Phase:"
+
+msgid "Won"
+msgstr "Gewonnen"
+
+msgid "Lost"
+msgstr "Verloren"
+
+msgid ""
+"No closed stages are configured for this company. Please configure Closed "
+"Won and Closed Lost stages first."
+msgstr ""
+"Für dieses Unternehmen sind keine abgeschlossenen Phasen konfiguriert. "
+"Bitte konfigurieren Sie zuerst die Phasen „Abgeschlossen Gewonnen" und „Abgeschlossen Verloren"."
+
+
+msgid "Update Stage"
+msgstr "Phase hinzufügen"
 
 msgid "Are you sure you want to delete this split?"
 msgstr "Sind Sie sicher, dass Sie diese Aufteilung löschen möchten?"
@@ -565,9 +581,6 @@ msgstr "Kann den Besitzer der Verkaufschance nicht löschen"
 
 msgid "Edit All Opportunity Splits"
 msgstr "Alle Verkaufsaufteilungen bearbeiten"
-
-msgid "Close"
-msgstr "Schließen"
 
 msgid "Enable Opportunity split"
 msgstr "Verkaufsaufteilung aktivieren"
@@ -582,7 +595,7 @@ msgstr ""
 "Hinzufügen neuer Mitglieder während der Bearbeitung von Aufteilungen."
 
 msgid "split"
-msgstr ""
+msgstr "Teilen"
 
 msgid "Quick Tips for Opportunity Splits"
 msgstr "Schnelle Tipps für Verkaufsaufteilungen"
@@ -667,7 +680,7 @@ msgid "Manage Custom Stages"
 msgstr "Benutzerdefinierte Phasen verwalten"
 
 msgid "Drag"
-msgstr ""
+msgstr "Ziehen"
 
 msgid "Add Stage"
 msgstr "Phase hinzufügen"
@@ -759,6 +772,10 @@ msgstr "Verkaufsinformationen"
 
 msgid "Additional Information"
 msgstr "Zusätzliche Informationen"
+
+
+msgid "Closed"
+msgstr "Schließen"
 
 msgid "Contact Roles"
 msgstr "Kontaktrollen"

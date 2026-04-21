@@ -5,14 +5,18 @@ This module contains Django forms for managing email templates,
 mail configurations, and mail-related functionality.
 """
 
+# Third-party imports (Django)
 from django import forms
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db.models import Q
 from django.utils.html import strip_tags
-from django.utils.translation import gettext_lazy as _
 
+# First-party (Horilla)
+from horilla.core.exceptions import ValidationError
+from horilla.utils.translation import gettext_lazy as _
+from horilla_core.models import HorillaContentType
+
+# First-party / Horilla apps
 from horilla_generics.forms import HorillaModelForm, PasswordInputWithEye
 from horilla_mail.models import HorillaMailConfiguration, HorillaMailTemplate
 
@@ -119,11 +123,11 @@ class MailTemplateSelectForm(forms.Form):
         super().__init__(*args, **kwargs)
         if model_name:
             try:
-                content_type = ContentType.objects.get(model=model_name.lower())
+                content_type = HorillaContentType.objects.get(model=model_name.lower())
                 self.fields["template"].queryset = HorillaMailTemplate.objects.filter(
                     Q(content_type=content_type) | Q(content_type__isnull=True)
                 )
-            except ContentType.DoesNotExist:
+            except HorillaContentType.DoesNotExist:
                 self.fields["template"].queryset = HorillaMailTemplate.objects.none()
 
         else:

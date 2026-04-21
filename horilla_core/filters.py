@@ -12,6 +12,7 @@ from horilla_core.models import (
     Department,
     Holiday,
     PartnerRole,
+    Role,
     TeamRole,
 )
 from horilla_generics.filters import HorillaFilterSet
@@ -25,7 +26,14 @@ class UserFilter(HorillaFilterSet):
 
         model = User
         fields = "__all__"
-        exclude = ["profile"]
+        exclude = [
+            "profile",
+            "password",
+            "last_login",
+            "date_joined",
+            "username",
+            "is_staff",
+        ]
         search_fields = ["first_name", "email", "last_name"]
 
 
@@ -63,6 +71,18 @@ class TeamRoleFilter(HorillaFilterSet):
         fields = "__all__"
         exclude = ["additional_info"]
         search_fields = ["team_role_name"]
+
+
+class RoleFilter(HorillaFilterSet):
+    """Filterset for TeamRole model with search on team role name."""
+
+    class Meta:
+        """Meta options for TeamRoleFilter."""
+
+        model = Role
+        fields = "__all__"
+        exclude = ["additional_info"]
+        search_fields = ["role_name"]
 
 
 class CustomerRoleFilter(HorillaFilterSet):

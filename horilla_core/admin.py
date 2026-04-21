@@ -8,10 +8,10 @@ and customizes the admin interface for the Horilla User model.
 # Django imports
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from django.contrib.contenttypes.models import ContentType
 
 # Horilla first-party imports
 from horilla.auth.models import User
+from horilla_core.models import HorillaContentType
 
 # Local app imports
 from .models import (
@@ -21,6 +21,7 @@ from .models import (
     CustomerRole,
     DatedConversionRate,
     Department,
+    DetailFieldVisibility,
     ExportSchedule,
     FieldPermission,
     FiscalYear,
@@ -41,15 +42,17 @@ from .models import (
     Role,
     SavedFilterList,
     TeamRole,
+    TimelineSpanBy,
 )
 
 admin.site.register(KanbanGroupBy)
+admin.site.register(TimelineSpanBy)
 admin.site.register(ListColumnVisibility)
 admin.site.register(PinnedView)
 admin.site.register(SavedFilterList)
 admin.site.register(MultipleCurrency)
 admin.site.register(ActiveTab)
-admin.site.register(ContentType)
+admin.site.register(HorillaContentType)
 admin.site.register(Company)
 admin.site.register(FiscalYear)
 admin.site.register(Holiday)
@@ -70,6 +73,7 @@ admin.site.register(ImportHistory)
 admin.site.register(HorillaAttachment)
 admin.site.register(ExportSchedule)
 admin.site.register(FieldPermission)
+admin.site.register(DetailFieldVisibility)
 
 
 @admin.register(User)

@@ -11,11 +11,11 @@ from datetime import datetime
 import requests
 from celery import shared_task
 
-# First-party / Horilla imports
-from horilla_mail.horilla_outlook import refresh_outlook_token
-
 # Local application imports
-from .models import EmailToLeadConfig, Lead, LeadStatus
+from horilla_crm.leads.models import EmailToLeadConfig, Lead, LeadStatus
+
+# First-party / Horilla imports
+from horilla_mail.views.horilla_outlook import refresh_outlook_token
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,9 @@ def process_outlook_message(msg, config, allowed_senders):
 
     # Check keyword filters
     if not config.matches_keywords(subject, body):
-        logger.info(f"Email from {sender} filtered out by keywords. Subject: {subject}")
+        logger.info(
+            "Email from %s filtered out by keywords. Subject: %s", sender, sender
+        )
         return "filtered"
 
     Lead.objects.create(

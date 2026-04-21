@@ -1,19 +1,25 @@
 """Models for Horilla Mail App"""
 
+# Standard library imports
 import mimetypes
+import re
 
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
-from django.db import models
+# Third party imports (Django)
 from django.template import engines
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
-from horilla_core.models import HorillaContentType, HorillaCoreModel, upload_path
+from horilla.core.exceptions import ValidationError
+
+# First-party imports (Horilla)
+from horilla.db import models
+from horilla.registry.limiters import limit_content_types
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+from horilla.utils.upload import upload_path
+
+# First-party / Horilla apps
+from horilla_core.models import HorillaContentType, HorillaCoreModel
 from horilla_mail.encryption_utils import decrypt_password
 from horilla_mail.fields import EncryptedCharField
-from horilla_mail.methods import limit_content_types
 from horilla_utils.methods import has_xss, render_template
 from horilla_utils.middlewares import _thread_local
 
@@ -135,6 +141,7 @@ class HorillaMailConfiguration(HorillaCoreModel):
         return render_template(path="mail_actions.html", context={"instance": self})
 
     def clean(self):
+        """Validate that company is set when the configuration is not primary."""
         if not self.company and not self.is_primary:
             raise ValidationError({"company": _("This field is required")})
 
@@ -217,9 +224,9 @@ class HorillaMail(HorillaCoreModel):
         max_length=255, blank=True, null=True, verbose_name=_("Subject")
     )
     body = models.TextField(blank=True, null=True, verbose_name=_("Body"))
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content_type = models.ForeignKey(HorillaContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
-    related_to = GenericForeignKey("content_type", "object_id")
+    related_to = models.GenericForeignKey("content_type", "object_id")
     mail_status = models.CharField(
         max_length=20, choices=MAIL_STATUS_CHOICES, default="draft"
     )
@@ -237,6 +244,8 @@ class HorillaMail(HorillaCoreModel):
     def render_subject(self, context=None):
         """
         Render the subject template with the given context.
+        Sanitizes output to remove newlines/carriage returns (RFC 5322 prohibits
+        these in email header values).
         """
 
         if not context:
@@ -248,7 +257,12 @@ class HorillaMail(HorillaCoreModel):
                 "request": request,
             }
         django_engine = engines["django"]
-        return django_engine.from_string(self.subject or "").render(context)
+        template_str = (self.subject or "").strip()
+        if template_str:
+            template_str = "{% load horilla_tags %}\n" + template_str
+        rendered = django_engine.from_string(template_str).render(context)
+        # Remove newlines/carriage returns - RFC 5322 forbids them in headers
+        return re.sub(r"\s+", " ", rendered).strip()
 
     def render_body(self, context=None):
         """
@@ -264,7 +278,10 @@ class HorillaMail(HorillaCoreModel):
                 "request": request,
             }
         django_engine = engines["django"]
-        return django_engine.from_string(self.body or "").render(context)
+        template_str = (self.body or "").strip()
+        if template_str:
+            template_str = "{% load horilla_tags %}\n" + template_str
+        return django_engine.from_string(template_str).render(context)
 
     def clean(self):
         """Validate model fields for XSS at model level (works for admin, forms, and API)."""
@@ -288,8 +305,6 @@ class HorillaMail(HorillaCoreModel):
     def save(self, *args, **kwargs):
         """Override save to ensure clean() is called for validation."""
         # Set updated_by before validation (parent save will also set it, but we need it for validation)
-        from horilla_utils.middlewares import _thread_local
-
         request = getattr(_thread_local, "request", None)
         if request:
             user = getattr(request, "user", None)
@@ -395,7 +410,7 @@ class HorillaMailTemplate(HorillaCoreModel):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        limit_choices_to=limit_content_types,
+        limit_choices_to=limit_content_types("mail_template_models"),
         verbose_name=_("Related Model"),
     )
 

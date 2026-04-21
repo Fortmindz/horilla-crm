@@ -3,28 +3,33 @@ Views for the horilla_automations app
 """
 
 # Standard library imports
+import json
 from functools import cached_property
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.contenttypes.models import ContentType
-from django.db import models
 from django.db.models import Q
-from django.http import HttpResponse
-from django.urls import reverse_lazy
-from django.utils.decorators import method_decorator
 from django.utils.html import escape
-from django.utils.translation import gettext_lazy as _
 from django.views import View
 
-# First-party / Horilla imports
+from horilla.apps import apps
 from horilla.auth.models import User
+
+# First-party / Horilla apps
+from horilla.db import models
+from horilla.http import HttpResponse
+from horilla.shortcuts import render
+from horilla.urls import reverse_lazy
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required_or_denied,
+)
+from horilla.utils.translation import gettext_lazy as _
 from horilla_automations.filters import HorillaAutomationFilter
 from horilla_automations.forms import HorillaAutomationForm
 from horilla_automations.models import AutomationCondition, HorillaAutomation
-from horilla_core.decorators import htmx_required, permission_required_or_denied
 from horilla_core.models import HorillaContentType
 from horilla_generics.views import (
     HorillaListView,
@@ -35,6 +40,19 @@ from horilla_generics.views import (
 )
 from horilla_mail.models import HorillaMailConfiguration, HorillaMailTemplate
 from horilla_notifications.models import NotificationTemplate
+
+# Fields that must not appear in condition field choices or in existing conditions (edit form)
+AUTOMATION_CONDITION_EXCLUDED_FIELDS = [
+    "id",
+    "pk",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "company",
+    "additional_info",
+    "password",
+]
 
 
 @method_decorator(
@@ -68,11 +86,12 @@ class HorillaAutomationNavbar(LoginRequiredMixin, HorillaNavView):
     model_app_label = "horilla_automations"
     filterset_class = HorillaAutomationFilter
     nav_width = False
-    gap_enabled = False
     all_view_types = False
     filter_option = False
     reload_option = False
     one_view_only = True
+    border_enabled = False
+    enable_actions = True
 
     @cached_property
     def new_button(self):
@@ -82,6 +101,24 @@ class HorillaAutomationNavbar(LoginRequiredMixin, HorillaNavView):
                 "url": f"""{reverse_lazy('horilla_automations:automation_create_view')}?new=true""",
                 "attrs": {"id": "automation-create"},
             }
+        return None
+
+    @cached_property
+    def actions(self):
+        """Actions for mail automation"""
+        if self.request.user.has_perm("horilla_automations.add_horillaautomation"):
+            return [
+                {
+                    "action": _("Load Automation"),
+                    "attrs": f"""
+                            id="automation-load"
+                            hx-get="{reverse_lazy('horilla_automations:load_automation')}"
+                            hx-on:click="openModal();"
+                            hx-target="#modalBox"
+                            hx-swap="innerHTML"
+                            """,
+                },
+            ]
         return None
 
 
@@ -103,12 +140,27 @@ class HorillaAutomationListView(LoginRequiredMixin, HorillaListView):
     bulk_update_two_column = True
     table_width = False
     bulk_delete_enabled = False
-    table_height = False
     table_height_as_class = "h-[calc(_100vh_-_310px_)]"
     bulk_select_option = False
     list_column_visibility = False
 
-    columns = ["title", "trigger", "model", "mail_template", "delivery_channel"]
+    columns = [
+        "title",
+        "trigger",
+        "model",
+        (_("Template"), "get_template"),
+        "delivery_channel",
+    ]
+
+    def no_record_add_button(self):
+        """Return configuration for the 'no records' Load Automation button when permitted."""
+        if self.request.user.has_perm("horilla_automations.add_horillaautomation"):
+            return {
+                "url": f"""{reverse_lazy('horilla_automations:load_automation')}?new=true""",
+                "attrs": 'id="automation-load"',
+                "title": _("Load Automation"),
+            }
+        return None
 
     actions = [
         {
@@ -158,6 +210,13 @@ class HorillaAutomationFormView(LoginRequiredMixin, HorillaSingleFormView):
     content_type_field = "model"
     save_and_new = False
 
+    def get_existing_conditions(self):
+        """Return existing conditions excluding any that use excluded fields (e.g. password)."""
+        qs = super().get_existing_conditions()
+        if qs is None:
+            return None
+        return qs.exclude(field__in=AUTOMATION_CONDITION_EXCLUDED_FIELDS)
+
     @cached_property
     def form_url(self):
         """Get the URL for the form view."""
@@ -167,6 +226,75 @@ class HorillaAutomationFormView(LoginRequiredMixin, HorillaSingleFormView):
                 "horilla_automations:automation_update_view", kwargs={"pk": pk}
             )
         return reverse_lazy("horilla_automations:automation_create_view")
+
+    def get_initial(self):
+        """Preserve filled values on HTMX reload; pass trigger/model for scheduled UI."""
+        initial = super().get_initial()
+        if self.request.method == "GET":
+            # Preserve common form fields (HTMX trigger reload includes closest form)
+            preserved_fields = [
+                "title",
+                "model",
+                "mail_to",
+                "also_sent_to",
+                "trigger",
+                "schedule_date_field",
+                "schedule_offset_amount",
+                "schedule_offset_direction",
+                "schedule_offset_unit",
+                "schedule_run_time",
+                "delivery_channel",
+                "mail_template",
+                "notification_template",
+                "mail_server",
+            ]
+
+            for name in preserved_fields:
+                if name in self.request.GET:
+                    values = self.request.GET.getlist(name)
+                    initial[name] = values if len(values) > 1 else values[0]
+        return initial
+
+    def get_form_kwargs(self):
+        """Pass form_url and HTMX target so trigger dropdown can reload form to show/hide schedule fields."""
+        kwargs = super().get_form_kwargs()
+        form_url = self.get_form_url()
+        if hasattr(form_url, "url"):
+            form_url = form_url.url
+        kwargs["form_url"] = self.request.build_absolute_uri(form_url)
+        view_id = (
+            getattr(self, "view_id", None) or f"{self.model._meta.model_name}-form-view"
+        )
+        kwargs["htmx_trigger_target"] = f"#{view_id}-container"
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        """Add form errors to delivery_channel hx-vals so get-template-fields returns them on load."""
+        context = super().get_context_data(**kwargs)
+        form = context.get("form")
+        if (
+            form
+            and self.request.method == "POST"
+            and not form.is_valid()
+            and "delivery_channel" in form.fields
+        ):
+            mail_errors = form.errors.get("mail_template")
+            notif_errors = form.errors.get("notification_template")
+            mail_server_errors = form.errors.get("mail_server")
+            if mail_errors or notif_errors or mail_server_errors:
+                vals = {"automation_id": ""}
+                if form.instance and form.instance.pk:
+                    vals["automation_id"] = str(form.instance.pk)
+                if mail_errors:
+                    vals["mail_template_errors"] = list(mail_errors)
+                if notif_errors:
+                    vals["notification_template_errors"] = list(notif_errors)
+                if mail_server_errors:
+                    vals["mail_server_errors"] = list(mail_server_errors)
+                form.fields["delivery_channel"].widget.attrs["hx-vals"] = json.dumps(
+                    vals
+                )
+        return context
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -181,6 +309,8 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
         """
         model_id = request.GET.get("model")
         row_id = request.GET.get("row_id", "0")
+        if not row_id.isdigit():
+            row_id = "0"
 
         field_name = f"field_{row_id}"
         field_id = f"id_field_{row_id}"
@@ -195,8 +325,10 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
             model_name = None
 
         if not model_name:
-            return HttpResponse(
-                f'<select name="{field_name}" id="{field_id}" class="js-example-basic-single headselect"><option value="">---------</option></select>'
+            return render(
+                request,
+                "partials/field_select_empty.html",
+                {"field_name": field_name, "field_id": field_id},
             )
 
         try:
@@ -210,12 +342,16 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
                 except LookupError:
                     continue
             if not model:
-                return HttpResponse(
-                    f'<select name="{field_name}" id="{field_id}" class="js-example-basic-single headselect"><option value="">---------</option></select>'
+                return render(
+                    request,
+                    "partials/field_select_empty.html",
+                    {"field_name": field_name, "field_id": field_id},
                 )
         except Exception:
-            return HttpResponse(
-                f'<select name="{field_name}" id="{field_id}" class="js-example-basic-single headselect"><option value="">---------</option></select>'
+            return render(
+                request,
+                "partials/field_select_empty.html",
+                {"field_name": field_name, "field_id": field_id},
             )
 
         model_fields = []
@@ -224,17 +360,11 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
         all_forward_fields = list(model._meta.fields) + list(model._meta.many_to_many)
 
         for field in all_forward_fields:
-            # Skip excluded fields
-            if field.name in [
-                "id",
-                "pk",
-                "created_at",
-                "updated_at",
-                "created_by",
-                "updated_by",
-                "company",
-                "additional_info",
-            ]:
+            # Skip excluded fields (same list as edit form existing conditions filter)
+            if field.name in AUTOMATION_CONDITION_EXCLUDED_FIELDS:
+                continue
+            # Skip non-editable fields (e.g. editable=False on the model)
+            if not getattr(field, "editable", True):
                 continue
 
             verbose_name = (
@@ -245,33 +375,34 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
 
         field_choices = [("", "---------")] + model_fields
 
-        select_html = f'<select name="{field_name}" id="{field_id}" class="js-example-basic-single headselect"'
-
-        select_html += (
-            f' hx-get="{reverse_lazy("horilla_generics:get_field_value_widget")}"'
+        condition_model_str = (
+            f"{AutomationCondition._meta.app_label}."
+            f"{AutomationCondition._meta.model_name}"
         )
-        select_html += f' hx-target="#id_value_{row_id}_container"'
-        select_html += ' hx-swap="innerHTML"'
-        select_html += (
-            f" hx-include=\"[name='{field_name}'],#id_value_{row_id},[name='model']\""
+        hx_vals_json = json.dumps(
+            {
+                "model_name": model_name,
+                "row_id": row_id,
+                "condition_model": condition_model_str,
+            }
         )
-        select_html += (
-            f' hx-vals=\'{{"model_name": "{model_name}", "row_id": "{row_id}"}}\''
-        )
-        select_html += ' hx-trigger="change,load"'
-        select_html += ">"
-
-        for value, label in field_choices:
-            select_html += f'<option value="{value}">{label}</option>'
-        select_html += "</select>"
 
         # Also update mail_to field using hx-swap-oob (pure HTMX)
         mail_to_html = self._get_mail_to_select_html(model_name, request)
 
-        # Combine both responses - field choices and mail_to update
-        response_html = select_html + mail_to_html
-
-        return HttpResponse(response_html)
+        return render(
+            request,
+            "partials/automation_field_select_response.html",
+            {
+                "field_name": field_name,
+                "field_id": field_id,
+                "row_id": row_id,
+                "hx_get_url": reverse_lazy("horilla_generics:get_field_value_widget"),
+                "hx_vals_json": hx_vals_json,
+                "field_choices": field_choices,
+                "mail_to_html": mail_to_html,
+            },
+        )
 
     def _get_mail_to_select_html(self, model_name, request):
         """Helper method to generate mail_to select HTML with hx-swap-oob"""
@@ -325,13 +456,11 @@ class AutomationFieldChoicesView(LoginRequiredMixin, View):
                                             pass
                                     if not is_user_model:
                                         try:
-                                            user_content_type = (
-                                                ContentType.objects.get_for_model(User)
+                                            user_content_type = HorillaContentType.objects.get_for_model(
+                                                User
                                             )
-                                            field_content_type = (
-                                                ContentType.objects.get_for_model(
-                                                    related_model
-                                                )
+                                            field_content_type = HorillaContentType.objects.get_for_model(
+                                                related_model
                                             )
                                             if user_content_type == field_content_type:
                                                 is_user_model = True
@@ -422,27 +551,16 @@ class MailToChoicesView(LoginRequiredMixin, View):
             model_name = None
 
         if not model_name:
-            # Return empty select with just self option
-            select_html = '<select name="mail_to" id="id_mail_to" class="js-example-basic-multiple headselect w-full" multiple="multiple" data-placeholder="Select user fields">'
-            select_html += '<option value="self">Self (User who triggered)</option>'
-            select_html += "</select>"
-            select_html += """
-            <script>
-            setTimeout(function() {
-                if (window.jQuery && jQuery.fn.select2) {
-                    var select = document.getElementById('id_mail_to');
-                    if (select && !jQuery(select).hasClass('select2-hidden-accessible')) {
-                        jQuery(select).select2({
-                            placeholder: 'Select user fields',
-                            allowClear: true,
-                            width: '100%'
-                        });
-                    }
-                }
-            }, 100);
-            </script>
-            """
-            return HttpResponse(select_html)
+            # Return empty select with just self option (template renders safely)
+            return render(
+                request,
+                "partials/mail_to_select_response.html",
+                {
+                    "user_fields": [("self", "Self (User who triggered)")],
+                    "selected_values": [],
+                    "include_select2_script": True,
+                },
+            )
 
         try:
             model = None
@@ -455,47 +573,25 @@ class MailToChoicesView(LoginRequiredMixin, View):
                 except LookupError:
                     continue
             if not model:
-                select_html = '<select name="mail_to" id="id_mail_to" class="js-example-basic-multiple headselect w-full" multiple="multiple" data-placeholder="Select user fields">'
-                select_html += '<option value="self">Self (User who triggered)</option>'
-                select_html += "</select>"
-                select_html += """
-                <script>
-                setTimeout(function() {
-                    if (window.jQuery && jQuery.fn.select2) {
-                        var select = document.getElementById('id_mail_to');
-                        if (select && !jQuery(select).hasClass('select2-hidden-accessible')) {
-                            jQuery(select).select2({
-                                placeholder: 'Select user fields',
-                                allowClear: true,
-                                width: '100%'
-                            });
-                        }
-                    }
-                }, 100);
-                </script>
-                """
-                return HttpResponse(select_html)
+                return render(
+                    request,
+                    "partials/mail_to_select_response.html",
+                    {
+                        "user_fields": [("self", "Self (User who triggered)")],
+                        "selected_values": [],
+                        "include_select2_script": True,
+                    },
+                )
         except Exception:
-            select_html = '<select name="mail_to" id="id_mail_to" class="js-example-basic-multiple headselect w-full" multiple="multiple" data-placeholder="Select user fields">'
-            select_html += '<option value="self">Self (User who triggered)</option>'
-            select_html += "</select>"
-            select_html += """
-            <script>
-            setTimeout(function() {
-                if (window.jQuery && jQuery.fn.select2) {
-                    var select = document.getElementById('id_mail_to');
-                    if (select && !jQuery(select).hasClass('select2-hidden-accessible')) {
-                        jQuery(select).select2({
-                            placeholder: 'Select user fields',
-                            allowClear: true,
-                            width: '100%'
-                        });
-                    }
-                }
-            }, 100);
-            </script>
-            """
-            return HttpResponse(select_html)
+            return render(
+                request,
+                "partials/mail_to_select_response.html",
+                {
+                    "user_fields": [("self", "Self (User who triggered)")],
+                    "selected_values": [],
+                    "include_select2_script": True,
+                },
+            )
 
         # Get User ForeignKey fields
         user_fields = [("self", "Self (User who triggered)")]
@@ -519,14 +615,16 @@ class MailToChoicesView(LoginRequiredMixin, View):
                                 is_user_model = issubclass(related_model, User)
                             except (TypeError, AttributeError):
                                 pass
-                        # Check using ContentType (most reliable method)
+                        # Check using HorillaContentType (most reliable method)
                         if not is_user_model:
                             try:
-                                user_content_type = ContentType.objects.get_for_model(
-                                    User
+                                user_content_type = (
+                                    HorillaContentType.objects.get_for_model(User)
                                 )
-                                field_content_type = ContentType.objects.get_for_model(
-                                    related_model
+                                field_content_type = (
+                                    HorillaContentType.objects.get_for_model(
+                                        related_model
+                                    )
                                 )
                                 if user_content_type == field_content_type:
                                     is_user_model = True
@@ -578,21 +676,15 @@ class MailToChoicesView(LoginRequiredMixin, View):
         if not user_fields:
             user_fields = [("self", "Self (User who triggered)")]
 
-        select_html = '<select name="mail_to" id="id_mail_to" class="js-example-basic-multiple headselect w-full" multiple="multiple"'
-        select_html += ' data-placeholder="Select user fields"'
-        select_html += ">"
-
-        for value, label in user_fields:
-            selected = ' selected="selected"' if value in selected_values else ""
-            # Escape HTML to prevent XSS
-            escaped_value = escape(str(value))
-            escaped_label = escape(str(label))
-            select_html += (
-                f'<option value="{escaped_value}"{selected}>{escaped_label}</option>'
-            )
-        select_html += "</select>"
-
-        return HttpResponse(select_html)
+        return render(
+            request,
+            "partials/mail_to_select_response.html",
+            {
+                "user_fields": user_fields,
+                "selected_values": selected_values,
+                "include_select2_script": False,
+            },
+        )
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -637,6 +729,44 @@ class TemplateFieldsView(LoginRequiredMixin, View):
         automation_id = request.GET.get("automation_id")
         model_id = request.GET.get("model")
 
+        # Pass through form errors when load is triggered after failed submit (so OOB swap keeps them)
+        mail_template_errors = []
+        notification_template_errors = []
+        mail_server_errors = []
+        raw_mail = request.GET.get("mail_template_errors")
+        raw_notif = request.GET.get("notification_template_errors")
+        raw_mail_server = request.GET.get("mail_server_errors")
+        if raw_mail is not None:
+            if isinstance(raw_mail, str) and raw_mail.startswith("["):
+                try:
+                    mail_template_errors = json.loads(raw_mail)
+                except (ValueError, TypeError):
+                    mail_template_errors = [raw_mail]
+            else:
+                mail_template_errors = request.GET.getlist("mail_template_errors") or [
+                    raw_mail
+                ]
+        if raw_notif is not None:
+            if isinstance(raw_notif, str) and raw_notif.startswith("["):
+                try:
+                    notification_template_errors = json.loads(raw_notif)
+                except (ValueError, TypeError):
+                    notification_template_errors = [raw_notif]
+            else:
+                notification_template_errors = request.GET.getlist(
+                    "notification_template_errors"
+                ) or [raw_notif]
+        if raw_mail_server is not None:
+            if isinstance(raw_mail_server, str) and raw_mail_server.startswith("["):
+                try:
+                    mail_server_errors = json.loads(raw_mail_server)
+                except (ValueError, TypeError):
+                    mail_server_errors = [raw_mail_server]
+            else:
+                mail_server_errors = request.GET.getlist("mail_server_errors") or [
+                    raw_mail_server
+                ]
+
         # Get content_type from model_id if provided
         content_type = None
         if model_id:
@@ -669,113 +799,68 @@ class TemplateFieldsView(LoginRequiredMixin, View):
         if not company:
             company = request.user.company
 
-        mail_template_html = ""
-        if delivery_channel in ["mail", "both"]:
-            mail_templates = HorillaMailTemplate.objects.all()
-            if company:
-                mail_templates = mail_templates.filter(company=company)
+        show_mail = delivery_channel in ["mail", "both"]
+        show_notification = delivery_channel in ["notification", "both"]
 
-            # Filter by module: show templates matching the module OR general (content_type is None)
+        mail_templates_qs = HorillaMailTemplate.objects.none()
+        if show_mail:
+            mail_templates_qs = HorillaMailTemplate.objects.all()
+            if company:
+                mail_templates_qs = mail_templates_qs.filter(company=company)
             if content_type:
-                mail_templates = mail_templates.filter(
+                mail_templates_qs = mail_templates_qs.filter(
                     Q(content_type=content_type) | Q(content_type__isnull=True)
                 )
 
-            mail_options = '<option value="">---------</option>'
-            for template in mail_templates:
-                selected = (
-                    ' selected="selected"' if template.pk == mail_template_id else ""
-                )
-                mail_options += f'<option value="{template.pk}"{selected}>{escape(template.title)}</option>'
-
-            mail_template_html = f"""<div id="mail_template_container" class="flex flex-col" hx-swap-oob="outerHTML">
-                <div class="flex justify-between items-center mb-1">
-                    <div class="flex justify-between mb-1 w-full">
-                        <label for="id_mail_template" class="text-xs text-color-600">
-                            Mail Template
-                        </label>
-                    </div>
-                </div>
-                <div class="relative">
-                    <select name="mail_template" id="id_mail_template" class="js-example-basic-single headselect">
-                        {mail_options}
-                    </select>
-                </div>
-            </div>"""
-        else:
-            mail_template_html = '<div id="mail_template_container" style="display: none;" hx-swap-oob="outerHTML"></div>'
-
-        # Build notification_template HTML - matching the form template structure
-        notification_template_html = ""
-        if delivery_channel in ["notification", "both"]:
-            notification_templates = NotificationTemplate.objects.all()
+        notification_templates_qs = NotificationTemplate.objects.none()
+        if show_notification:
+            notification_templates_qs = NotificationTemplate.objects.all()
             if company:
-                notification_templates = notification_templates.filter(company=company)
-
-            # Filter by module: show templates matching the module OR general (content_type is None)
+                notification_templates_qs = notification_templates_qs.filter(
+                    company=company
+                )
             if content_type:
-                notification_templates = notification_templates.filter(
+                notification_templates_qs = notification_templates_qs.filter(
                     Q(content_type=content_type) | Q(content_type__isnull=True)
                 )
 
-            notification_options = '<option value="">---------</option>'
-            for template in notification_templates:
-                selected = (
-                    ' selected="selected"'
-                    if template.pk == notification_template_id
-                    else ""
-                )
-                notification_options += f'<option value="{template.pk}"{selected}>{escape(template.title)}</option>'
-
-            notification_template_html = f"""<div id="notification_template_container" class="flex flex-col" hx-swap-oob="outerHTML">
-                <div class="flex justify-between items-center mb-1">
-                    <div class="flex justify-between mb-1 w-full">
-                        <label for="id_notification_template" class="text-xs text-color-600">
-                            Notification Template
-                        </label>
-                    </div>
-                </div>
-                <div class="relative">
-                    <select name="notification_template" id="id_notification_template" class="js-example-basic-single headselect">
-                        {notification_options}
-                    </select>
-                </div>
-            </div>"""
-        else:
-            notification_template_html = '<div id="notification_template_container" style="display: none;" hx-swap-oob="outerHTML"></div>'
-
-        # Build mail_server HTML - only show when delivery_channel is "mail" or "both"
-        mail_server_html = ""
-        if delivery_channel in ["mail", "both"]:
-            mail_servers = HorillaMailConfiguration.objects.filter(
+        mail_servers_qs = HorillaMailConfiguration.objects.none()
+        if show_mail:
+            mail_servers_qs = HorillaMailConfiguration.objects.filter(
                 mail_channel="outgoing"
             )
             if company:
-                mail_servers = mail_servers.filter(company=company)
+                mail_servers_qs = mail_servers_qs.filter(company=company)
 
-            mail_server_options = '<option value="">---------</option>'
-            for server in mail_servers:
-                selected = ' selected="selected"' if server.pk == mail_server_id else ""
-                mail_server_options += f'<option value="{server.pk}"{selected}>{escape(str(server))}</option>'
+        # Use model field verbose_name for labels (consistent with form and i18n)
+        mail_template_label = HorillaAutomation._meta.get_field(
+            "mail_template"
+        ).verbose_name
+        notification_template_label = HorillaAutomation._meta.get_field(
+            "notification_template"
+        ).verbose_name
+        mail_server_label = HorillaAutomation._meta.get_field(
+            "mail_server"
+        ).verbose_name
 
-            mail_server_html = f"""<div id="mail_server_container" class="flex flex-col" hx-swap-oob="outerHTML">
-                <div class="flex justify-between items-center mb-1">
-                    <div class="flex justify-between mb-1 w-full">
-                        <label for="id_mail_server" class="text-xs text-color-600">
-                            Outgoing Mail Server
-                        </label>
-                    </div>
-                </div>
-                <div class="relative">
-                    <select name="mail_server" id="id_mail_server" class="js-example-basic-single headselect">
-                        {mail_server_options}
-                    </select>
-                </div>
-            </div>"""
-        else:
-            mail_server_html = '<div id="mail_server_container" style="display: none;" hx-swap-oob="outerHTML"></div>'
-
-        # Return all HTML fragments - HTMX will handle the hx-swap-oob
-        return HttpResponse(
-            mail_template_html + notification_template_html + mail_server_html
+        return render(
+            request,
+            "partials/template_fields_response.html",
+            {
+                "show_mail_template": show_mail,
+                "show_notification_template": show_notification,
+                "show_mail_server": show_mail,
+                "mail_templates": mail_templates_qs,
+                "notification_templates": notification_templates_qs,
+                "mail_servers": mail_servers_qs,
+                "mail_template_id": mail_template_id,
+                "notification_template_id": notification_template_id,
+                "mail_server_id": mail_server_id,
+                "mail_template_label": mail_template_label,
+                "notification_template_label": notification_template_label,
+                "mail_server_label": mail_server_label,
+                "mail_template_errors": mail_template_errors,
+                "notification_template_errors": notification_template_errors,
+                "mail_server_errors": mail_server_errors,
+            },
         )

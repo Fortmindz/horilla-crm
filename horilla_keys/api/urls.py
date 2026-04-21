@@ -2,9 +2,9 @@
 URL patterns for horilla_keys API
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_keys.api.views import ShortcutKeyViewSet
 
 # Create a router and register our viewsets with it

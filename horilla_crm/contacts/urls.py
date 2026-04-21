@@ -2,7 +2,7 @@
 URL configuration for the Contacts app.
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 
@@ -15,9 +15,24 @@ urlpatterns = [
         "contact-list-view/", views.ContactListView.as_view(), name="contact_list_view"
     ),
     path(
+        "contact-layout-split/",
+        views.ContactSplitView.as_view(),
+        name="contact_split_view",
+    ),
+    path(
         "contact-kanban-view/",
         views.ContactKanbanView.as_view(),
         name="contact_kanban_view",
+    ),
+    path(
+        "contact-card-view/",
+        views.ContactCardView.as_view(),
+        name="contact_card_view",
+    ),
+    path(
+        "contacts-timeline/",
+        views.ContactTimelineView.as_view(),
+        name="contacts_timeline",
     ),
     path(
         "contact-create-form/",
@@ -90,6 +105,11 @@ urlpatterns = [
         name="contact_related_list_tab",
     ),
     path(
+        "contact-cadences-tab/<int:pk>/",
+        views.ContactCadenceTab.as_view(),
+        name="contact_cadences_tab",
+    ),
+    path(
         "create-contact-account-relation/",
         views.AddRelatedAccountsFormView.as_view(),
         name="create_contact_account_relation",
@@ -113,5 +133,20 @@ urlpatterns = [
         "delete-related-accounts/<int:pk>/",
         views.RelatedContactDeleteView.as_view(),
         name="delete_related_accounts",
+    ),
+    path(
+        "contact-hierarchy/",
+        views.ContactHierarchyView.as_view(),
+        name="contact_hierarchy",
+    ),
+    path(
+        "contact-group-by/",
+        views.ContactGroupByView.as_view(),
+        name="contact_group_by_view",
+    ),
+    path(
+        "contact-chart-view/",
+        views.ContactChartView.as_view(),
+        name="contact_chart_view",
     ),
 ]

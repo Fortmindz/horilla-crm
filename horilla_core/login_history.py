@@ -47,11 +47,15 @@ def is_login_icon(self):
     if self.is_logged_in:
         # Green check icon
         return format_html(
-            '<span class="flex justify-center items-center inline-block text-green-600"><i class="fas fa-check-circle fa-lg"></i></span>'
+            '<span class="flex justify-center items-center inline-block text-green-600">'
+            '<i class="{}"></i></span>',
+            "fas fa-check-circle fa-lg",
         )
     # Red cross icon
     return format_html(
-        '<span class=" flex justify-center items-center inline-block text-red-600"><i class="fas fa-times-circle fa-lg"></i></span>'
+        '<span class=" flex justify-center items-center inline-block text-red-600">'
+        '<i class="{}"></i></span>',
+        "fas fa-times-circle fa-lg",
     )
 
 
@@ -59,3 +63,9 @@ LoginHistory.user_status = user_status
 LoginHistory.short_user_agent = short_user_agent
 LoginHistory.formatted_datetime = formatted_datetime
 LoginHistory.is_login_icon = is_login_icon
+LoginHistory.PROPERTY_LABELS = {
+    "user_status": "Status",
+    "short_user_agent": "Browser",
+    "formatted_datetime": "Login Time",
+    "is_login_icon": "Is Active",
+}

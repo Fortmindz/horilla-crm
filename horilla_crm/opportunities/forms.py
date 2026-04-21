@@ -5,13 +5,16 @@ import logging
 
 # Django imports
 from django import forms
-from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import FieldDoesNotExist
+
+from horilla.auth.models import User
 
 # Horilla / first-party imports
-from horilla.auth.models import User
+from horilla.db import models
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
+from horilla_core.models import TeamRole
 from horilla_crm.opportunities.models import (
     DefaultOpportunityMember,
     Opportunity,
@@ -351,7 +354,17 @@ class OpportunityTeamForm(HorillaModelForm):
                                 )
                                 valid_row = False
                                 continue
-                        # Validate choices for fields with choices (e.g., team_role, opportunity_access_level)
+                        if field_name == "team_role":
+                            try:
+                                value = TeamRole.objects.get(pk=value)
+                            except (TeamRole.DoesNotExist, ValueError):
+                                self.add_error(
+                                    None,
+                                    f"Invalid team role selected for row {row_id}",
+                                )
+                                valid_row = False
+                                continue
+                        # Validate choices for fields with choices (e.g., opportunity_access_level)
                         model_field = self.condition_model._meta.get_field(field_name)
                         if hasattr(model_field, "choices") and model_field.choices:
                             choice_values = [
@@ -365,9 +378,34 @@ class OpportunityTeamForm(HorillaModelForm):
                                 valid_row = False
                                 continue
                         row_data[field_name] = value
-            if row_data and valid_row:
-                condition_rows.append(row_data)
-
+            if row_data:
+                # Validate mandatory condition fields so we show form errors
+                # instead of defaulting or hitting NOT NULL in the DB
+                missing_mandatory = []
+                for field_name in self.condition_fields:
+                    try:
+                        model_field = self.condition_model._meta.get_field(field_name)
+                    except FieldDoesNotExist:
+                        continue
+                    if model_field.null or model_field.blank:
+                        continue
+                    if not row_data.get(field_name):
+                        label = model_field.verbose_name or field_name
+                        missing_mandatory.append(str(label) if label else field_name)
+                if missing_mandatory:
+                    self.add_error(
+                        None,
+                        _(
+                            "%(fields)s is required for each team member (row %(row_id)s)."
+                        )
+                        % {
+                            "row_id": row_id,
+                            "fields": ", ".join(missing_mandatory),
+                        },
+                    )
+                    valid_row = False
+                if valid_row:
+                    condition_rows.append(row_data)
         return condition_rows
 
     def clean(self):
@@ -442,6 +480,8 @@ class AddDefaultTeamForm(forms.Form):
         kwargs.pop("condition_fields", None)
         kwargs.pop("condition_model", None)
         kwargs.pop("condition_field_choices", None)
+        kwargs.pop("condition_related_name", None)
+        kwargs.pop("condition_related_name_candidates", None)
         kwargs.pop("hidden_fields", None)
         kwargs.pop("row_id", None)
         self.request = kwargs.pop("request", None)

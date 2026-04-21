@@ -4,34 +4,395 @@ import json
 import logging
 import traceback
 import uuid
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.utils import timezone
 
 from horilla_utils.methods import get_section_info_for_model
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
 
+# Valid date range values (days)
+DATE_RANGE_CHOICES = [7, 30, 60, 90]
+
+
+def is_valid_date_range(value, date_from=None, date_to=None):
+    """Return True if value is a valid date_range (including 'custom' when date_from or date_to given)."""
+    if value in (None, "", "all"):
+        return True
+    if str(value) == "custom":
+        return bool(date_from or date_to)
+    return str(value) in [str(d) for d in DATE_RANGE_CHOICES]
+
+
+def parse_date_param(value):
+    """Parse YYYY-MM-DD string to date; return None if invalid or empty.
+    Only accepts exactly 10-character YYYY-MM-DD (rejects trailing junk)."""
+    if not value:
+        return None
+    s = str(value).strip()
+    if len(s) != 10:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def get_date_field_for_model(model_class):
+    """Get the first date field from model."""
+    for field in model_class._meta.fields:
+        if field.get_internal_type() in ["DateField", "DateTimeField"]:
+            return field.name
+    return None
+
+
+def _custom_dates_invalid(date_from_raw, date_to_raw, parsed_from, parsed_to):
+    """Return True if any supplied custom date param failed to parse (invalid format)."""
+    had_from = date_from_raw is not None and str(date_from_raw).strip()
+    had_to = date_to_raw is not None and str(date_to_raw).strip()
+    return (had_from and parsed_from is None) or (had_to and parsed_to is None)
+
+
+def validate_custom_date_params(date_range, date_from, date_to):
+    """If date_range is 'custom' and any of date_from/date_to is invalid, return (None, None, None).
+    Otherwise return (date_range, date_from, date_to). For valid custom range, date_from/date_to
+    are returned as date objects so templates never display raw input."""
+    if date_range != "custom" or (not date_from and not date_to):
+        return (date_range, date_from, date_to)
+    parsed_from = parse_date_param(date_from) if date_from else None
+    parsed_to = parse_date_param(date_to) if date_to else None
+    if _custom_dates_invalid(date_from, date_to, parsed_from, parsed_to):
+        return (None, None, None)
+    return (date_range, parsed_from, parsed_to)
+
+
+def validate_date_range_request(request):
+    """
+    Validate date_range, date_from, date_to from request and return resolved values.
+    Returns (date_range, date_from, date_to, redirect_url).
+    If redirect_url is not None, the view should return redirect(redirect_url).
+    Handles: invalid/malformed keys (date_range[]), duplicate keys, invalid dates, junk in dates, empty strings.
+    """
+    date_range = request.GET.get("date_range")
+    date_from = request.GET.get("date_from") or None
+    date_to = request.GET.get("date_to") or None
+    if date_from == "":
+        date_from = None
+    if date_to == "":
+        date_to = None
+
+    date_range, date_from, date_to = validate_custom_date_params(
+        date_range, date_from, date_to
+    )
+    if date_range is None and request.GET.get("date_range") == "custom":
+        date_range = "all"
+    if date_range is not None and not is_valid_date_range(
+        date_range, date_from=date_from, date_to=date_to
+    ):
+        date_range = "all"
+        date_from = date_to = None
+    if date_range is None or date_range == "all":
+        date_from = date_to = None
+
+    query_params = request.GET.copy()
+    for key in list(query_params.keys()):
+        if (
+            key in ("date_range", "date_from", "date_to")
+            or key.startswith("date_range")
+            or key.startswith("date_from")
+            or key.startswith("date_to")
+        ):
+            query_params.pop(key, None)
+    if date_range is None or date_range == "all":
+        query_params["date_range"] = "all"
+    elif date_range == "custom":
+        query_params["date_range"] = "custom"
+        if date_from is not None:
+            query_params["date_from"] = (
+                date_from.strftime("%Y-%m-%d")
+                if hasattr(date_from, "strftime")
+                else str(date_from)
+            )
+        if date_to is not None:
+            query_params["date_to"] = (
+                date_to.strftime("%Y-%m-%d")
+                if hasattr(date_to, "strftime")
+                else str(date_to)
+            )
+    else:
+        query_params["date_range"] = str(date_range)
+
+    date_keys = [
+        k
+        for k in request.GET.keys()
+        if k in ("date_range", "date_from", "date_to")
+        or k.startswith("date_range")
+        or k.startswith("date_from")
+        or k.startswith("date_to")
+    ]
+    malformed = any(k not in ("date_range", "date_from", "date_to") for k in date_keys)
+    cur_dr = request.GET.get("date_range")
+    cur_df = request.GET.get("date_from") or ""
+    cur_dt = request.GET.get("date_to") or ""
+    want_dr = query_params.get("date_range")
+    want_df = query_params.get("date_from", "")
+    want_dt = query_params.get("date_to", "")
+    needs_redirect = (
+        malformed or cur_dr != want_dr or cur_df != want_df or cur_dt != want_dt
+    )
+    if not date_keys and (date_range is None or date_range == "all"):
+        needs_redirect = False
+    redirect_url = None
+    if needs_redirect:
+        base_path = request.build_absolute_uri(request.path).split("?")[0]
+        redirect_url = base_path + (
+            "?" + query_params.urlencode() if query_params else ""
+        )
+
+    return redirect_url
+
+
+def apply_date_range_to_queryset(
+    queryset, model_class, date_range_days=None, date_from=None, date_to=None
+):
+    """Filter queryset by date range: either last N days or custom start/end (at least one required for custom).
+    If custom range is requested but any date param is invalid, returns unfiltered queryset (all data).
+    """
+    date_field = get_date_field_for_model(model_class)
+    if not date_field:
+        return queryset
+
+    if date_range_days == "custom" or date_from is not None or date_to is not None:
+        date_from_raw = date_from
+        date_to_raw = date_to
+        if date_from is not None and not hasattr(date_from, "year"):
+            date_from = parse_date_param(date_from)
+        if date_to is not None and not hasattr(date_to, "year"):
+            date_to = parse_date_param(date_to)
+        if date_range_days == "custom" and _custom_dates_invalid(
+            date_from_raw, date_to_raw, date_from, date_to
+        ):
+            return queryset
+        if date_from is None and date_to is None:
+            return queryset
+        if date_from is not None:
+            queryset = queryset.filter(**{f"{date_field}__date__gte": date_from})
+        if date_to is not None:
+            queryset = queryset.filter(**{f"{date_field}__date__lte": date_to})
+        return queryset
+    if not date_range_days:
+        return queryset
+    try:
+        since = timezone.now() - timedelta(days=int(date_range_days))
+        return queryset.filter(**{f"{date_field}__gte": since})
+    except (TypeError, ValueError):
+        return queryset
+
 
 class DefaultDashboardGenerator:
     """
-    Simple dashboard generator for specific predefined models
+    Simple dashboard generator for specific predefined models.
+
+    Each ``extra_models`` entry may include:
+
+    - ``chart_func``: a single callable ``(generator, queryset, model_info) -> dict``,
+      or a list/tuple of such callables (multiple charts per registration).
+    - ``table_func``: a single callable ``(generator, model_info) -> dict``, or a
+      list/tuple of such callables (multiple tables per registration).
+    - ``kpi_func``: optional callable or list of callables
+      ``(generator, model_info) -> dict | list[dict] | None``. Use
+      ``generator.get_queryset(model)`` then any filters, ``.count()``,
+      ``.aggregate(...)``, etc. Each dict needs ``title`` and ``value``. Optional:
+      ``icon``, ``color`` or ``color_style``, ``url``, ``section``. Display
+      formatting is inferred from ``value`` (ints → whole numbers, floats/Decimal →
+      decimals, str → plain text) unless you override with ``type``:
+      ``count`` | ``decimal`` | ``text``.
+    - ``include_kpi``: if True and ``kpi_func`` is not set, adds one KPI with the
+      total row count (original behaviour).
     """
 
     extra_models = []
 
-    def __init__(self, user, company=None):
+    KPI_COLOR_STYLES = {
+        "primary": {"bg": "#FEF6F5", "icon": "#E54F38"},
+        "secondary": {"bg": "#f1f5f9", "icon": "#334155"},
+        "success": {"bg": "#dcfce7", "icon": "#15803d"},
+        "green": {"bg": "#dcfce7", "icon": "#15803d"},
+        "warning": {"bg": "#fef3c7", "icon": "#b45309"},
+        "yellow": {"bg": "#fef3c7", "icon": "#b45309"},
+        "danger": {"bg": "#fee2e2", "icon": "#b91c1c"},
+        "red": {"bg": "#fee2e2", "icon": "#b91c1c"},
+        "blue": {"bg": "#dbeafe", "icon": "#2563eb"},
+        "indigo": {"bg": "#e0e7ff", "icon": "#4f46e5"},
+        "purple": {"bg": "#f3e8ff", "icon": "#7e22ce"},
+        "teal": {"bg": "#ccfbf1", "icon": "#0f766e"},
+        "orange": {"bg": "#ffedd5", "icon": "#c2410c"},
+        "gray": {"bg": "#f3f4f6", "icon": "#4b5563"},
+        "slate": {"bg": "#f1f5f9", "icon": "#334155"},
+    }
+
+    @classmethod
+    def resolve_kpi_color_style(cls, color_name):
+        """Map KPI color keyword to stable bg/icon hex colors."""
+        key = (color_name or "").strip().lower()
+        return cls.KPI_COLOR_STYLES.get(key, cls.KPI_COLOR_STYLES["primary"])
+
+    @staticmethod
+    def _iter_callables(value):
+        """Turn a single callable or a list/tuple of callables into a list."""
+        if value is None:
+            return []
+        if callable(value):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            return [f for f in value if callable(f)]
+        return []
+
+    @staticmethod
+    def _normalize_kpi_results(result):
+        """Normalize kpi_func return value into a list of dicts."""
+        if result is None:
+            return []
+        if isinstance(result, dict):
+            return [result]
+        if isinstance(result, (list, tuple)):
+            return [x for x in result if isinstance(x, dict)]
+        return []
+
+    @staticmethod
+    def _infer_kpi_display_type(value):
+        """Choose template formatting from the computed value (if ``type`` omitted)."""
+        if value is None:
+            return "decimal"
+        if isinstance(value, str):
+            return "text"
+        if isinstance(value, bool):
+            return "count"
+        if isinstance(value, int):
+            return "count"
+        if isinstance(value, float):
+            return "decimal"
+        if isinstance(value, Decimal):
+            return "decimal"
+        return "text"
+
+    def _finalize_kpi_dict(self, raw, model_info, model_class):
+        """
+        Fill defaults for a KPI dict from ``kpi_func``.
+
+        Expected keys on ``raw``: ``title``, ``value`` (required). Optional:
+        ``icon``, ``color``, ``color_style``, ``url``, ``section``, ``type``
+        (only if you need to override inferred formatting).
+        """
+        if not isinstance(raw, dict):
+            return None
+        title = raw.get("title")
+        if title is None or str(title).strip() == "":
+            return None
+        if "value" not in raw:
+            return None
+
+        section_info = get_section_info_for_model(model_class)
+        url = raw.get("url")
+        if url is None:
+            url = section_info.get("url")
+        section = raw.get("section")
+        if section is None:
+            section = section_info.get("section")
+
+        icon = raw.get("icon") or model_info.get("icon") or "fa-chart-bar"
+        color = (
+            raw.get("color")
+            if raw.get("color") is not None
+            else model_info.get("color")
+        )
+
+        color_style = raw.get("color_style")
+        if not (
+            isinstance(color_style, dict)
+            and color_style.get("bg")
+            and color_style.get("icon")
+        ):
+            color_style = self.resolve_kpi_color_style(color)
+
+        val = raw["value"]
+        explicit_type = raw.get("type")
+        if explicit_type in ("count", "decimal", "text"):
+            kpi_type = explicit_type
+        else:
+            kpi_type = self._infer_kpi_display_type(val)
+
+        if val is None and kpi_type in ("count", "decimal"):
+            val = 0
+
+        return {
+            "title": title,
+            "value": val,
+            "icon": icon,
+            "color": color,
+            "color_style": color_style,
+            "url": url,
+            "section": section,
+            "type": kpi_type,
+        }
+
+    def __init__(
+        self, user, company=None, date_range=None, date_from=None, date_to=None
+    ):
         self.user = user
         self.company = company
+        self.date_range = self._parse_date_range(date_range)
+        parsed_from = parse_date_param(date_from) if date_from is not None else None
+        parsed_to = parse_date_param(date_to) if date_to is not None else None
+        if self.date_range == "custom" and _custom_dates_invalid(
+            date_from, date_to, parsed_from, parsed_to
+        ):
+            self.date_range = None
+            self.date_from = None
+            self.date_to = None
+        else:
+            self.date_from = parsed_from
+            self.date_to = parsed_to
 
         try:
-
             self.models = self.get_models()
-
         except ImportError:
             logger.warning("Horilla models not found, using empty model list")
             self.models = []
+
+    @staticmethod
+    def is_clear_range(date_range):
+        """Return True if date_range means 'clear/no filter'."""
+        return date_range in (None, "", "clear", "all")
+
+    def _parse_date_range(self, date_range):
+        """Parse and validate date_range (days or 'custom'). Returns None for clear, 30 if invalid."""
+        if self.is_clear_range(date_range):
+            return None
+        if str(date_range) == "custom":
+            return "custom"
+        try:
+            days = int(date_range)
+            return days if days in DATE_RANGE_CHOICES else 30
+        except (TypeError, ValueError):
+            return 30
+
+    def apply_date_range_filter(self, queryset, model_class):
+        """Filter queryset to records within the selected date range."""
+        if self.date_range == "custom":
+            return apply_date_range_to_queryset(
+                queryset,
+                model_class,
+                date_range_days="custom",
+                date_from=self.date_from,
+                date_to=self.date_to,
+            )
+        return apply_date_range_to_queryset(queryset, model_class, self.date_range)
 
     def get_models(self):
         """
@@ -50,6 +411,7 @@ class DefaultDashboardGenerator:
         has_view_own = self.user.has_perm(f"{app_label}.view_own_{model_name}")
 
         if has_view_all:
+            queryset = self.apply_date_range_filter(queryset, model_class)
             return queryset
 
         if has_view_own:
@@ -69,6 +431,7 @@ class DefaultDashboardGenerator:
                     if q_objects:
                         queryset = queryset.filter(q_objects)
 
+            queryset = self.apply_date_range_filter(queryset, model_class)
             return queryset
 
         return queryset.none()
@@ -84,34 +447,46 @@ class DefaultDashboardGenerator:
         return has_view_all or has_view_own
 
     def generate_kpi_data(self):
-        """Generate simple count KPIs only if include_kpi flag is True"""
+        """Generate KPIs from ``kpi_func`` and/or legacy ``include_kpi``."""
         kpis = []
 
         for model_info in self.models:
             try:
                 model_class = model_info["model"]
 
-                # Only generate KPI if include_kpi flag is explicitly set to True
-                include_kpi = model_info.get("include_kpi", False)
-
-                if not include_kpi:
+                if not self.has_model_permission(model_class):
                     continue
 
-                if self.has_model_permission(model_class):
-                    count = self.get_queryset(model_info["model"]).count()
+                kpi_funcs = self._iter_callables(model_info.get("kpi_func"))
+                if kpi_funcs:
+                    for kpi_func in kpi_funcs:
+                        result = kpi_func(self, model_info)
+                        for raw in self._normalize_kpi_results(result):
+                            finalized = self._finalize_kpi_dict(
+                                raw, model_info, model_class
+                            )
+                            if finalized:
+                                kpis.append(finalized)
+                    continue
 
-                    section_info = get_section_info_for_model(model_class)
+                if not model_info.get("include_kpi", False):
+                    continue
 
-                    kpi = {
-                        "title": f"Total {model_info['name']}",
-                        "value": count,
-                        "icon": model_info["icon"],
-                        "color": model_info["color"],
-                        "url": section_info["url"],
-                        "section": section_info["section"],
-                        "type": "count",
-                    }
-                    kpis.append(kpi)
+                count = self.get_queryset(model_info["model"]).count()
+                section_info = get_section_info_for_model(model_class)
+                kpi = {
+                    "title": f"Total {model_info['name']}",
+                    "value": count,
+                    "icon": model_info["icon"],
+                    "color": model_info["color"],
+                    "color_style": self.resolve_kpi_color_style(
+                        model_info.get("color")
+                    ),
+                    "url": section_info["url"],
+                    "section": section_info["section"],
+                    "type": "count",
+                }
+                kpis.append(kpi)
 
             except Exception as e:
                 traceback.print_exc()
@@ -133,15 +508,22 @@ class DefaultDashboardGenerator:
                 queryset = self.get_queryset(model_class)
                 count = queryset.count()
 
-                chart_func = model_info.get("chart_func")
+                chart_funcs = self._iter_callables(model_info.get("chart_func"))
+                if not chart_funcs:
+                    continue
 
-                if callable(chart_func):
+                base_name = model_info.get(
+                    "name", model_class._meta.verbose_name_plural
+                )
+                multi = len(chart_funcs) > 1
+
+                for idx, chart_func in enumerate(chart_funcs):
                     if count == 0:
-                        # Return empty chart with no_record message
+                        title = base_name
+                        if multi:
+                            title = f"{base_name} ({idx + 1})"
                         chart = {
-                            "title": model_info.get(
-                                "name", model_class._meta.verbose_name_plural
-                            ),
+                            "title": title,
                             "type": "pie",  # Default type, won't be rendered anyway
                             "data": {
                                 "labels": [],
@@ -150,7 +532,7 @@ class DefaultDashboardGenerator:
                                 "labelField": "",
                             },
                             "is_empty": True,
-                            "no_record_msg": f"No {model_info.get('name', model_class._meta.verbose_name_plural).lower()} found.",
+                            "no_record_msg": f"No {base_name.lower()} found.",
                         }
                         charts.append(chart)
                     else:
@@ -247,8 +629,7 @@ class DefaultDashboardGenerator:
                 if not self.has_model_permission(model_class):
                     continue
 
-                table_func = model_info.get("table_func")
-                if callable(table_func):
+                for table_func in self._iter_callables(model_info.get("table_func")):
                     table = table_func(self, model_info)
                     if table:
                         tables.append(table)
@@ -346,7 +727,6 @@ class DefaultDashboardGenerator:
                 "bulk_export_option": False,
                 "bulk_update_option": False,
                 "bulk_delete_enabled": False,
-                "clear_session_button_enabled": False,
                 "enable_sorting": True,
                 "visible_actions": [],
                 "action_method": None,
@@ -358,7 +738,6 @@ class DefaultDashboardGenerator:
                 "filter_set_class": None,
                 "table_class": True,
                 "table_width": False,
-                "table_height": False,
                 "table_height_as_class": "h-[300px]",
                 "header_attrs": {},
                 "col_attrs": col_attrs,

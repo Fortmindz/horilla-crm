@@ -13,17 +13,16 @@ def refresh_outlook_auth_token():
     """
     scheduler method to refresh token
     """
-    from horilla_mail.horilla_outlook import refresh_outlook_token
-
-    from .models import HorillaMailConfiguration
+    from horilla_mail.models import HorillaMailConfiguration
+    from horilla_mail.views.horilla_outlook import refresh_outlook_token
 
     apis = HorillaMailConfiguration.objects.filter(token__isnull=False, type="outlook")
     for api in apis:
         try:
             refresh_outlook_token(api)
-            logger.info("Updated token for %s outlook auth", api)
+            logger.info("Updated token for %s outlook ", api)
         except Exception as e:
-            logger.error("Error in refresh_outlook_auth_token: %s", e)
+            logger.error("Error in refresh outlook token: %s", e)
 
 
 if not any(

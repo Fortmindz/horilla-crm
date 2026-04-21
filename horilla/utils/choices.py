@@ -6,7 +6,14 @@ currency formats, number grouping, months, days, and operators used throughout
 the Horilla application.
 """
 
+# Standard library imports
+from zoneinfo import available_timezones
+
+# Third-party imports (Django)
 from django.utils.translation import gettext_lazy as _
+
+TIMEZONE_CHOICES = sorted([(tz, tz) for tz in available_timezones()])
+
 
 LANGUAGE_CHOICES = [
     ("en", _("English")),
@@ -101,18 +108,19 @@ DAY_CHOICES = [
 ]
 
 OPERATOR_CHOICES = [
-    ("equals", _("Equals")),
-    ("not_equals", _("Not Equals")),
-    ("contains", _("Contains")),
+    ("exact", _("Equals")),
+    ("ne", _("Not Equals")),
+    ("icontains", _("Contains")),
     ("not_contains", _("Does Not Contain")),
-    ("starts_with", "Starts With"),
-    ("ends_with", _("Ends With")),
-    ("greater_than", _("Greater Than")),
-    ("greater_than_equal", _("Greater Than or Equal")),
-    ("less_than", _("Less Than")),
-    ("less_than_equal", _("Less Than or Equal")),
-    ("is_empty", _("Is Empty")),
-    ("is_not_empty", _("Is Not Empty")),
+    ("istartswith", _("Starts With")),
+    ("iendswith", _("Ends With")),
+    ("gt", _("Greater Than")),
+    ("gte", _("Greater Than or Equal")),
+    ("lt", _("Less Than")),
+    ("lte", _("Less Than or Equal")),
+    ("isnull", _("Is Empty")),
+    ("isnotnull", _("Is Not Empty")),
+    ("between", _("Between")),
 ]
 
 # IMPORTANT: Order matters — do not change the order of these lists
@@ -143,4 +151,14 @@ FIELD_TYPE_MAP = {
     "ForeignKey": "foreignkey",
     "DateField": "date",
     "DateTimeField": "datetime",
+}
+
+BLOCKED_EXTENSIONS = {
+    ".sqlite3",
+    ".py",
+    ".env",
+    ".key",
+    ".pem",
+    ".ini",
+    ".conf",
 }

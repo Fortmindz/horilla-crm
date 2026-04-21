@@ -3,12 +3,12 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla CRM Notifications app
 """
 
-from django.urls import reverse_lazy
-
 from horilla.menu import settings_menu
-from horilla_notifications.models import NotificationTemplate
-from django.utils.translation import gettext_lazy as _
 
+# First party / Horilla imports
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+from horilla_notifications.models import NotificationTemplate
 
 
 @settings_menu.register
@@ -26,6 +26,6 @@ class NotificationSettings:
             "hx-push-url": "true",
             "hx-select": "#notification-template-view",
             "hx-select-oob": "#settings-sidebar",
+            "perm": "horilla_notifications.view_notificationtemplate",
         },
     ]
-

@@ -3,19 +3,19 @@ Opportunities module models.
 """
 
 # Third-party imports (Django)
-from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator, MaxValueValidator, MinValueValidator
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
-from django.urls import reverse_lazy
-from django.utils.safestring import mark_safe
-from django.utils.translation import gettext_lazy as _
 
 # First-party / Horilla imports
 from horilla import settings
+from horilla.core.exceptions import ValidationError
+from horilla.db import models
 from horilla.registry.permission_registry import permission_exempt_model
-from horilla_core.models import Company, CustomerRole, HorillaCoreModel
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+from horilla_core.models import Company, CustomerRole, HorillaCoreModel, TeamRole
 from horilla_crm.accounts.models import Account
 from horilla_crm.campaigns.models import Campaign
 from horilla_crm.contacts.models import Contact
@@ -62,7 +62,7 @@ class OpportunityStage(HorillaCoreModel):
             path="opportunity_stage/is_final_col.html",
             context={"instance": self},
         )
-        return mark_safe(html)
+        return html
 
     def clean(self):
         if self.order < 0:
@@ -263,7 +263,7 @@ class OpportunityStage(HorillaCoreModel):
 
 
 class Opportunity(HorillaCoreModel):
-    """Django model based on Salesforce Opportunity object"""
+    """Django model based on  Opportunity object"""
 
     TYPE_CHOICES = [
         ("existing_customer_upgrade", "Existing Customer - Upgrade"),
@@ -557,18 +557,6 @@ class OpportunityContactRole(HorillaCoreModel):
         return f"{self.contact} - {self.opportunity} ({self.role})"
 
 
-TEAM_ROLE_CHOICES = [
-    ("account_manager", _("Account Manager")),
-    ("channel_manager", _("Channel Manager")),
-    ("executive_sponsor", _("Executive Sponsor")),
-    ("lead_qualifier", _("Lead Qualifier")),
-    ("pre_sales_consultant", _("Pre-Sales Consultant")),
-    ("sales_manager", _("Sales Manager")),
-    ("sales_rep", _("Sales Rep")),
-    ("opportunity_owner", _("Opportunity Owner")),
-    ("other", _("Other")),
-]
-
 ACCESS_LEVEL_CHOICES = [
     ("read", _("Read Only")),
     ("edit", _("Read/Write")),
@@ -639,8 +627,11 @@ class OpportunityTeamMember(HorillaCoreModel):
         default="Read",
         verbose_name=_("Opportunity Access"),
     )
-    team_role = models.CharField(
-        max_length=255, choices=TEAM_ROLE_CHOICES, verbose_name=_("Member Role")
+    team_role = models.ForeignKey(
+        TeamRole,
+        on_delete=models.CASCADE,
+        related_name="default_team_role",
+        verbose_name=_("Member Role"),
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -695,10 +686,12 @@ class DefaultOpportunityMember(HorillaCoreModel):
         verbose_name=_("Team Member"),
     )
 
-    team_role = models.CharField(
-        max_length=255, choices=TEAM_ROLE_CHOICES, verbose_name=_("Member Role")
+    team_role = models.ForeignKey(
+        TeamRole,
+        on_delete=models.CASCADE,
+        related_name="team_role",
+        verbose_name=_("Member Role"),
     )
-
     opportunity_access_level = models.CharField(
         choices=ACCESS_LEVEL_CHOICES, max_length=20, verbose_name=_("Access Level")
     )
@@ -866,7 +859,7 @@ class OpportunitySettings(HorillaCoreModel):
 
 class OpportunitySplitType(HorillaCoreModel):
     """
-    Defines split types (Revenue, Overlay, etc.) - Similar to Salesforce Split Types Setup.
+    Defines split types (Revenue, Overlay, etc.) .
     Each split type can be configured to total 100% or allow overlays.
     """
 
@@ -909,7 +902,7 @@ class OpportunitySplitType(HorillaCoreModel):
             path="opportunity_split/is_active_col.html", context={"instance": self}
         )
 
-        return mark_safe(html)
+        return html
 
     @property
     def is_overlay(self):

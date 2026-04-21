@@ -7,13 +7,16 @@ relationships, constraints, and behaviors.
 """
 
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
-from django.db import models
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
 
-from horilla_core.models import HorillaCoreModel
+# First party imports (Horilla)
+from horilla.db import models
+from horilla.registry.limiters import limit_content_types
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla apps
+from horilla_core.models import HorillaContentType, HorillaCoreModel
+from horilla_utils.methods import render_template
 
 
 class Activity(HorillaCoreModel):
@@ -28,8 +31,13 @@ class Activity(HorillaCoreModel):
         ("log_call", _("Log Call")),
     ]
     STATUS_CHOICES = [
-        ("pending", _("Pending")),
+        ("not_started", _("Not Started")),
+        ("scheduled", _("Scheduled")),
+        ("in_progress", _("In Progress")),
+        ("waiting", _("Waiting on Someone")),
         ("completed", _("Completed")),
+        ("cancelled", _("Cancelled")),
+        ("deferred", _("Deferred")),
     ]
     TASK_PRIORITY_CHOICES = [
         ("high", _("High")),
@@ -47,19 +55,19 @@ class Activity(HorillaCoreModel):
     activity_type = models.CharField(
         max_length=20, choices=ACTIVITY_TYPES, verbose_name=_("Activity Type")
     )
-    source = models.CharField(max_length=100, blank=True, verbose_name=_("Source"))
     content_type = models.ForeignKey(
-        ContentType,
+        HorillaContentType,
         on_delete=models.CASCADE,
+        limit_choices_to=limit_content_types("activity_related_models"),
         verbose_name=_("Related Content Type"),
         null=True,
         blank=True,
     )
 
     object_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name=_("Related Object ID")
+        null=True, blank=True, verbose_name=_("Related To")
     )
-    related_object = GenericForeignKey("content_type", "object_id")
+    related_object = models.GenericForeignKey("content_type", "object_id")
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -138,6 +146,13 @@ class Activity(HorillaCoreModel):
         verbose_name=_("Call Type"),
     )
     notes = models.TextField(null=True, blank=True, verbose_name=_("Notes"))
+    google_event_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name=_("Google Calendar Event ID"),
+    )
     call_purpose = models.CharField(
         max_length=100, null=True, blank=True, verbose_name=_("Call Purpose")
     )
@@ -219,3 +234,20 @@ class Activity(HorillaCoreModel):
         if self.activity_type in ["event", "meeting"] and self.is_all_day:
             return "All Day Event"
         return self.end_datetime or self.due_datetime or self.created_at
+
+    def get_status_update_html(self):
+        """
+        Return an inline status dropdown for list views.
+        Callers must set _status_update_url on the instance before rendering.
+        """
+        url = getattr(self, "_status_update_url", None)
+        if not url:
+            return self.get_status_display()
+        return render_template(
+            path="history_task_status_col.html",
+            context={
+                "instance": self,
+                "url": url,
+                "status_choices": self.STATUS_CHOICES,
+            },
+        )

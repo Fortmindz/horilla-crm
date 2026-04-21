@@ -1,6 +1,6 @@
 """URL configuration for horilla_dashboard app."""
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 
@@ -49,6 +49,16 @@ urlpatterns = [
         "get-secondary-grouping-field-choices/",
         views.SecondaryGroupingFieldChoicesView.as_view(),
         name="get_secondary_grouping_field_choices",
+    ),
+    path(
+        "get-metric-field-choices/",
+        views.MetricFieldChoicesView.as_view(),
+        name="get_metric_field_choices",
+    ),
+    path(
+        "get-y-axis-metric-field-choices/",
+        views.YAxisMetricFieldChoicesView.as_view(),
+        name="get_y_axis_metric_field_choices",
     ),
     path(
         "component-chart/<int:component_id>/",
@@ -158,8 +168,28 @@ urlpatterns = [
         name="reorder_components",
     ),
     path(
+        "save-default-home-layout-order/",
+        views.SaveDefaultHomeLayoutOrderView.as_view(),
+        name="save_default_home_layout_order",
+    ),
+    path(
+        "reset-default-home-layout-order/",
+        views.ResetDefaultHomeLayoutOrderView.as_view(),
+        name="reset_default_home_layout_order",
+    ),
+    path(
+        "dashboard-reset-component-order/<int:dashboard_id>/",
+        views.ResetDashboardLayoutOrderView.as_view(),
+        name="reset_dashboard_layout_order",
+    ),
+    path(
         "report-to-dashboard/",
         views.ReportToDashboardForm.as_view(),
         name="report_to_dashboard",
+    ),
+    path(
+        "chart-view-to-dashboard/",
+        views.ChartViewToDashboardForm.as_view(),
+        name="chart_view_to_dashboard",
     ),
 ]

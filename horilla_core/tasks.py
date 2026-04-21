@@ -19,18 +19,20 @@ from io import BytesIO
 from celery import shared_task
 
 # Third-party imports (Django)
-from django.apps import apps
 from django.core.mail import get_connection
-from django.db import models
 from django.utils import timezone
-from django.utils.translation import gettext as _
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
+from horilla.apps import apps
+
 # First-party / Horilla imports
+from horilla.db import models
+from horilla.utils.translation import gettext as _
+from horilla_core.views.export_data import get_export_cell_value
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -223,7 +225,9 @@ def execute_scheduled_export(schedule_id):
 
     try:
         logger.info("Generating export files for %s modules", len(schedule.modules))
-        export_files = generate_export_files(schedule.modules, schedule.export_format)
+        export_files = generate_export_files(
+            schedule.modules, schedule.export_format, user=schedule.user
+        )
 
         if not export_files:
             logger.error("No files generated for schedule %s", schedule_id)
@@ -251,10 +255,11 @@ def execute_scheduled_export(schedule_id):
         logger.exception(e)
 
 
-def generate_export_files(module_names, export_format):
+def generate_export_files(module_names, export_format, user=None):
     """
     Generate export files for the specified modules.
-    Returns a list of tuples: (filename, file_data)
+    Returns a list of tuples: (filename, file_data).
+    user: optional; when set, choice/date/datetime fields use display values and user format/timezone.
     """
     export_files = []
 
@@ -265,7 +270,7 @@ def generate_export_files(module_names, export_format):
                 logger.warning("Model %s not found", model_name)
                 continue
 
-            filename, data = export_model_data(model, export_format)
+            filename, data = export_model_data(model, export_format, user=user)
             if filename and data:
                 export_files.append((filename, data))
         except Exception as e:
@@ -283,24 +288,24 @@ def get_model_by_name(model_name):
     return None
 
 
-def export_model_data(model, export_format):
+def export_model_data(model, export_format, user=None):
     """
     Export all data of a given model in the selected format.
-    Returns tuple of (filename, BytesIO buffer)
+    Returns tuple of (filename, BytesIO buffer).
+    user: optional; when set, choice/date/datetime use display values and user format/timezone.
     """
     queryset = model.objects.all()
     fields = model._meta.fields
 
     field_data = [(str(field.verbose_name), field.name, field) for field in fields]
     column_headers = [fd[0] for fd in field_data]
-    field_names = [fd[1] for fd in field_data]
 
     data = []
     for obj in queryset:
         row = []
-        for field_name in field_names:
-            value = getattr(obj, field_name, "")
-            row.append(str(value) if value is not None else "")
+        for _verbose_name, field_name, field in field_data:
+            value = get_export_cell_value(obj, field_name, field, user)
+            row.append(value)
         data.append(row)
 
     if export_format == "csv":

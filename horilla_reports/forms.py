@@ -2,9 +2,9 @@
 
 # Third-party imports (Django)
 from django import forms
-from django.urls import reverse_lazy
 
 # First-party / Horilla imports
+from horilla.urls import reverse_lazy
 from horilla_generics.forms import HorillaModelForm
 from horilla_reports.models import Report, ReportFolder
 
@@ -103,7 +103,13 @@ class ChangeChartReportForm(HorillaModelForm):
             chart_choices = [
                 c
                 for c in chart_choices
-                if c[0] not in ["stacked_vertical", "stacked_horizontal"]
+                if c[0]
+                not in [
+                    "stacked_vertical",
+                    "stacked_horizontal",
+                    "heatmap",
+                    "sankey",
+                ]
             ]
 
         self.fields["chart_type"].choices = chart_choices

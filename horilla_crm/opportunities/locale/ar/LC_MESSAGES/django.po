@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:06+0000\n"
+"POT-Creation-Date: 2026-02-21 08:11+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,11 +22,29 @@ msgstr ""
 msgid "Opportunities"
 msgstr "الفرص"
 
-msgid "Threshold updated successfully"
-msgstr "تم تحديث الحد بنجاح"
+msgid "Big Deal Alerts"
+msgstr "تنبيهات الصفقات الكبيرة"
 
-msgid "Big Deal Alert"
+
+msgid "Update Big Deal Alert"
 msgstr "تنبيه صفقة كبيرة"
+
+
+msgid "Create Big Deal Alert"
+msgstr "تنبيه صفقة كبيرة"
+
+msgid "duplicated"
+msgstr "تكرار"
+
+msgid "updated"
+msgstr "تحديث"
+
+msgid "created"
+msgstr "إنشاء"
+
+#, python-format
+msgid "%(model)s %(action)s successfully!"
+msgstr "تم %(action)s %(model)s بنجاح!"
 
 msgid "At least one valid condition row must be provided."
 msgstr "يجب توفير صف واحد صالح على الأقل من الشروط."
@@ -178,30 +196,6 @@ msgstr "دور جهة الاتصال في الفرصة"
 msgid "Opportunity Contact Roles"
 msgstr "أدوار جهات الاتصال في الفرصة"
 
-msgid "Account Manager"
-msgstr "مدير الحساب"
-
-msgid "Channel Manager"
-msgstr "مدير القناة"
-
-msgid "Executive Sponsor"
-msgstr "الراعي التنفيذي"
-
-msgid "Lead Qualifier"
-msgstr "مؤهل العميل المتوقع"
-
-msgid "Pre-Sales Consultant"
-msgstr "مستشار ما قبل البيع"
-
-msgid "Sales Manager"
-msgstr "مدير المبيعات"
-
-msgid "Sales Rep"
-msgstr "مندوب المبيعات"
-
-msgid "Opportunity Owner"
-msgstr "مالك الفرصة"
-
 msgid "Read Only"
 msgstr "للقراءة فقط"
 
@@ -345,45 +339,6 @@ msgstr "تقسيمات الفرص"
 
 msgid "Opportunity Splits"
 msgstr "تقسيمات الفرص"
-
-msgid "Alert Name"
-msgstr "اسم التنبيه"
-
-msgid "Trigger Amount"
-msgstr "مبلغ التفعيل"
-
-msgid "Trigger Probability"
-msgstr "احتمالية التفعيل"
-
-msgid "Trigger alert when opportunity probability reaches this percentage"
-msgstr "تفعيل التنبيه عندما تصل احتمالية الفرصة إلى هذه النسبة"
-
-msgid "Sender Name"
-msgstr "اسم المرسل"
-
-msgid "Sender Email"
-msgstr "بريد المرسل الإلكتروني"
-
-msgid "Notify Emails"
-msgstr "إشعار عبر البريد الإلكتروني"
-
-msgid "Comma-separated emails to notify"
-msgstr "عناوين البريد الإلكتروني المفصولة بفواصل للإشعار"
-
-msgid "Notify CC Emails"
-msgstr "إشعار نسخ إلى البريد الإلكتروني"
-
-msgid "Notify BCC Emails"
-msgstr "إشعار نسخ مخفي إلى البريد الإلكتروني"
-
-msgid "Notify Opportunity Owner"
-msgstr "إشعار مالك الفرصة"
-
-msgid "Active"
-msgstr "نشط"
-
-msgid "Big Deal Alerts"
-msgstr "تنبيهات الصفقات الكبيرة"
 
 msgid "Is Active"
 msgstr "نشط"
@@ -529,8 +484,69 @@ msgstr "العرض/عرض السعر"
 msgid "Negotiation/Review"
 msgstr "التفاوض/المراجعة"
 
-msgid " Nothing to show yet. Please add your Deal Alerts."
+msgid "Trigger Amount"
+msgstr "مبلغ التفعيل"
+
+msgid "Trigger Probability"
+msgstr "احتمالية التفعيل"
+
+msgid "Is Null"
+msgstr "فارغ"
+
+msgid "Is Not Null"
+msgstr "غير فارغ"
+
+msgid "Notify Emails"
+msgstr "إشعار عبر البريد الإلكتروني"
+
+msgid "Notify CC Emails"
+msgstr "إشعار نسخ إلى البريد الإلكتروني"
+
+msgid "Mail Template"
+msgstr "قالب البريد الإلكتروني"
+
+msgid "Sender Email"
+msgstr "بريد المرسل الإلكتروني"
+
+
+msgid "Trigger"
+msgstr "مبلغ التفعيل"
+
+msgid "Delivery Channel"
+msgstr "قناة التسليم"
+
+msgid "Nothing to show yet. Please add your big deal alerts"
 msgstr "لا يوجد شيء للعرض بعد. الرجاء إضافة تنبيهات الصفقات."
+
+
+msgid "Select Closed Stage"
+msgstr "اختر الفريق"
+
+msgid "Close"
+msgstr "إغلاق"
+
+
+msgid "Please select whether this opportunity is Closed Won or Closed Lost:"
+msgstr "نوع المرحلة - مفتوحة، مغلقة ناجحة، أو مغلقة خاسرة"
+
+msgid "Current stage:"
+msgstr "المرحلة الحالية:"
+
+msgid "Won"
+msgstr "مكسوب"
+
+msgid "Lost"
+msgstr "خسارة"
+
+msgid ""
+"No closed stages are configured for this company. Please configure Closed "
+"Won and Closed Lost stages first."
+msgstr ""
+"لم يتم تكوين مراحل مغلقة لهذه الشركة. يرجى تكوين مرحلتي الفوز المغلق والخسارة المغلقة أولاً."
+
+
+msgid "Update Stage"
+msgstr "إضافة مرحلة"
 
 msgid "Are you sure you want to delete this split?"
 msgstr "هل أنت متأكد من حذف هذا التقسيم؟"
@@ -544,9 +560,6 @@ msgstr "لا يمكن حذف مالك الفرصة"
 msgid "Edit All Opportunity Splits"
 msgstr "تعديل جميع تقسيمات الفرص"
 
-msgid "Close"
-msgstr "إغلاق"
-
 msgid "Enable Opportunity split"
 msgstr "تفعيل تقسيم الفرص"
 
@@ -559,7 +572,7 @@ msgstr ""
 "فقط لأعضاء فريق الفرصة. هذا يسمح بإضافة أعضاء جدد أثناء تعديل التقسيمات."
 
 msgid "split"
-msgstr ""
+msgstr "تقسيم"
 
 msgid "Quick Tips for Opportunity Splits"
 msgstr "نصائح سريعة لتقسيم الفرص"
@@ -638,7 +651,7 @@ msgid "Manage Custom Stages"
 msgstr "إدارة المراحل المخصصة"
 
 msgid "Drag"
-msgstr ""
+msgstr "سحب"
 
 msgid "Add Stage"
 msgstr "إضافة مرحلة"
@@ -723,6 +736,10 @@ msgstr "معلومات الفرصة"
 
 msgid "Additional Information"
 msgstr "معلومات إضافية"
+
+
+msgid "Closed"
+msgstr "إغلاق"
 
 msgid "Contact Roles"
 msgstr "أدوار الاتصال"

@@ -3,10 +3,11 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla CRM Forecast app
 """
 
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
-
 from horilla.menu import settings_menu, sub_section_menu
+
+# First-party / Horilla imports
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
 from horilla_crm.forecast.models import ForecastTarget, ForecastType
 
 

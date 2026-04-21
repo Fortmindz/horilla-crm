@@ -2,9 +2,9 @@
 URL patterns for horilla_dashboard API
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_dashboard.api.views import (
     ComponentCriteriaViewSet,
     DashboardComponentViewSet,

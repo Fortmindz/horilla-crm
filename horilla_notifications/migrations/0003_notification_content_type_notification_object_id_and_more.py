@@ -2,7 +2,7 @@
 
 import django.db.models.deletion
 import django.utils.timezone
-import horilla_notifications.methods
+import horilla.registry.limiters
 from django.conf import settings
 from django.db import migrations, models
 
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                 ('title', models.CharField(max_length=100, verbose_name='Template Title')),
                 ('message', models.TextField(verbose_name='Message')),
                 ('company', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='horilla_core.company', verbose_name='Company')),
-                ('content_type', models.ForeignKey(blank=True, limit_choices_to=horilla_notifications.methods.limit_content_types, null=True, on_delete=django.db.models.deletion.CASCADE, to='horilla_core.horillacontenttype', verbose_name='Related Model')),
+                ('content_type', models.ForeignKey(blank=True, limit_choices_to=horilla.registry.limiters.ContentTypeLimiter('notification_template_models'), null=True, on_delete=django.db.models.deletion.CASCADE, to='horilla_core.horillacontenttype', verbose_name='Related Model')),
                 ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
                 ('updated_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
             ],

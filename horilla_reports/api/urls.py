@@ -5,9 +5,9 @@ This module mirrors the URL structure of other app APIs
 using DefaultRouter for consistent endpoint patterns.
 """
 
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from horilla.urls import include, path
 from horilla_reports.api.views import ReportFolderViewSet, ReportViewSet
 
 # Create router and register viewsets

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-19 10:06+0000\n"
+"POT-Creation-Date: 2026-02-21 08:11+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -25,10 +25,26 @@ msgstr ""
 msgid "Opportunities"
 msgstr ""
 
-msgid "Threshold updated successfully"
+msgid "Big Deal Alerts"
 msgstr ""
 
-msgid "Big Deal Alert"
+msgid "Update Big Deal Alert"
+msgstr ""
+
+msgid "Create Big Deal Alert"
+msgstr ""
+
+msgid "duplicated"
+msgstr ""
+
+msgid "updated"
+msgstr ""
+
+msgid "created"
+msgstr ""
+
+#, python-format
+msgid "%(model)s %(action)s successfully!"
 msgstr ""
 
 msgid "At least one valid condition row must be provided."
@@ -181,30 +197,6 @@ msgstr ""
 msgid "Opportunity Contact Roles"
 msgstr ""
 
-msgid "Account Manager"
-msgstr ""
-
-msgid "Channel Manager"
-msgstr ""
-
-msgid "Executive Sponsor"
-msgstr ""
-
-msgid "Lead Qualifier"
-msgstr ""
-
-msgid "Pre-Sales Consultant"
-msgstr ""
-
-msgid "Sales Manager"
-msgstr ""
-
-msgid "Sales Rep"
-msgstr ""
-
-msgid "Opportunity Owner"
-msgstr ""
-
 msgid "Read Only"
 msgstr ""
 
@@ -340,45 +332,6 @@ msgid "Opportunity Split"
 msgstr ""
 
 msgid "Opportunity Splits"
-msgstr ""
-
-msgid "Alert Name"
-msgstr ""
-
-msgid "Trigger Amount"
-msgstr ""
-
-msgid "Trigger Probability"
-msgstr ""
-
-msgid "Trigger alert when opportunity probability reaches this percentage"
-msgstr ""
-
-msgid "Sender Name"
-msgstr ""
-
-msgid "Sender Email"
-msgstr ""
-
-msgid "Notify Emails"
-msgstr ""
-
-msgid "Comma-separated emails to notify"
-msgstr ""
-
-msgid "Notify CC Emails"
-msgstr ""
-
-msgid "Notify BCC Emails"
-msgstr ""
-
-msgid "Notify Opportunity Owner"
-msgstr ""
-
-msgid "Active"
-msgstr ""
-
-msgid "Big Deal Alerts"
 msgstr ""
 
 msgid "Is Active"
@@ -517,7 +470,63 @@ msgstr ""
 msgid "Negotiation/Review"
 msgstr ""
 
-msgid " Nothing to show yet. Please add your Deal Alerts."
+msgid "Trigger Amount"
+msgstr ""
+
+msgid "Trigger Probability"
+msgstr ""
+
+msgid "Is Null"
+msgstr ""
+
+msgid "Is Not Null"
+msgstr ""
+
+msgid "Notify Emails"
+msgstr ""
+
+msgid "Notify CC Emails"
+msgstr ""
+
+msgid "Mail Template"
+msgstr ""
+
+msgid "Sender Email"
+msgstr ""
+
+msgid "Trigger"
+msgstr ""
+
+msgid "Delivery Channel"
+msgstr ""
+
+msgid "Nothing to show yet. Please add your big deal alerts"
+msgstr ""
+
+msgid "Select Closed Stage"
+msgstr ""
+
+msgid "Close"
+msgstr ""
+
+msgid "Please select whether this opportunity is Closed Won or Closed Lost:"
+msgstr ""
+
+msgid "Current stage:"
+msgstr ""
+
+msgid "Won"
+msgstr ""
+
+msgid "Lost"
+msgstr ""
+
+msgid ""
+"No closed stages are configured for this company. Please configure Closed "
+"Won and Closed Lost stages first."
+msgstr ""
+
+msgid "Update Stage"
 msgstr ""
 
 msgid "Are you sure you want to delete this split?"
@@ -530,9 +539,6 @@ msgid "Cannot delete opportunity owner"
 msgstr ""
 
 msgid "Edit All Opportunity Splits"
-msgstr ""
-
-msgid "Close"
 msgstr ""
 
 msgid "Enable Opportunity split"
@@ -696,6 +702,9 @@ msgid "Opportunity Information"
 msgstr ""
 
 msgid "Additional Information"
+msgstr ""
+
+msgid "Closed"
 msgstr ""
 
 msgid "Contact Roles"

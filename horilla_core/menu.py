@@ -3,11 +3,14 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the Horilla Core app.
 """
 
-from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
-
 from horilla.auth.models import User
 from horilla.menu import my_settings_menu, settings_menu
+
+# First party / Horilla imports
+from horilla.urls import reverse_lazy
+from horilla.utils.translation import gettext_lazy as _
+
+# First-party / Horilla core imports
 from horilla_core.models import CustomerRole, Department, PartnerRole, Role, TeamRole
 
 
@@ -127,8 +130,8 @@ class GeneralSettings:
             "order": 2,
         },
         {
-            "label": _("Groups and Permissions"),
-            "url": reverse_lazy("horilla_core:group_permission_view"),
+            "label": _("Roles and Permissions"),
+            "url": reverse_lazy("horilla_core:role_permission_view"),
             "hx-target": "#settings-content",
             "hx-push-url": "true",
             "hx-select": "#permission-view",
@@ -169,7 +172,7 @@ class BaseSettings:
             "url": reverse_lazy("horilla_core:roles_view"),
             "hx-target": "#settings-content",
             "hx-push-url": "true",
-            "hx-select": "#role-container",
+            "hx-select": "#role-view",
             "hx-select-oob": "#settings-sidebar",
             "perm": "horilla_core.view_role",
         },
@@ -259,3 +262,13 @@ class AboutSystemSettings:
             "perm": "horilla_core.view_recyclebin",
         }
     ]
+
+
+@settings_menu.register
+class IntegrationsSettings:
+    """Registers the Integrations section in the admin Settings sidebar."""
+
+    title = _("Integrations")
+    icon = "/assets/icons/integration.svg"
+    order = 4
+    items = []

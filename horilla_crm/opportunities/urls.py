@@ -1,9 +1,7 @@
 """URL configuration for opportunities module."""
 
-from django.urls import path
-
-from . import big_deal_alert as big_deal_alert_views
-from . import opportunity_split, opportunity_team, opporunity_stages, views
+from horilla.urls import path
+from horilla_crm.opportunities import views
 
 app_name = "opportunities"
 
@@ -27,6 +25,31 @@ urlpatterns = [
         "opportunities-kanban/",
         views.OpportunityKanbanView.as_view(),
         name="opportunities_kanban",
+    ),
+    path(
+        "opportunities-card/",
+        views.OpportunityCardView.as_view(),
+        name="opportunities_card",
+    ),
+    path(
+        "opportunities-group-by/",
+        views.OpportunityGroupByView.as_view(),
+        name="opportunities_group_by",
+    ),
+    path(
+        "opportunities-layout-split/",
+        views.OpportunitySplitView.as_view(),
+        name="opportunities_split_view",
+    ),
+    path(
+        "opportunities-chart/",
+        views.OpportunityChartView.as_view(),
+        name="opportunities_chart",
+    ),
+    path(
+        "opportunities-timeline/",
+        views.OpportunityTimelineView.as_view(),
+        name="opportunities_timeline",
     ),
     path(
         "opportunity-create/",
@@ -99,6 +122,11 @@ urlpatterns = [
         name="opportunity_related_lists",
     ),
     path(
+        "opportunity-cadences-tab/<int:pk>/",
+        views.OpportunityCadenceTabView.as_view(),
+        name="opportunity_cadences_tab",
+    ),
+    path(
         "opportunity-history-tab-view/<int:pk>/",
         views.OpportunityHistoryTabView.as_view(),
         name="opportunity_history_tab_view",
@@ -116,259 +144,259 @@ urlpatterns = [
     # opportunity stage urls
     path(
         "opportunity-stage-view/",
-        opporunity_stages.OpportunityStageView.as_view(),
+        views.OpportunityStageView.as_view(),
         name="opportunity_stage_view",
     ),
     path(
         "opportunity-stage-nav-view/",
-        opporunity_stages.OpportunityStageNavbar.as_view(),
+        views.OpportunityStageNavbar.as_view(),
         name="opportunity_stage_nav_view",
     ),
     path(
         "opportunity-stage-list-view/",
-        opporunity_stages.OpportunityStageListView.as_view(),
+        views.OpportunityStageListView.as_view(),
         name="opportunity_stage_list_view",
     ),
     path(
         "change-opportunity-stage-final/<int:pk>/",
-        opporunity_stages.ChangeFinalStage.as_view(),
+        views.ChangeFinalStage.as_view(),
         name="change_opportunity_stage_final",
     ),
     path(
         "edit-opportunity-stage/<int:pk>/",
-        opporunity_stages.CreateOpportunityStage.as_view(),
+        views.CreateOpportunityStage.as_view(),
         name="edit_opportunity_stage",
     ),
     path(
         "create-opportunity-stage/",
-        opporunity_stages.CreateOpportunityStage.as_view(),
+        views.CreateOpportunityStage.as_view(),
         name="create_opportunity_stage",
     ),
     path(
         "toggle-order-field/",
-        opporunity_stages.OpportynityToggleOrderFieldView.as_view(),
+        views.OpportynityToggleOrderFieldView.as_view(),
         name="toggle_order_field",
     ),
     path(
         "delete-opportunity-stage/<int:pk>/",
-        opporunity_stages.OpportunityStatusDeleteView.as_view(),
+        views.OpportunityStatusDeleteView.as_view(),
         name="delete_opportunity_stage",
     ),
     path(
         "update-opportunity-stage-order/",
-        opporunity_stages.UpdateOpportunityStageOrderView.as_view(),
+        views.UpdateOpportunityStageOrderView.as_view(),
         name="update_opportunity_stage_order",
     ),
     path(
         "company/<int:company_id>/load-opp-stages/",
-        opporunity_stages.LoadOpportunityStagesView.as_view(),
+        views.LoadOpportunityStagesView.as_view(),
         name="load_opp_stages",
     ),
     path(
         "company/<int:pk>/create-opp-stage-group/",
-        opporunity_stages.CreateOppStageGroupView.as_view(),
+        views.CreateOppStageGroupView.as_view(),
         name="create_opp_stage_group",
     ),
     path(
         "company/<int:company_id>/custom-opp-stages-form/",
-        opporunity_stages.CustomOppStagesFormView.as_view(),
+        views.CustomOppStagesFormView.as_view(),
         name="custom_opp_stage_form",
     ),
     path(
         "company/<int:company_id>/save-custom-opp-stages/",
-        opporunity_stages.SaveCustomOppStagesView.as_view(),
+        views.SaveCustomOppStagesView.as_view(),
         name="save_custom_opp_stages",
     ),
     # Big deal alert urls
     path(
         "big-deal-alert-view/",
-        big_deal_alert_views.BigDealAlertView.as_view(),
+        views.BigDealAlertView.as_view(),
         name="big_deal_alert_view",
     ),
     path(
         "big-deal-alert-nav/",
-        big_deal_alert_views.BigDealAlertNavbar.as_view(),
+        views.BigDealAlertNavbar.as_view(),
         name="big_deal_alert_nav",
     ),
     path(
         "big-deal-alert-list/",
-        big_deal_alert_views.BigDealAlertListView.as_view(),
+        views.BigDealAlertListView.as_view(),
         name="big_deal_alert_list",
     ),
     path(
         "big-deal-automation-create/",
-        big_deal_alert_views.BigDealAutomationFormView.as_view(),
+        views.BigDealAutomationFormView.as_view(),
         name="big_deal_automation_create",
     ),
     path(
         "big-deal-automation-update/<int:pk>/",
-        big_deal_alert_views.BigDealAutomationFormView.as_view(),
+        views.BigDealAutomationFormView.as_view(),
         name="big_deal_automation_update",
     ),
     # opportunity team urls
     path(
         "opportunity-team-view/",
-        opportunity_team.OpportunityTeamView.as_view(),
+        views.OpportunityTeamView.as_view(),
         name="opportunity_team_view",
     ),
     path(
         "opportunity-team-nav-view/",
-        opportunity_team.OpportunityTeamNavbar.as_view(),
+        views.OpportunityTeamNavbar.as_view(),
         name="opportunity_team_nav_view",
     ),
     path(
         "opportunity-team-list-view/",
-        opportunity_team.OpportunityTeamListView.as_view(),
+        views.OpportunityTeamListView.as_view(),
         name="opportunity_team_list_view",
     ),
     path(
         "edit-opportunity-team/<int:pk>/",
-        opportunity_team.OpportunityTeamFormView.as_view(),
+        views.OpportunityTeamFormView.as_view(),
         name="edit_opportunity_team",
     ),
     path(
         "create-opportunity-team/",
-        opportunity_team.OpportunityTeamFormView.as_view(),
+        views.OpportunityTeamFormView.as_view(),
         name="create_opportunity_team",
     ),
     path(
         "opportunity-team-detail-view/<int:pk>/",
-        opportunity_team.OpportunityTeamDetailView.as_view(),
+        views.OpportunityTeamDetailView.as_view(),
         name="opportunity_team_detail_view",
     ),
     path(
         "opportunity-team-detail-nav-view/",
-        opportunity_team.OpportunityTeamDetailNavbar.as_view(),
+        views.OpportunityTeamDetailNavbar.as_view(),
         name="opportunity_team_detail_nav_view",
     ),
     path(
         "opportunity-team-detail-list-view/",
-        opportunity_team.OpportunityTeamDetailListView.as_view(),
+        views.OpportunityTeamDetailListView.as_view(),
         name="opportunity_team_detail_list_view",
     ),
     path(
         "create-opportunity-team-member/",
-        opportunity_team.OpportunityTeamMemberCreateView.as_view(),
+        views.OpportunityTeamMemberCreateView.as_view(),
         name="create_opportunity_team_member",
     ),
     path(
         "add-opportunity-member/",
-        opportunity_team.AddOpportunityMemberView.as_view(),
+        views.AddOpportunityMemberView.as_view(),
         name="add_opportunity_member",
     ),
     path(
         "edit-opportunity-team-member/<int:pk>/",
-        opportunity_team.OpportunityTeamMemberUpdateView.as_view(),
+        views.OpportunityTeamMemberUpdateView.as_view(),
         name="edit_opportunity_team_member",
     ),
     path(
         "edit-opportunity-member/<int:pk>/",
-        opportunity_team.OpportunityMemberUpdateView.as_view(),
+        views.OpportunityMemberUpdateView.as_view(),
         name="edit_opportunity_member",
     ),
     path(
         "delete-opportunity-team/<int:pk>/",
-        opportunity_team.OpportunityTeamDeleteView.as_view(),
+        views.OpportunityTeamDeleteView.as_view(),
         name="delete_opportunity_team",
     ),
     path(
         "delete-opportunity-team-member/<int:pk>/",
-        opportunity_team.OpportunityTeamMembersDeleteView.as_view(),
+        views.OpportunityTeamMembersDeleteView.as_view(),
         name="delete_opportunity_team_member",
     ),
     path(
         "delete-opportunity-member/<int:pk>/",
-        opportunity_team.OpportunityMembersDeleteView.as_view(),
+        views.OpportunityMembersDeleteView.as_view(),
         name="delete_opportunity_member",
     ),
     path(
         "team-selling/",
-        opportunity_team.TeamSellingSetupView.as_view(),
+        views.TeamSellingSetupView.as_view(),
         name="team_selling_setup",
     ),
     path(
         "opportunity-split-view/",
-        opportunity_split.SplitTypeView.as_view(),
+        views.SplitTypeView.as_view(),
         name="opportunity_split_view",
     ),
     path(
         "opportunity-split-nav/",
-        opportunity_split.OpportunitySplitNavbar.as_view(),
+        views.OpportunitySplitNavbar.as_view(),
         name="opportunity_split_nav",
     ),
     path(
         "opportunity-split-list/",
-        opportunity_split.OpportunitySplitListView.as_view(),
+        views.OpportunitySplitListView.as_view(),
         name="opportunity_split_list",
     ),
     path(
         "opportunity-split-toggle/",
-        opportunity_split.ToggleOpportunitySplitView.as_view(),
+        views.ToggleOpportunitySplitView.as_view(),
         name="toggle_opportunit_split",
     ),
     path(
         "toggle-allow-all-users-split/",
-        opportunity_split.ToggleAllowAllUsersSplitView.as_view(),
+        views.ToggleAllowAllUsersSplitView.as_view(),
         name="toggle_allow_all_users_split",
     ),
     path(
         "split-type-is-active/<int:pk>/",
-        opportunity_split.OpportunitySplitTypeActiveToggleView.as_view(),
+        views.OpportunitySplitTypeActiveToggleView.as_view(),
         name="opportunity_split_toggle_active",
     ),
     path(
         "manage-opportunity-splits/",
-        opportunity_split.ManageOpportunitySplit.as_view(),
+        views.ManageOpportunitySplit.as_view(),
         name="manage_opportunity_splits",
     ),
     path(
         "opportunity-splits/",
-        opportunity_split.OpportunitySplitTabView.as_view(),
+        views.OpportunitySplitTabView.as_view(),
         name="opportunity_splits",
     ),
     path(
         "opportunity-splits-type-tab/<int:opportunity_id>/<int:split_type_id>/",
-        opportunity_split.OpportunitySplitTabContentView.as_view(),
+        views.OpportunitySplitTabContentView.as_view(),
         name="opportunity_split_tab_content",
     ),
     path(
         "save-opportunity-splits/<int:opportunity_id>/<int:split_type_id>/",
-        opportunity_split.SaveOpportunitySplitsView.as_view(),
+        views.SaveOpportunitySplitsView.as_view(),
         name="save_opportunity_splits",
     ),
     path(
         "opportunity-splits-add-row/<int:opportunity_id>/<int:split_type_id>/",
-        opportunity_split.AddSplitRowView.as_view(),
+        views.AddSplitRowView.as_view(),
         name="add_split_row",
     ),
     path(
         "splits-delete/<int:split_id>/",
-        opportunity_split.DeleteSplitRowView.as_view(),
+        views.DeleteSplitRowView.as_view(),
         name="delete_split_row",
     ),
     path(
         "opportunity-recalculate/<int:opportunity_id>/<int:split_type_id>/",
-        opportunity_split.RecalculateTotalsView.as_view(),
+        views.RecalculateTotalsView.as_view(),
         name="recalculate_split_totals",
     ),
     path(
         "recalculate-row/<int:opportunity_id>/splits/<int:split_type_id>/",
-        opportunity_split.RecalculateSplitRowView.as_view(),
+        views.RecalculateSplitRowView.as_view(),
         name="recalculate_split_row",
     ),
     path(
         "team-selling/toggle/",
-        opportunity_team.ToggleTeamSellingView.as_view(),
+        views.ToggleTeamSellingView.as_view(),
         name="toggle_team_selling",
     ),
     path(
         "initialiaze-opportunity-stages/",
-        opporunity_stages.InitializeDatabaseOpportunityStages.as_view(),
+        views.InitializeDatabaseOpportunityStages.as_view(),
         name="initialiaze_opportunity_stages",
     ),
     path(
         "add-default-team/",
-        opportunity_team.AddDefaultTeamView.as_view(),
+        views.AddDefaultTeamView.as_view(),
         name="add_default_team",
     ),
     path(

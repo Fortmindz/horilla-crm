@@ -1,10 +1,7 @@
 """URL configurations for the leads app."""
 
-from django.urls import path
-
-from horilla_crm.leads import mail_to_lead, scoring_rule, web_to_lead
-
-from . import lead_stage, views
+from horilla.urls import path
+from horilla_crm.leads import views
 
 app_name = "leads"
 
@@ -12,8 +9,17 @@ urlpatterns = [
     path("leads-view/", views.LeadView.as_view(), name="leads_view"),
     path("leads-nav/", views.LeadNavbar.as_view(), name="leads_nav"),
     path("leads-list/", views.LeadListView.as_view(), name="leads_list"),
+    path("leads-card/", views.LeadCardView.as_view(), name="leads_card"),
+    path(
+        "leads-layout-split/",
+        views.LeadSplitView.as_view(),
+        name="leads_split_view",
+    ),
     path("leads-delete/<int:pk>/", views.LeadDeleteView.as_view(), name="leads_delete"),
     path("leads-kanban/", views.LeadKanbanView.as_view(), name="leads_kanban"),
+    path("leads-group-by/", views.LeadGroupByView.as_view(), name="leads_group_by"),
+    path("leads-chart/", views.LeadChartView.as_view(), name="leads_chart"),
+    path("leads-timeline/", views.LeadTimelineView.as_view(), name="leads_timeline"),
     path("leads-create/", views.LeadFormView.as_view(), name="leads_create"),
     path("leads-detail/<int:pk>/", views.LeadDetailView.as_view(), name="leads_detail"),
     path(
@@ -35,6 +41,11 @@ urlpatterns = [
         "lead-related-lists/<int:pk>/",
         views.LeadRelatedLists.as_view(),
         name="lead_related_lists",
+    ),
+    path(
+        "lead-cadences-tab/<int:pk>/",
+        views.LeadCadenceTabView.as_view(),
+        name="lead_cadences_tab",
     ),
     path("leads-edit/<int:pk>/", views.LeadFormView.as_view(), name="leads_edit"),
     path(
@@ -62,82 +73,80 @@ urlpatterns = [
         views.LeadChangeOwnerForm.as_view(),
         name="lead_change_owner",
     ),
-    path(
-        "lead-stage-view/", lead_stage.LeadsStageView.as_view(), name="lead_stage_view"
-    ),
+    path("lead-stage-view/", views.LeadsStageView.as_view(), name="lead_stage_view"),
     path(
         "lead-stage-nav-view/",
-        lead_stage.LeadStageNavbar.as_view(),
+        views.LeadStageNavbar.as_view(),
         name="lead_stage_nav_view",
     ),
     path(
         "lead-stage-list-view/",
-        lead_stage.LeadStageListView.as_view(),
+        views.LeadStageListView.as_view(),
         name="lead_stage_list_view",
     ),
     path(
         "change-lead-stage-final/<int:pk>/",
-        lead_stage.ChangeFinalStage.as_view(),
+        views.ChangeFinalStage.as_view(),
         name="change_lead_stage_final",
     ),
     path(
         "edit-lead-stage/<int:pk>/",
-        lead_stage.CreateLeadStage.as_view(),
+        views.CreateLeadStage.as_view(),
         name="edit_lead_stage",
     ),
     path(
         "create-lead-stage/",
-        lead_stage.CreateLeadStage.as_view(),
+        views.CreateLeadStage.as_view(),
         name="create_lead_stage",
     ),
     path(
         "toggle-order-field/",
-        lead_stage.ToggleOrderFieldView.as_view(),
+        views.ToggleOrderFieldView.as_view(),
         name="toggle_order_field",
     ),
     path(
         "delete-lead-stage/<int:pk>/",
-        lead_stage.LeadStatusDeleteView.as_view(),
+        views.LeadStatusDeleteView.as_view(),
         name="delete_lead_stage",
     ),
     path(
         "update-lead-stage-order/",
-        lead_stage.UpdateLeadStageOrderView.as_view(),
+        views.UpdateLeadStageOrderView.as_view(),
         name="update_lead_stage_order",
     ),
     path(
         "company/<int:company_id>/load-lead-stages/",
-        lead_stage.LoadLeadStagesView.as_view(),
+        views.LoadLeadStagesView.as_view(),
         name="load_lead_stages",
     ),
     path(
         "company/<int:pk>/create-stage-group/",
-        lead_stage.CreateStageGroupView.as_view(),
+        views.CreateStageGroupView.as_view(),
         name="create_stage_group",
     ),
     path(
         "company/<int:company_id>/custom-stages-form/",
-        lead_stage.CustomStagesFormView.as_view(),
+        views.CustomStagesFormView.as_view(),
         name="custom_stages_form",
     ),
     path(
         "company/<int:company_id>/save-custom-stages/",
-        lead_stage.SaveCustomStagesView.as_view(),
+        views.SaveCustomStagesView.as_view(),
         name="save_custom_stages",
     ),
     path(
         "company/<int:company_id>/add-stage/",
-        lead_stage.AddStageView.as_view(),
+        views.AddStageView.as_view(),
         name="add_stage",
     ),
     path(
         "company/<int:company_id>/remove-stage/",
-        lead_stage.RemoveStageView.as_view(),
+        views.RemoveStageView.as_view(),
         name="remove_stage",
     ),
     path(
         "initialize-lead-stages/",
-        lead_stage.InitializeDatabaseLeadStages.as_view(),
+        views.InitializeDatabaseLeadStages.as_view(),
         name="initialize_lead_stages",
     ),
     path(
@@ -147,127 +156,121 @@ urlpatterns = [
     ),
     path(
         "mail-to-lead-view/",
-        mail_to_lead.MailToLeadView.as_view(),
+        views.MailToLeadView.as_view(),
         name="mail_to_lead_view",
     ),
     path(
         "mail-to-lead-nav-bar/",
-        mail_to_lead.MailToLeadNavbar.as_view(),
+        views.MailToLeadNavbar.as_view(),
         name="mail_to_lead_nav_bar",
     ),
     path(
         "mail-to-lead-list-view/",
-        mail_to_lead.MailToLeadListView.as_view(),
+        views.MailToLeadListView.as_view(),
         name="mail_to_lead_list_view",
     ),
     path(
         "mail-to-lead-create-view/",
-        mail_to_lead.MailToLeadFormView.as_view(),
+        views.MailToLeadFormView.as_view(),
         name="mail_to_lead_create_view",
     ),
     path(
         "mail-to-lead-upadte-view/<int:pk>/",
-        mail_to_lead.MailToLeadFormView.as_view(),
+        views.MailToLeadFormView.as_view(),
         name="mail_to_lead_update_view",
     ),
     path(
         "mail-to-lead-delete-view/<int:pk>/",
-        mail_to_lead.EmailToLeadConfigDeleteView.as_view(),
+        views.EmailToLeadConfigDeleteView.as_view(),
         name="mail_to_lead_delete_view",
     ),
-    path(
-        "form-builder/", web_to_lead.LeadFormBuilderView.as_view(), name="form_builder"
-    ),
+    path("form-builder/", views.LeadFormBuilderView.as_view(), name="form_builder"),
     # HTMX endpoints
-    path(
-        "form-builder/add-field/", web_to_lead.AddFieldView.as_view(), name="add_field"
-    ),
+    path("form-builder/add-field/", views.AddFieldView.as_view(), name="add_field"),
     path(
         "form-builder/remove-field/",
-        web_to_lead.RemoveFieldView.as_view(),
+        views.RemoveFieldView.as_view(),
         name="remove_field",
     ),
     path(
         "form-builder/preview/",
-        web_to_lead.UpdateFormPreviewView.as_view(),
+        views.UpdateFormPreviewView.as_view(),
         name="update_preview",
     ),
-    path(
-        "form-builder/save/", web_to_lead.SaveLeadFormView.as_view(), name="save_form"
-    ),
+    path("form-builder/save/", views.SaveLeadFormView.as_view(), name="save_form"),
     path(
         "update-heading/",
-        web_to_lead.UpdateFormHeadingView.as_view(),
+        views.UpdateFormHeadingView.as_view(),
         name="update_heading",
     ),
     path(
         "toggle-return-url/",
-        web_to_lead.ToggleReturnUrlView.as_view(),
+        views.ToggleReturnUrlView.as_view(),
         name="toggle_return_url",
     ),
     path(
         "capture/<int:form_id>/",
-        web_to_lead.PublicLeadFormView.as_view(),
+        views.PublicLeadFormView.as_view(),
         name="public_lead_form",
     ),
     path(
         "scoring-rule-view/",
-        scoring_rule.ScoringRuleView.as_view(),
+        views.ScoringRuleView.as_view(),
         name="scoring_rule_view",
     ),
     path(
         "scoring-rule-nav-view/",
-        scoring_rule.ScoringRuleNavbar.as_view(),
+        views.ScoringRuleNavbar.as_view(),
         name="scoring_rule_nav_view",
     ),
     path(
         "scoring-rule-list-view/",
-        scoring_rule.ScoringRuleListView.as_view(),
+        views.ScoringRuleListView.as_view(),
         name="scoring_rule_list_view",
     ),
     path(
         "scoring-rule-create-form/",
-        scoring_rule.ScoringRuleFormView.as_view(),
+        views.ScoringRuleFormView.as_view(),
         name="scoring_rule_create_form",
     ),
     path(
         "scoring-rule-update-form/<int:pk>/",
-        scoring_rule.ScoringRuleFormView.as_view(),
+        views.ScoringRuleFormView.as_view(),
         name="scoring_rule_update_form",
     ),
     path(
         "scoring-rule-delete-view/<int:pk>/",
-        scoring_rule.ScoringRuleDeleteView.as_view(),
+        views.ScoringRuleDeleteView.as_view(),
         name="scoring_rule_delete_view",
     ),
     path(
         "scoring-rule-detail-view/<int:pk>/",
-        scoring_rule.ScoringRuleDetailView.as_view(),
+        views.ScoringRuleDetailView.as_view(),
         name="scoring_rule_detail_view",
     ),
     path(
         "scoring-rule-detail-nav-view/",
-        scoring_rule.ScoringRuleDetailNavbar.as_view(),
+        views.ScoringRuleDetailNavbar.as_view(),
         name="scoring_rule_detail_nav_view",
     ),
     path(
         "scoring-rule-criteria-create-form/",
-        scoring_rule.ScoringCriterionCreateUpdateView.as_view(),
+        views.ScoringCriterionCreateUpdateView.as_view(),
         name="scoring_rule_criteria_create_form",
     ),
     path(
         "scoring-rule-criteria-edit-form/<int:pk>/",
-        scoring_rule.ScoringCriterionCreateUpdateView.as_view(),
+        views.ScoringCriterionCreateUpdateView.as_view(),
         name="scoring_rule_criteria_edit_form",
     ),
     path(
         "scoring-rule-criteria-delete/<int:pk>/",
-        scoring_rule.ScoringCriteriaDeleteView.as_view(),
+        views.ScoringCriteriaDeleteView.as_view(),
         name="scoring_rule_criteria_delete",
     ),
     path(
         "scoring-rule-activate/<int:pk>/",
-        scoring_rule.ScroringActiveToggleView.as_view(),
+        views.ScroringActiveToggleView.as_view(),
         name="scoring_rule_activate",
     ),
 ]

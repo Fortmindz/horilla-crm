@@ -11,21 +11,21 @@ import logging
 import re
 
 from django import template
-
-# Django / third-party imports
-from django.apps import apps
-from django.contrib.contenttypes.models import ContentType
-from django.http import HttpResponse
 from django.middleware.csrf import get_token
 from django.template import loader
 from django.template.defaultfilters import register
 from django.utils.functional import lazy
 from django.utils.html import format_html
+
+# Django / third-party imports
 from django.utils.safestring import SafeString
 
-# First-party (Horilla) imports
 from horilla import settings
+
+# First-party (Horilla) imports
+from horilla.apps import apps
 from horilla.menu.sub_section_menu import sub_section_menu as menu_registry
+from horilla_core.models import HorillaContentType
 from horilla_utils.middlewares import _thread_local
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 def get_horilla_model_class(app_label, model):
     """
     Retrieves the model class for the given app label and model
-    name using Django's ContentType framework.
+    name using Django's HorillaContentType framework.
     Args:
         app_label (str): The label of the application where the model is defined.
         model (str): The name of the model to retrieve.
@@ -43,7 +43,7 @@ def get_horilla_model_class(app_label, model):
         Model: The Django model class corresponding to the specified app label and model name.
 
     """
-    content_type = ContentType.objects.get(app_label=app_label, model=model)
+    content_type = HorillaContentType.objects.get(app_label=app_label, model=model)
     model_class = content_type.model_class()
     return model_class
 
@@ -97,7 +97,6 @@ def render_template(
     """
     This method is used to render HTML text with context.
     """
-
     request = getattr(_thread_local, "request", None)
     context.update(get_all_context_variables(request))
     template_loader = loader.get_template(path)
@@ -105,7 +104,7 @@ def render_template(
     template_bdy = template.Template(template_body)
     context_instance = template.Context(context)
     rendered_content = template_bdy.render(context_instance)
-    return HttpResponse(rendered_content, status=status).content.decode(decoding)
+    return format_html("{}", rendered_content)
 
 
 def closest_numbers(numbers: list, input_number: int) -> tuple:

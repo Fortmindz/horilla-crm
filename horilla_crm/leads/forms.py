@@ -8,10 +8,11 @@ import pycountry
 
 # Third-party imports (Django)
 from django import forms
-from django.urls import reverse, reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
+from horilla.urls import reverse, reverse_lazy
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_crm.accounts.models import Account
 from horilla_crm.contacts.models import Contact
@@ -63,6 +64,7 @@ class LeadFormClass(OwnerQuerysetMixin, HorillaMultiStepForm):
             self.fields["created_by"].required = False
             self.fields["updated_by"].required = False
 
+        self.fields["lead_status"].queryset = LeadStatus.objects.filter(is_final=False)
         self.fields["country"].widget.attrs.update(
             {
                 "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),
@@ -131,6 +133,7 @@ class LeadSingleForm(OwnerQuerysetMixin, HorillaModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["lead_status"].queryset = LeadStatus.objects.filter(is_final=False)
         self.fields["country"].widget.attrs.update(
             {
                 "hx-get": reverse_lazy("horilla_core:get_country_subdivisions"),

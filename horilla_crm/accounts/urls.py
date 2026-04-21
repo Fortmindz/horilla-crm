@@ -2,7 +2,7 @@
 URL configuration for the Accounts app.
 """
 
-from django.urls import path
+from horilla.urls import path
 
 from . import views
 
@@ -19,9 +19,34 @@ urlpatterns = [
         name="accounts_list_view",
     ),
     path(
+        "accounts-layout-split/",
+        views.AccountSplitView.as_view(),
+        name="accounts_split_view",
+    ),
+    path(
         "accounts-kanban-view/",
         views.AccountsKanbanView.as_view(),
         name="accounts_kanban_view",
+    ),
+    path(
+        "accounts-card-view/",
+        views.AccountCardView.as_view(),
+        name="accounts_card_view",
+    ),
+    path(
+        "accounts-group-by-view/",
+        views.AccountGroupByView.as_view(),
+        name="accounts_group_by_view",
+    ),
+    path(
+        "accounts-chart-view/",
+        views.AccountChartView.as_view(),
+        name="accounts_chart_view",
+    ),
+    path(
+        "accounts-timeline/",
+        views.AccountTimelineView.as_view(),
+        name="accounts_timeline",
     ),
     path(
         "account-create-form-view/",
@@ -84,6 +109,11 @@ urlpatterns = [
         name="account_related_list_tab_view",
     ),
     path(
+        "account-cadences-tab/<int:pk>/",
+        views.AccountCadenceTab.as_view(),
+        name="account_cadences_tab",
+    ),
+    path(
         "account-history-tab-view/<int:pk>/",
         views.AccountHistoryTab.as_view(),
         name="account_history_tab_view",
@@ -127,5 +157,10 @@ urlpatterns = [
         "partner-account-delete/<int:pk>/",
         views.PartnerAccountDeleteView.as_view(),
         name="partner_account_delete",
+    ),
+    path(
+        "account-hierarchy/",
+        views.AccountHierarchyView.as_view(),
+        name="account_hierarchy",
     ),
 ]

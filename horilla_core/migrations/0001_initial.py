@@ -7,7 +7,7 @@ import django.db.models.deletion
 import django.db.models.manager
 import django.utils.timezone
 import django_countries.fields
-import horilla_core.models
+import horilla.utils.upload
 import multiselectfield.db.fields
 from django.conf import settings
 from django.db import migrations, models
@@ -206,7 +206,7 @@ class Migration(migrations.Migration):
                     models.ImageField(
                         blank=True,
                         null=True,
-                        upload_to=horilla_core.models.upload_path,
+                        upload_to=horilla.utils.upload.upload_path,
                         verbose_name="Profile Image",
                     ),
                 ),
@@ -1023,7 +1023,7 @@ class Migration(migrations.Migration):
                     models.ImageField(
                         blank=True,
                         null=True,
-                        upload_to=horilla_core.models.upload_path,
+                        upload_to=horilla.utils.upload.upload_path,
                         verbose_name="Company Icon",
                     ),
                 ),
@@ -3842,7 +3842,7 @@ class Migration(migrations.Migration):
                         blank=True,
                         help_text="Optional file attached to this record.",
                         null=True,
-                        upload_to=horilla_core.models.upload_path,
+                        upload_to=horilla.utils.upload.upload_path,
                         verbose_name="File",
                     ),
                 ),

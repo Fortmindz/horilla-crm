@@ -28,12 +28,6 @@ def create_all_default_shortcuts(sender, instance, created, **kwargs):
         {"page": "/shortkeys/short-key-view/", "key": "K", "command": "alt"},
         {"page": "/user-view/", "key": "U", "command": "alt"},
         {"page": "/branches-view/", "key": "B", "command": "alt"},
-        {
-            "page": "/horilla_dashboard/dashboard-list-view/",
-            "key": "D",
-            "command": "alt",
-        },
-        {"page": "/reports/reports-list-view/", "key": "R", "command": "alt"},
     ]
 
     shortcuts = [

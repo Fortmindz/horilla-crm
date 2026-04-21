@@ -4,17 +4,19 @@ Calls, Events, and general Activity creation.
 """
 
 # Third-party imports (Django)
+from collections import OrderedDict
+
 from django import forms
-from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from django.forms import ValidationError
-from django.urls import reverse_lazy
+
+from horilla.auth.models import User
 
 # First-party / Horilla imports
-from horilla.auth.models import User
-from horilla_activity.methods import get_activity_content_types_queryset
+from horilla.urls import reverse_lazy
 from horilla_activity.models import Activity
 from horilla_core.mixins import OwnerQuerysetMixin
+from horilla_core.models import HorillaContentType
 from horilla_generics.forms import HorillaModelForm
 
 
@@ -64,14 +66,14 @@ class MeetingsForm(OwnerQuerysetMixin, HorillaModelForm):
             self.fields["is_all_day"].widget.attrs.update(
                 {
                     "hx-get": (
-                        f"/activity/meeting-update-form/{self.instance.pk}"
+                        f"/activity/meeting-update-form/{self.instance.pk}/"
                         "?toggle_is_all_day=true"
                     )
                 }
             )
         else:
             self.fields["is_all_day"].widget.attrs.update(
-                {"hx-get": "/activity/meeting-create-form"}
+                {"hx-get": "/activity/meeting-create-form/"}
             )
 
         is_all_day = (
@@ -233,14 +235,14 @@ class EventForm(OwnerQuerysetMixin, HorillaModelForm):
             self.fields["is_all_day"].widget.attrs.update(
                 {
                     "hx-get": (
-                        f"/activity/event-update-form/{self.instance.pk}"
+                        f"/activity/event-update-form/{self.instance.pk}/"
                         "?toggle_is_all_day=true"
                     )
                 }
             )
         else:
             self.fields["is_all_day"].widget.attrs.update(
-                {"hx-get": "/activity/event-create-form"}
+                {"hx-get": "/activity/event-create-form/"}
             )
 
         is_all_day = (
@@ -285,40 +287,6 @@ class EventForm(OwnerQuerysetMixin, HorillaModelForm):
                     }
                 )
         return cleaned_data
-
-
-class ActivityContentTypeForm(forms.Form):
-    """
-    Importable form class for Activity content_type Select2.
-    This form is used by the Select2 endpoint to get the restricted content_type queryset.
-    """
-
-    content_type = forms.ModelChoiceField(
-        queryset=ContentType.objects.none(),  # Will be set in __init__
-        required=False,
-    )
-
-    def __init__(self, *args, **kwargs):
-        _request = kwargs.pop("request", None)
-        super().__init__(*args, **kwargs)
-
-        # Set restricted queryset for content_type
-        restricted_queryset = get_activity_content_types_queryset()
-        field = self.fields["content_type"]
-        field.queryset = restricted_queryset
-
-        # Override label_from_instance to show only model name (not app_label.model)
-        # Note: ContentType.__str__ is patched at class level in methods.py
-        # so Select2 AJAX will also show only model names
-        def label_from_instance(ct):
-            """Return only the model's verbose name, not app_label.model"""
-            model_cls = ct.model_class()
-            if model_cls:
-                return model_cls._meta.verbose_name.title()
-            # Fallback: format model name nicely
-            return ct.model.replace("_", " ").title()
-
-        field.label_from_instance = label_from_instance
 
 
 class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
@@ -369,8 +337,10 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        # Optional list of fields that should remain visible;
+        # other fields will be hidden by this form.
+        visible_fields = kwargs.pop("visible_fields", None)
         super().__init__(*args, **kwargs)
-        self.request = kwargs.pop("request", None)
 
         if self.request and self.request.GET.get("view") == "calendar":
             self.fields["activity_type"].choices = [
@@ -389,10 +359,30 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
 
         # Base URL for hx-get
         base_url = (
-            f"/activity/activity-edit-form/{self.instance.pk}?toggle_is_all_day=true"
+            f"/activity/activity-edit-form/{self.instance.pk}/?toggle_is_all_day=true"
             if self.instance.pk
-            else "/activity/activity-create-form"
+            else "/activity/activity-create-form/"
         )
+
+        current_content_type_id = (
+            self.data.get("content_type")
+            if self.data
+            else self.initial.get("content_type")
+        )
+        if not current_content_type_id and self.instance.pk:
+            current_content_type_id = self.instance.content_type_id
+
+        if current_content_type_id and "content_type" in self.fields:
+            resolved_content_type_id = (
+                current_content_type_id.id
+                if hasattr(current_content_type_id, "id")
+                else current_content_type_id
+            )
+            self.initial["content_type"] = resolved_content_type_id
+            self.fields["content_type"].initial = resolved_content_type_id
+            self.fields["content_type"].widget.attrs["data-initial"] = str(
+                resolved_content_type_id
+            )
 
         # Update widget attributes for fields that are always present
         self.fields["activity_type"].widget.attrs.update({"hx-get": base_url})
@@ -432,55 +422,7 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
         if hasattr(self, "initial") and "activity_type" in self.initial:
             self.fields["activity_type"].initial = self.initial["activity_type"]
 
-        # Limit content_type choices to models registered for activity_related feature
-        # Must set queryset AFTER parent initialization to override any default queryset
-        if "content_type" in self.fields:
-            restricted_queryset = get_activity_content_types_queryset()
-
-            # Set the queryset on the ModelChoiceField - this controls what options are available
-            field = self.fields["content_type"]
-            if hasattr(field, "queryset"):
-                # Set restricted queryset
-                field.queryset = restricted_queryset
-
-                # Override label_from_instance to show only model name (not app_label.model)
-                # Note: ContentType.__str__ is patched at class level in methods.py
-                # so Select2 AJAX will also show only model names
-                def label_from_instance(ct):
-                    """Return only the model's verbose name, not app_label.model"""
-                    model_cls = ct.model_class()
-                    if model_cls:
-                        return model_cls._meta.verbose_name.title()
-                    # Fallback: format model name nicely
-                    return ct.model.replace("_", " ").title()
-
-                field.label_from_instance = label_from_instance
-
-                # Force widget to regenerate choices from the new queryset
-                field.widget.choices = field.choices
-
-                # Configure Select2 for content_type (if using AJAX pagination)
-                # Add form_class so Select2 endpoint can use restricted queryset
-                field.widget.attrs["data-form-class"] = (
-                    "horilla_activity.forms.ActivityContentTypeForm"
-                )
-
-                # If Select2 pagination is used, add URL
-                if "select2-pagination" in field.widget.attrs.get("class", ""):
-                    field.widget.attrs["data-url"] = reverse_lazy(
-                        "horilla_generics:model_select2",
-                        kwargs={
-                            "app_label": "contenttypes",
-                            "model_name": "contenttype",
-                        },
-                    )
-                    field.widget.attrs["data-field-name"] = "content_type"
-
-        content_type_id = (
-            self.data.get("content_type")
-            if self.data
-            else self.initial.get("content_type")
-        )
+        content_type_id = current_content_type_id
         field_name = "object_id"
         submitted_values = self.data.getlist(field_name) if self.data else None
         initial_value = self.initial.get(field_name, None)
@@ -494,7 +436,7 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
 
         if content_type_id:
             try:
-                content_type = ContentType.objects.get(id=content_type_id)
+                content_type = HorillaContentType.objects.get(id=content_type_id)
                 app_label = content_type.app_label
                 model_name = content_type.model
                 object_id_attrs["data-url"] = reverse_lazy(
@@ -511,7 +453,7 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
                     self.fields["object_id"].choices = [
                         ("", "Select Related Object")
                     ] + [(obj.id, str(obj)) for obj in objects]
-            except ContentType.DoesNotExist:
+            except HorillaContentType.DoesNotExist:
                 object_id_attrs["data-url"] = ""
                 self.fields["object_id"].choices = [("", "Select Related Object")]
         else:
@@ -519,6 +461,32 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
             self.fields["object_id"].choices = [("", "Select Related Object")]
 
         self.fields["object_id"].widget = forms.Select(attrs=object_id_attrs)
+
+        if visible_fields is not None:
+            ordered_fields = OrderedDict()
+            # Add visible fields in requested order
+            for name in visible_fields:
+                if name in self.fields:
+                    ordered_fields[name] = self.fields[name]
+            # Append any remaining fields (typically hidden/meta fields)
+            for name, field in self.fields.items():
+                if name not in ordered_fields:
+                    ordered_fields[name] = field
+            self.fields = ordered_fields
+
+            # Hide non-visible fields
+            for name, field in self.fields.items():
+                if name not in visible_fields:
+                    field.required = False
+                    if isinstance(field, forms.ModelMultipleChoiceField):
+                        # A single HiddenInput is invalid for M2M (POST is not a list of PKs),
+                        # which surfaces as "Enter a list of values" on save.
+                        field.widget = forms.MultipleHiddenInput()
+                        if self.instance.pk:
+                            related = getattr(self.instance, name)
+                            field.initial = list(related.values_list("pk", flat=True))
+                    else:
+                        field.widget = forms.HiddenInput()
 
     def clean(self):
         cleaned_data = super().clean()
