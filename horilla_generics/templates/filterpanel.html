@@ -57,8 +57,8 @@
                     <form
                         id="filter-form"
                         hx-get="{{ main_url }}?{% for key, value in request.GET.items %}{% if key != 'apply_filter' and key != 'field' and key != 'operator' and key != 'value' and  key != 'hx_trigger' and  key != 'clear_all_filters'   %}{{ key }}={{ value }}&{% endif %}{% endfor %}apply_filter=true"
-                        hx-target="#mainSession"
-                        hx-select="#mainSession"
+                        hx-target="#{{ main_session_id|default:'mainSession' }}"
+                        hx-select="#{{ main_session_id|default:'mainSession' }}"
                         hx-swap="outerHTML"
                         hx-preserve="true"
                         hx-push-url="{{ filter_push_url }}"
@@ -110,8 +110,8 @@
                             <button
                                 class="whitespace-nowrap text-xs px-3 py-1 rounded-md text-primary-600 hover:bg-primary-600 hover:text-[white] border border-primary-600 transition duration-300 cursor-pointer"
                                 hx-get="{{ main_url }}?clear_all_filters=true{% for key, value in request.GET.items %}{% if key not in 'field,operator,value,start_value,end_value,apply_filter,clear_all_filters,page,search,hx_trigger' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
-                                hx-target="#mainSession"
-                                hx-select="#mainSession"
+                                hx-target="#{{ main_session_id|default:'mainSession' }}"
+                                hx-select="#{{ main_session_id|default:'mainSession' }}"
                                 hx-select-oob="#navBar"
                                 hx-swap="outerHTML"
                                 hx-preserve="true"
@@ -153,8 +153,8 @@
                                     <!-- Remove filter button -->
                                     <button
                                         hx-get="{{ main_url }}?remove_filter=search&{% for key, values in query_params.items %}{% if key not in 'search,hx_trigger' %}{% for value in values %}&{{ key }}={{ value|urlencode }}{% endfor %}{% endif %}{% endfor %}{% if request.GET.field != '' %}&apply_filter=true{% endif %}"
-                                        hx-target="#mainSession"
-                                        hx-select="#mainSession"
+                                        hx-target="#{{ main_session_id|default:'mainSession' }}"
+                                        hx-select="#{{ main_session_id|default:'mainSession' }}"
                                         hx-select-oob="#navBar"
                                         hx-swap="outerHTML"
                                         hx-preserve="true"
@@ -187,8 +187,8 @@
                                         <!-- Remove filter button -->
                                         <button
                                             hx-get="{{ main_url }}?remove_filter={{ row.row_id }}{% for key, values in query_params.items %}{% if key != 'remove_filter' and key != 'page' %}{% for value in values %}&{{ key }}={{ value|urlencode }}{% endfor %}{% endif %}{% endfor %}"
-                                            hx-target="#mainSession"
-                                            hx-select="#mainSession"
+                                            hx-target="#{{ main_session_id|default:'mainSession' }}"
+                                            hx-select="#{{ main_session_id|default:'mainSession' }}"
                                             hx-select-oob="#navBar"
                                             hx-swap="outerHTML"
                                             hx-preserve="true"

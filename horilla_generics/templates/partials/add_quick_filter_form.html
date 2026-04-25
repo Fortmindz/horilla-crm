@@ -7,7 +7,7 @@
         hx-vals='{"action": "add_quick_filter"}'
         hx-target="#quick-filters-bar-{{ view_id|safe }}"
         hx-select="#quick-filters-bar-{{ view_id|safe }}"
-        hx-select-oob="#mainSession"
+        hx-select-oob="#{{ main_session_id|default:'mainSession' }}"
         hx-swap="outerHTML"
         hx-indicator="#add-quick-filter-spinner"
         hx-on::after-request="if(event.detail.successful) { closeModal(); }"
