@@ -77,6 +77,13 @@ def create_form_valid_with_duplicate_check(original_form_valid, is_multi_step=Fa
             # If registry check fails, continue anyway
             pass
 
+        # Skip duplicate check when the form only changes owner fields
+        owner_fields = set(getattr(self.model, "OWNER_FIELDS", []))
+        if owner_fields:
+            form_fields = set(form.fields.keys())
+            if form_fields and form_fields.issubset(owner_fields):
+                return original_form_valid(self, form)
+
         # Create instance from form (before saving)
         instance = form.save(commit=False)
 
@@ -562,6 +569,11 @@ def create_update_field_with_duplicate_check(original_post):
                     self, request, pk, field_name, app_label, model_name
                 )
         except Exception:
+            return original_post(self, request, pk, field_name, app_label, model_name)
+
+        # Guard: skip duplicate check when the edited field is an owner field
+        owner_fields = getattr(model, "OWNER_FIELDS", [])
+        if field_name in owner_fields:
             return original_post(self, request, pk, field_name, app_label, model_name)
 
         # Guard: only process if model has active duplicate rules with matching rules,
