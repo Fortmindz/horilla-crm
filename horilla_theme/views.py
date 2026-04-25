@@ -10,6 +10,7 @@ from django.views.generic import TemplateView
 
 # First party imports (Horilla)
 from horilla.http import HttpResponse
+from horilla.shortcuts import get_object_or_404
 from horilla.utils.decorators import method_decorator, permission_required_or_denied
 from horilla.utils.translation import gettext_lazy as _
 
@@ -79,7 +80,7 @@ class ChangeThemeView(LoginRequiredMixin, View):
             return self._error_response(request, _("No active company found"), 400)
 
         try:
-            theme = HorillaColorTheme.objects.get(pk=theme_id)
+            theme = get_object_or_404(HorillaColorTheme, pk=theme_id)
             self._update_company_theme(active_company, theme, is_default)
 
             if is_default:
@@ -92,13 +93,10 @@ class ChangeThemeView(LoginRequiredMixin, View):
 
             return self._render_themes(request, theme)
 
-        except HorillaColorTheme.DoesNotExist:
-            return self._error_response(request, _("Theme not found"), 404)
         except Exception as e:
             return self._error_response(
                 request,
-                _("An error occurred while changing the theme: %(error)s")
-                % {"error": str(e)},
+                str(e),
                 500,
             )
 
@@ -151,7 +149,7 @@ class ChangeThemeView(LoginRequiredMixin, View):
     def _error_response(self, request, message, status):
         """Generate an error response with appropriate message and status."""
         messages.error(request, message)
-        return self._render_themes(request, status=status)
+        return HttpResponse("<script>$('#reloadButton').click();</script>")
 
 
 @method_decorator(
@@ -175,7 +173,7 @@ class SetDefaultThemeView(LoginRequiredMixin, View):
             return self._error_response(request, _("No active company found"), 400)
 
         try:
-            theme = HorillaColorTheme.objects.get(pk=theme_id)
+            theme = get_object_or_404(HorillaColorTheme, pk=theme_id)
 
             # Check if this theme is already set as global default
             is_currently_default = theme.is_default
