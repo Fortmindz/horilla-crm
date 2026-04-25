@@ -75,6 +75,7 @@ def format_currency(value, user):
 
 @register.filter
 def shortname(value):
+    """Filter to get short name (initials) from a full name string"""
     if not value:
         return ""
 

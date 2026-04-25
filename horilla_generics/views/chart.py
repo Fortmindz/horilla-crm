@@ -28,7 +28,6 @@ from django.utils.text import slugify
 # First-party
 from horilla.db import models as horilla_models
 from horilla.urls import reverse
-from horilla.utils.decorators import htmx_required, method_decorator
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.models import HorillaContentType, KanbanGroupBy
 from horilla_core.utils import get_user_field_permission
