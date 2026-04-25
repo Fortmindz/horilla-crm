@@ -338,6 +338,7 @@ class ReportDetailFilteredView(LoginRequiredMixin, View):
         )
         list_view.request = request
         list_view.table_width = False
+        list_view.table_auto = True
         list_view.bulk_select_option = False
         list_view.paginate_by = 10
         list_view.list_column_visibility = False
