@@ -116,6 +116,11 @@ urlpatterns = [
         name="activity_detail_view_tabs",
     ),
     path(
+        "activity-status-update/<int:pk>/",
+        views.ActivityStatusUpdateView.as_view(),
+        name="activity_status_update",
+    ),
+    path(
         "activity-history-tab-view/<int:pk>/",
         views.ActivityHistoryTabView.as_view(),
         name="activity_history_tab_view",
