@@ -92,14 +92,7 @@ def _cadence_mail_to_choices_for_model(model_name):
 
 def _has_outgoing_mail_server(cadence):
     """Check whether cadence company (or globally) has an outgoing mail server."""
-    qs = HorillaMailConfiguration.all_objects.filter(mail_channel="outgoing")
-    if (
-        cadence
-        and cadence.company_id
-        and qs.filter(company_id=cadence.company_id).exists()
-    ):
-        return True
-    return qs.filter(is_primary=True).exists() or qs.exists()
+    return HorillaMailConfiguration.objects.filter(mail_channel="outgoing").exists()
 
 
 class CadenceForm(HorillaModelForm):
@@ -109,6 +102,8 @@ class CadenceForm(HorillaModelForm):
     CONDITION_INPUT_FIELDS = ("field", "operator", "value")
 
     class Meta:
+        """Meta class for CadenceForm"""
+
         model = Cadence
         exclude = [
             "company",
@@ -213,6 +208,8 @@ class CadenceFollowUpForm(HorillaModelForm):
     }
 
     class Meta:
+        """Meta class for CadenceFollowUpForm"""
+
         model = CadenceFollowUp
         exclude = [
             "company",
@@ -339,7 +336,17 @@ class CadenceFollowUpForm(HorillaModelForm):
                 or getattr(self.instance, "followup_number", None)
                 or 1
             )
-        followup_number = int(followup_number)
+        try:
+            followup_number = int(followup_number)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid follow-up number: {followup_number}")
+        if cadence_id and followup_number > 1:
+            previous_exists = CadenceFollowUp.objects.filter(
+                cadence_id=cadence_id,
+                followup_number=followup_number - 1,
+            ).exists()
+            if not previous_exists:
+                raise ValueError(f"Cannot create follow-up at stage {followup_number}.")
         if cadence_id and "branch_from" in self.fields and followup_number > 1:
             self.fields["branch_from"].queryset = CadenceFollowUp.objects.filter(
                 cadence_id=cadence_id,
