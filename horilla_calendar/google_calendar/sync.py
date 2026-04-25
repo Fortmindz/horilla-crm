@@ -12,15 +12,6 @@ from datetime import timezone as dt_timezone
 
 from django.utils import timezone
 
-# Thread-local flag set during Google-pull saves to suppress the push-back signal.
-_google_pull_local = threading.local()
-
-
-def is_pulling_from_google():
-    """Return True if the current thread is inside a Google pull operation."""
-    return getattr(_google_pull_local, "active", False)
-
-
 from horilla_activity.models import Activity
 from horilla_calendar.google_calendar.service import (
     delete_event_from_google,
@@ -31,6 +22,15 @@ from horilla_calendar.google_calendar.service import (
     push_task_to_google_tasks,
 )
 from horilla_calendar.models import GoogleCalendarConfig
+
+# Thread-local flag set during Google-pull saves to suppress the push-back signal.
+_google_pull_local = threading.local()
+
+
+def is_pulling_from_google():
+    """Return True if the current thread is inside a Google pull operation."""
+    return getattr(_google_pull_local, "active", False)
+
 
 logger = logging.getLogger(__name__)
 
@@ -426,8 +426,6 @@ def pull_google_events_to_horilla(config, initial_sync_only=False):
     nextSyncToken without importing any events. This bootstraps incremental sync without
     flooding Horilla with all existing Google Calendar history.
     """
-    from horilla_activity.models import Activity
-
     # Only pull from Google when the user has chosen two-way sync.
     # One-way (horilla_to_google) skips the pull entirely.
     if config.sync_direction != "both":
