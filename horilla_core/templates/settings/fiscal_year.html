@@ -1,4 +1,13 @@
 {% load static i18n horilla_tags %}
+<button
+    id="reloadButton"
+    hidden
+    hx-get="{% url 'horilla_core:company_fiscal_year_tab' %}?{{request.GET.urlencode}}"
+    hx-target="#inner-tab-fiscal-year-view-content"
+    hx-swap="innerHTML"
+>
+    click
+</button>
 {% if has_company %}
     <div class="ps-3">
         {% include "messages.html" %}
