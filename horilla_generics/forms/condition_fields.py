@@ -605,6 +605,45 @@ def clean_condition_fields(form, cleaned_data):
                 _("Operator is required when a field is selected."),
             )
 
+    # Validate submitted "field" values are actual model fields (whitelist check)
+    if "field" in form.condition_fields:
+        model_name = (
+            form.data.get("model_name")
+            or (form.initial.get("model_name") if hasattr(form, "initial") else None)
+            or getattr(form, "model_name", None)
+        )
+        if model_name:
+            valid_field_names = {
+                choice[0]
+                for choice in get_model_field_choices(form, model_name)
+                if choice[0]
+            }
+            invalid_field = False
+            seen_row_ids_field = set()
+            for key in form.data.keys():
+                if key.startswith("field_"):
+                    row_id = key[len("field_") :]
+                    if not row_id.isdigit():
+                        continue
+                    seen_row_ids_field.add(row_id)
+                    field_val = form.data.get(f"field_{row_id}", "").strip()
+                    if field_val and field_val not in valid_field_names:
+                        invalid_field = True
+            if "0" not in seen_row_ids_field:
+                for field_key in ("field_0", "field"):
+                    field_val = form.data.get(field_key, "").strip()
+                    if field_val:
+                        if field_val not in valid_field_names:
+                            invalid_field = True
+                        break
+            if invalid_field:
+                form.add_error(
+                    None,
+                    _(
+                        "Select a valid field. That choice is not one of the available fields."
+                    ),
+                )
+
     # Validate that value is provided when field and operator are both set,
     # unless the operator doesn't require a value (e.g. isnull/isnotnull)
     _NO_VALUE_OPERATORS = {"isnull", "isnotnull", "is_empty", "is_not_empty"}

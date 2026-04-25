@@ -18,6 +18,7 @@ from horilla.http import HttpResponse, QueryDict
 from horilla.utils.translation import gettext_lazy as _
 from horilla_core.mixins import OwnerQuerysetMixin
 from horilla_generics.forms import HorillaModelForm
+from horilla_generics.forms.condition_fields import get_model_field_choices
 from horilla_generics.views.helpers import GetFieldValueWidgetView
 from horilla_utils.middlewares import _thread_local
 
@@ -679,6 +680,40 @@ def save_conditions(view, form=None):
                             continue
                 except Exception:
                     pass
+            if "field" in view.condition_fields and "field" in row_data:
+                field_val = row_data["field"]
+                if field_val:
+                    valid_field_names = None
+                    if (
+                        getattr(view, "condition_field_choices", None)
+                        and "field" in view.condition_field_choices
+                    ):
+                        valid_field_names = {
+                            choice[0]
+                            for choice in view.condition_field_choices["field"]
+                            if choice[0]
+                        }
+                    if valid_field_names is None:
+                        model_name = view.request.POST.get(
+                            "model_name"
+                        ) or view.request.GET.get("model_name")
+                        if model_name:
+                            valid_field_names = {
+                                choice[0]
+                                for choice in get_model_field_choices(None, model_name)
+                                if choice[0]
+                            }
+                    if (
+                        valid_field_names is not None
+                        and field_val not in valid_field_names
+                    ):
+                        if form is not None:
+                            form.add_error(
+                                None,
+                                _("Please select a valid choice for the field."),
+                            )
+                        has_errors = True
+                        continue
             create_kwargs = {}
             for field in view.condition_model._meta.get_fields():
                 if (
