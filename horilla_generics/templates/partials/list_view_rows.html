@@ -82,9 +82,11 @@
                 >
                     <div class="flex gap-4 items-center relative truncate">
                         {% if col_attrs_for_field.is_draggable == 'true' %}
-                            <div class="cursor-move drag-handle">
-                                <img src="{% static 'assets/icons/drag.svg' %}" alt="{% trans 'Drag' %}" width="16">
-                            </div>
+                            {% if not col_attrs_for_field.permission or allowed_col_attrs %}
+                                <div class="cursor-move drag-handle">
+                                    <img src="{% static 'assets/icons/drag.svg' %}" alt="{% trans 'Drag' %}" width="16">
+                                </div>
+                            {% endif %}
                         {% endif %}
                         {{ data|get_field:cell.1|escape }}
                     </div>
