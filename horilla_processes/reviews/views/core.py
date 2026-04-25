@@ -40,10 +40,6 @@ from horilla_processes.reviews.models import (
 )
 
 
-@method_decorator(
-    permission_required_or_denied(["reviews.view_reviewprocess"]),
-    name="dispatch",
-)
 class ReviewProcessView(LoginRequiredMixin, HorillaView):
     """Settings page container for Review Processes."""
 
@@ -53,10 +49,14 @@ class ReviewProcessView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(["reviews.view_reviewprocess"]),
+    name="dispatch",
+)
 class ReviewProcessNavbar(LoginRequiredMixin, HorillaNavView):
     """Navbar for Review Process list (with New button)."""
 
-    nav_title = _("Review Processes")
+    nav_title = ReviewProcess._meta.verbose_name_plural
     search_url = reverse_lazy("reviews:reviews_list_view")
     main_url = reverse_lazy("reviews:reviews_view")
     filterset_class = ReviewProcessFilter
@@ -74,9 +74,8 @@ class ReviewProcessNavbar(LoginRequiredMixin, HorillaNavView):
         """Add new review process button, shown if user has add permission."""
         if self.request.user.has_perm("reviews.add_reviewprocess"):
             return {
-                "url": reverse_lazy("reviews:reviews_create_view"),
-                "attrs": {"id": "review-process-create"},
-                "title": _("New"),
+                "url": f"{reverse_lazy('reviews:reviews_create_view')}?new=true",
+                "attrs": 'id="review-process-create"',
             }
         return None
 
@@ -116,11 +115,17 @@ class ReviewProcessDetailNavbar(LoginRequiredMixin, HorillaNavView):
         if not self.request.user.has_perm("reviews.change_reviewprocess"):
             return None
         pk = self.request.GET.get("pk")
+        if not pk:
+            return None
+        try:
+            process_pk = int(pk)
+        except (TypeError, ValueError):
+            return None
 
         return {
             "url": reverse(
                 "reviews:review_rule_create_view",
-                kwargs={"process_pk": int(pk)},
+                kwargs={"process_pk": process_pk},
             ),
             "title": _("Add Rule"),
             "attrs": {"id": "review-process-add"},
@@ -133,11 +138,17 @@ class ReviewProcessDetailNavbar(LoginRequiredMixin, HorillaNavView):
         if not self.request.user.has_perm("reviews.change_reviewprocess"):
             return None
         pk = self.request.GET.get("pk")
+        if not pk:
+            return None
+        try:
+            process_pk = int(pk)
+        except (TypeError, ValueError):
+            return None
 
         return {
             "url": reverse(
                 "reviews:reviews_update_view",
-                kwargs={"pk": int(pk)},
+                kwargs={"pk": process_pk},
             ),
             "title": _("Edit Process"),
             "attrs": {"id": "review-process-edit"},
@@ -192,8 +203,8 @@ class ReviewProcessListView(LoginRequiredMixin, HorillaListView):
             "hx-swap": "outerHTML",
             "hx-push-url": "true",
             "hx-select": "#mainContent",
-            "permission": "reviews.view_reviews",
-            "own_permission": "reviews.view_own_reviews",
+            "permission": "reviews.view_reviewprocess",
+            "own_permission": "reviews.view_own_reviewprocess",
             "owner_field": "owner",
         }
         return [
@@ -243,7 +254,12 @@ class ReviewProcessListView(LoginRequiredMixin, HorillaListView):
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied("reviews.add_reviewprocess"),
+    permission_required_or_denied(
+        [
+            "reviews.add_reviewprocess",
+            "reviews.change_reviewprocess",
+        ]
+    ),
     name="dispatch",
 )
 class ReviewProcessFormView(LoginRequiredMixin, HorillaSingleFormView):
@@ -431,10 +447,6 @@ class ReviewProcessDetailView(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied(["reviews.change_reviewprocess"]),
-    name="dispatch",
-)
 class ReviewRuleFormView(LoginRequiredMixin, HorillaSingleFormView):
     """
     Modal form to configure the Review Rule using the generic single-form UI.
