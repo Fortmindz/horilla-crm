@@ -277,6 +277,10 @@ class LogoutView(View):
         return response
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.can_view_horilla_settings"),
+    name="dispatch",
+)
 class SettingView(LoginRequiredMixin, TemplateView):
     """
     TemplateView for settings page.
