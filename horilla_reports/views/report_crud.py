@@ -184,6 +184,8 @@ class ChangeChartTypeView(LoginRequiredMixin, HorillaSingleFormView):
             )
 
             class Meta:
+                """Meta class to specify model and fields for the form."""
+
                 model = Report
                 fields = [
                     "chart_type",
@@ -543,6 +545,12 @@ class MoveFolderView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_reports.add_report", "horilla_reports.change_report"]
+    ),
+    name="dispatch",
+)
 class GetModuleColumnsHTMXView(LoginRequiredMixin, View):
     """HTMX view to return updated selected_columns field based on module selection"""
 
