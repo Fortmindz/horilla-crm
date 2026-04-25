@@ -39,6 +39,10 @@ from horilla_utils.middlewares import _thread_local
 logger = logging.getLogger(__name__)
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_notifications.view_notificationtemplate"),
+    name="dispatch",
+)
 class NotificationTemplateView(LoginRequiredMixin, HorillaView):
     """
     TemplateView for notification template view
@@ -51,7 +55,7 @@ class NotificationTemplateView(LoginRequiredMixin, HorillaView):
 
 @method_decorator(htmx_required, name="dispatch")
 @method_decorator(
-    permission_required_or_denied(["horilla_notifications.add_notificationtemplate"]),
+    permission_required_or_denied(["horilla_notifications.view_notificationtemplate"]),
     name="dispatch",
 )
 class NotificationTemplateNavbar(LoginRequiredMixin, HorillaNavView):
