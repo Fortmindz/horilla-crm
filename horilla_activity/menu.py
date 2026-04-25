@@ -23,6 +23,7 @@ class ActivitySubSection:
     icon = "assets/icons/activity.svg"
     url = reverse_lazy("horilla_activity:activity_view")
     app_label = "horilla_activity"
+    perm = ["horilla_activity.view_activity", "horilla_activity.view_own_activity"]
     position = 2
     attrs = {
         "hx-boost": "true",
