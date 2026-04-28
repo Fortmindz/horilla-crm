@@ -115,6 +115,7 @@ class LeadStageListView(LoginRequiredMixin, HorillaListView):
                 "order": {
                     "is_draggable": "true",
                     "sort_url": reverse_lazy("leads:update_lead_stage_order"),
+                    "permission": "leads.change_leadstatus",
                 }
             }
         ]
@@ -337,6 +338,9 @@ class UpdateLeadStageOrderView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required(), name="dispatch")
+@method_decorator(
+    permission_required_or_denied("leads.view_leadstatus"), name="dispatch"
+)
 class LoadLeadStagesView(LoginRequiredMixin, View):
     """View to display the lead stages modal."""
 
@@ -443,6 +447,9 @@ class LoadLeadStagesView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required(), name="dispatch")
+@method_decorator(
+    permission_required_or_denied("leads.add_leadstatus"), name="dispatch"
+)
 class CustomStagesFormView(LoginRequiredMixin, View):
     """View to display the custom stages form."""
 
@@ -518,6 +525,9 @@ class CustomStagesFormView(LoginRequiredMixin, View):
 
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(htmx_required(), name="dispatch")
+@method_decorator(
+    permission_required_or_denied("leads.add_leadstatus"), name="dispatch"
+)
 class SaveCustomStagesView(LoginRequiredMixin, View, ProgressStepsMixin):
     """View to handle saving custom lead stages during company creation."""
 
@@ -645,6 +655,9 @@ class SaveCustomStagesView(LoginRequiredMixin, View, ProgressStepsMixin):
 
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(htmx_required(), name="dispatch")
+@method_decorator(
+    permission_required_or_denied("leads.add_leadstatus"), name="dispatch"
+)
 class AddStageView(LoginRequiredMixin, View):
     """View to handle adding a new stage to the custom stages form."""
 
@@ -682,6 +695,9 @@ class AddStageView(LoginRequiredMixin, View):
 
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(htmx_required(), name="dispatch")
+@method_decorator(
+    permission_required_or_denied("leads.add_leadstatus"), name="dispatch"
+)
 class RemoveStageView(LoginRequiredMixin, View):
     """View to handle removing a stage from the custom stages form."""
 

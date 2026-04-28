@@ -314,7 +314,9 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
                     "hx-target": "#activity-form-view-container",
                     "hx-swap": "outerHTML",
                     "data-placeholder": "Select Activity Type",
-                    "hx-include": '[name="activity_type"]',
+                    # Preserve already-entered values (e.g. start/end datetime from calendar click)
+                    # when re-rendering fields after activity type changes.
+                    "hx-include": "#activity-form-view",
                     "id": "id_activity_type",
                 }
             ),
@@ -363,6 +365,9 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
             if self.instance.pk
             else "/activity/activity-create-form/"
         )
+        if self.request and self.request.GET.get("view") == "calendar":
+            separator = "&" if "?" in base_url else "?"
+            base_url = f"{base_url}{separator}view=calendar"
 
         current_content_type_id = (
             self.data.get("content_type")
@@ -398,10 +403,15 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
                     if self.data
                     else self.initial.get("is_all_day", False)
                 )
-                if is_all_day == "on":
-                    is_all_day = True
-                elif is_all_day == "off" or is_all_day is False:
-                    is_all_day = False
+                if isinstance(is_all_day, str):
+                    is_all_day = is_all_day.strip().lower() in {
+                        "on",
+                        "true",
+                        "1",
+                        "yes",
+                    }
+                else:
+                    is_all_day = bool(is_all_day)
 
                 if is_all_day:
                     for field_name in ["start_datetime", "end_datetime"]:
@@ -416,7 +426,6 @@ class ActivityCreateForm(OwnerQuerysetMixin, HorillaModelForm):
             for field_name in ["start_datetime", "end_datetime", "is_all_day"]:
                 if field_name in self.fields:
                     self.fields[field_name].widget = forms.HiddenInput()
-                    self.initial[field_name] = None
                     self.fields[field_name].required = False
 
         if hasattr(self, "initial") and "activity_type" in self.initial:

@@ -202,6 +202,10 @@ class EditFieldView(LoginRequiredMixin, View):
         try:
             if not self.model:
                 self.model = apps.get_model(app_label, model_name)
+            perm = f"{self.model._meta.app_label}.change_{self.model._meta.model_name}"
+            if not request.user.has_perm(perm):
+                messages.error(request, _("You do not have permission to edit this."))
+                return HttpResponse("<script>$('#reloadButton').click();</script>")
             obj = get_object_or_404(self.model, pk=pk)
             field = next(
                 (f for f in obj._meta.get_fields() if f.name == field_name), None
@@ -241,6 +245,12 @@ class UpdateFieldView(LoginRequiredMixin, View):
         try:
             if not self.model:
                 self.model = apps.get_model(app_label, model_name)
+            perm = f"{self.model._meta.app_label}.change_{self.model._meta.model_name}"
+            if not request.user.has_perm(perm):
+                messages.error(request, _("You do not have permission to edit this."))
+                return HttpResponse(
+                    "<script>$('#reloadButton').click();</script>", status=403
+                )
             obj = get_object_or_404(self.model, pk=pk)
             field = next(
                 (f for f in obj._meta.get_fields() if f.name == field_name), None
@@ -406,6 +416,10 @@ class CancelEditView(LoginRequiredMixin, View):
         try:
             if not self.model:
                 self.model = apps.get_model(app_label, model_name)
+            perm = f"{self.model._meta.app_label}.view_{self.model._meta.model_name}"
+            if not request.user.has_perm(perm):
+                messages.error(request, _("You do not have permission to view this."))
+                return HttpResponse("<script>$('#reloadButton').click();</script>")
             obj = get_object_or_404(self.model, pk=pk)
             field = next(
                 (f for f in obj._meta.get_fields() if f.name == field_name), None

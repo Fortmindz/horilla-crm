@@ -9,6 +9,7 @@ Views for Google Calendar integration.
 4. GoogleCalendarDisconnectView — POST: revoke connection
 """
 
+# Standard library imports
 import hmac
 import logging
 import os
@@ -16,18 +17,22 @@ import threading
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from requests_oauthlib import OAuth2Session
 
-from horilla.urls import reverse_lazy
+from horilla.urls import reverse, reverse_lazy
+
+# First-party imports (Horilla)
+from horilla.utils.decorators import permission_required_or_denied
 from horilla.utils.translation import gettext_lazy as _
+from horilla_activity.models import Activity
 from horilla_calendar.forms import GoogleCredentialsUploadForm, GoogleSyncDirectionForm
 from horilla_calendar.google_calendar.client_settings import GOOGLE_SCOPES
 from horilla_calendar.google_calendar.service import (
@@ -35,6 +40,7 @@ from horilla_calendar.google_calendar.service import (
     get_google_user_email,
     stop_watch_channel,
 )
+from horilla_calendar.google_calendar.sync import pull_google_events_to_horilla as _pull
 from horilla_calendar.models import GoogleCalendarConfig, GoogleIntegrationSetting
 
 logger = logging.getLogger(__name__)
@@ -49,6 +55,13 @@ def _get_or_create_config(user):
         defaults={"company": user.company},
     )
     return config
+
+
+def _is_integration_enabled(request):
+    """Return True if the admin has enabled Google Calendar integration for this company."""
+    company = getattr(request, "active_company", None) or request.user.company
+    setting = GoogleIntegrationSetting.objects.filter(company=company).first()
+    return bool(setting and setting.is_google_calendar_enabled)
 
 
 class GoogleCalendarSettingsView(LoginRequiredMixin, View):
@@ -125,11 +138,20 @@ class GoogleCalendarSettingsView(LoginRequiredMixin, View):
         return render(request, _SETTINGS_TEMPLATE, context)
 
     def _check_integration_enabled(self, request):
-        """Return HttpResponse(403) if admin has not enabled Google integration, else None."""
-        setting = GoogleIntegrationSetting.objects.filter(
-            company=request.user.company
-        ).first()
-        if not (setting and setting.is_google_calendar_enabled):
+        """
+        Return a response blocking access when Google integration is disabled, else None.
+        For HTMX requests: HX-Redirect so the full page navigates away instead of
+        injecting a bare 403 page into the settings content area.
+        For normal requests: standard 403 render.
+        """
+        if not _is_integration_enabled(request):
+            if request.headers.get("HX-Request") == "true":
+                messages.error(
+                    request, _("Google Calendar integration is not enabled.")
+                )
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = reverse("horilla_core:my_settings_view")
+                return response
             return render(
                 request,
                 "403.html",
@@ -143,12 +165,14 @@ class GoogleCalendarSettingsView(LoginRequiredMixin, View):
         return None
 
     def get(self, request, *args, **kwargs):
+        """Render the credentials upload form."""
         blocked = self._check_integration_enabled(request)
         if blocked:
             return blocked
         return self._render(request)
 
     def post(self, request, *args, **kwargs):
+        """Handle credentials JSON file upload and save to the integration setting."""
         blocked = self._check_integration_enabled(request)
         if blocked:
             return blocked
@@ -182,6 +206,7 @@ class GoogleCalendarAuthorizeView(LoginRequiredMixin, View):
     """
 
     def get(self, request, *args, **kwargs):
+        """Redirect the user to Google's OAuth consent screen."""
         config = _get_or_create_config(request.user)
 
         if not config.is_configured():
@@ -234,6 +259,7 @@ class GoogleCalendarCallbackView(View):
     """
 
     def get(self, request, *args, **kwargs):
+        """Handle the OAuth callback from Google and exchange the code for tokens."""
         state = request.GET.get("state")
         code = request.GET.get("code")
         error = request.GET.get("error")
@@ -331,6 +357,7 @@ class GoogleCalendarSyncDirectionView(LoginRequiredMixin, View):
     """Save the user's chosen sync direction (one-way or two-way)."""
 
     def post(self, request, *args, **kwargs):
+        """Save the user's chosen sync direction and re-render the settings page."""
         config = _get_or_create_config(request.user)
         form = GoogleSyncDirectionForm(request.POST, instance=config)
         if form.is_valid():
@@ -344,7 +371,28 @@ class GoogleCalendarDisconnectView(LoginRequiredMixin, View):
     """Clear the Google OAuth token and reset the connection."""
 
     def post(self, request, *args, **kwargs):
+        """Clear the user's Google OAuth token and revoke the calendar connection."""
+        if not _is_integration_enabled(request):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = reverse(
+                "horilla_calendar:google_calendar_settings"
+            )
+            return response
+
         config = _get_or_create_config(request.user)
+
+        if not config.is_connected():
+            messages.info(request, _("Google Calendar is already disconnected."))
+            form = GoogleCredentialsUploadForm(
+                initial={"redirect_uri": config.redirect_uri or ""}
+            )
+            context = {
+                "form": form,
+                "google_config": config,
+                "is_configured": config.is_configured(),
+                "is_connected": False,
+            }
+            return render(request, _SETTINGS_TEMPLATE, context)
 
         # Stop the push-notification watch channel before clearing credentials.
         try:
@@ -375,6 +423,7 @@ class GoogleCalendarRegisterWebhookView(LoginRequiredMixin, View):
     """(Re-)register the Google Calendar push-notification watch channel."""
 
     def post(self, request, *args, **kwargs):
+        """Register or refresh the Google Calendar push-notification watch channel."""
         config = _get_or_create_config(request.user)
         if not config.is_connected():
             messages.error(request, _("Google Calendar is not connected."))
@@ -478,6 +527,7 @@ class GoogleCalendarWebhookView(View):
     """
 
     def post(self, request, *args, **kwargs):
+        """Receive push notification from Google and trigger a calendar sync."""
         channel_id = request.META.get("HTTP_X_GOOG_CHANNEL_ID", "")
         resource_id = request.META.get("HTTP_X_GOOG_RESOURCE_ID", "")
         resource_state = request.META.get("HTTP_X_GOOG_RESOURCE_STATE", "")
@@ -536,14 +586,9 @@ class GoogleCalendarWebhookView(View):
             )
 
             def _do_sync():
-                from horilla_activity.models import Activity
-                from horilla_calendar.google_calendar.sync import (
-                    pull_google_events_to_horilla as _pull,
-                )
-                from horilla_calendar.models import GoogleCalendarConfig as _Cfg
 
                 try:
-                    fresh_config = _Cfg.objects.get(pk=config_pk)
+                    fresh_config = GoogleCalendarConfig.objects.get(pk=config_pk)
                     logger.info(
                         "Webhook sync: starting pull for user=%s", fresh_config.user
                     )
@@ -555,7 +600,7 @@ class GoogleCalendarWebhookView(View):
                     if not fresh_config.google_sync_token:
                         _pull(fresh_config, initial_sync_only=True)
                         # Re-fetch config so we have the newly saved sync token
-                        fresh_config = _Cfg.objects.get(pk=config_pk)
+                        fresh_config = GoogleCalendarConfig.objects.get(pk=config_pk)
                     _pull(fresh_config)
                     after = Activity.objects.count()
                     logger.info(
@@ -564,7 +609,7 @@ class GoogleCalendarWebhookView(View):
                         after - before,
                     )
                     # Auto-renew watch channel if expiring within 24 h
-                    fresh_config = _Cfg.objects.get(pk=config_pk)
+                    fresh_config = GoogleCalendarConfig.objects.get(pk=config_pk)
                     _maybe_renew_watch(
                         fresh_config, webhook_url_for_renewal, channel_expiration_ms
                     )
@@ -587,6 +632,10 @@ class GoogleCalendarWebhookView(View):
 _INTEGRATION_SETTINGS_TEMPLATE = "google_calendar/google_integration_settings.html"
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_calendar.change_googleintegrationsetting"),
+    name="dispatch",
+)
 class GoogleIntegrationSettingsView(LoginRequiredMixin, View):
     """
     Admin Settings page for Google Integration (Settings → Integrations → Google Integration).
@@ -604,6 +653,7 @@ class GoogleIntegrationSettingsView(LoginRequiredMixin, View):
         return setting
 
     def get(self, request, *args, **kwargs):
+        """Render the Google Integration admin settings page."""
         setting = self._get_or_create_setting(request.user)
         return render(
             request,
@@ -611,7 +661,37 @@ class GoogleIntegrationSettingsView(LoginRequiredMixin, View):
             {"integration_setting": setting},
         )
 
+    def _disconnect_all_company_users(self, company):
+        """
+        Stop watch channels and clear all OAuth tokens/credentials for every user
+        in the company when the admin disables Google Calendar integration.
+        """
+        configs = GoogleCalendarConfig.all_objects.filter(company=company)
+        for config in configs:
+            try:
+                if config.watch_channel_id:
+                    stop_watch_channel(config)
+            except Exception:
+                logger.warning(
+                    "Failed to stop watch channel for user %s during bulk disconnect.",
+                    config.user,
+                    exc_info=True,
+                )
+        configs.update(
+            token=None,
+            google_email=None,
+            google_sync_token=None,
+            oauth_state=None,
+            credentials_json=None,
+            redirect_uri=None,
+            watch_channel_id=None,
+            watch_resource_id=None,
+            watch_expiration=None,
+            watch_token=None,
+        )
+
     def post(self, request, *args, **kwargs):
+        """Save the Google Integration enabled/disabled toggle for the company."""
         setting = self._get_or_create_setting(request.user)
         is_enabled = request.POST.get("is_google_calendar_enabled") == "true"
         setting.is_google_calendar_enabled = is_enabled
@@ -623,9 +703,14 @@ class GoogleIntegrationSettingsView(LoginRequiredMixin, View):
                 _("Google Calendar integration has been enabled for users."),
             )
         else:
+            self._disconnect_all_company_users(
+                getattr(request, "active_company", None) or request.user.company
+            )
             messages.info(
                 request,
-                _("Google Calendar integration has been disabled for users."),
+                _(
+                    "Google Calendar integration has been disabled. All user connections have been removed."
+                ),
             )
         return render(
             request,

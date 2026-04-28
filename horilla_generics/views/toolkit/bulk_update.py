@@ -8,12 +8,15 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
+from functools import reduce
+from operator import or_
 
 # Third-party imports
 from auditlog.models import LogEntry
 
 # Third-party imports (Django)
 from django.contrib import messages
+from django.db.models import Q
 from django.utils import timezone
 
 from horilla.http import HttpResponse
@@ -122,7 +125,27 @@ class HorillaBulkUpdateMixin:
         permission are applied.
         """
         try:
-            queryset = self.model.objects.filter(id__in=record_ids)
+            user = self.request.user
+            app_label = self.model._meta.app_label
+            model_name = self.model._meta.model_name
+            change_perm = f"{app_label}.change_{model_name}"
+            change_own_perm = f"{app_label}.change_own_{model_name}"
+
+            queryset = self.get_queryset().filter(id__in=record_ids)
+
+            # If user lacks global change permission but has change_own,
+            # restrict the update queryset to only records they own.
+            if not user.has_perm(change_perm) and user.has_perm(change_own_perm):
+                owner_fields = getattr(self.model, "OWNER_FIELDS", None)
+                if owner_fields:
+                    ownership_query = reduce(
+                        or_,
+                        (Q(**{field: user}) for field in owner_fields),
+                        Q(),
+                    )
+                    queryset = queryset.filter(ownership_query).distinct()
+
+            skipped_count = len(record_ids) - queryset.count()
             # Use list view's field metadata when available (avoids cyclic import)
             if hasattr(self, "_get_model_fields"):
                 field_infos = {
@@ -226,9 +249,15 @@ class HorillaBulkUpdateMixin:
                             changes=changes,
                         )
 
-            messages.success(
-                self.request, f"Updated {updated_count} records successfully."
-            )
+            if skipped_count > 0:
+                messages.warning(
+                    self.request,
+                    f"Updated {updated_count} record(s) successfully. {skipped_count} record(s) were skipped because you do not have permission to update them.",
+                )
+            else:
+                messages.success(
+                    self.request, f"Updated {updated_count} records successfully."
+                )
 
             self.object_list = self.get_queryset()
             return HttpResponse(

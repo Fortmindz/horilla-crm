@@ -18,6 +18,7 @@ from django.views.generic import View
 
 # First-party / Horilla imports
 from horilla.apps import apps
+from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.shortcuts import render
 from horilla.utils.decorators import method_decorator, permission_required_or_denied
 from horilla.utils.translation import gettext_lazy as _
@@ -44,7 +45,69 @@ class ImportStep1View(View):
         import_name = request.POST.get("import_name")
         uploaded_file = request.FILES.get("file")
 
+        if not single_import and module:
+            # Verify the submitted module is a registered import model
+            import_models = FEATURE_REGISTRY.get("import_models", [])
+            registered_names = {m.__name__ for m in import_models}
+            if module not in registered_names:
+                permitted_modules = self._get_permitted_modules(request)
+                return render(
+                    request,
+                    "import/import_data.html",
+                    {
+                        "modules": permitted_modules,
+                        "error_message": _(
+                            "Invalid module selection. Please choose a valid module from the list."
+                        ),
+                        "single_import": False,
+                    },
+                )
+
+            # Verify user has add permission for the submitted module
+            submitted_app_label = self.get_app_label_for_model(module)
+            if not submitted_app_label or not request.user.has_perm(
+                f"{submitted_app_label}.add_{module.lower()}"
+            ):
+                permitted_modules = self._get_permitted_modules(request)
+                return render(
+                    request,
+                    "import/import_data.html",
+                    {
+                        "modules": permitted_modules,
+                        "error_message": _(
+                            "Invalid module selection. Please choose a valid module from the list."
+                        ),
+                        "single_import": False,
+                    },
+                )
+
         if single_import:
+            # Verify the session model is a registered import model and user has add permission
+            if restricted_app_label and restricted_model_name:
+                import_models = FEATURE_REGISTRY.get("import_models", [])
+                registered_single = next(
+                    (
+                        m
+                        for m in import_models
+                        if m.__name__ == restricted_model_name
+                        and m._meta.app_label == restricted_app_label
+                    ),
+                    None,
+                )
+                add_perm = f"{restricted_app_label}.add_{restricted_model_name.lower()}"
+                if not registered_single or not request.user.has_perm(add_perm):
+                    return render(
+                        request,
+                        "import/import_data.html",
+                        {
+                            "modules": [],
+                            "error_message": _(
+                                "Invalid module selection. Please choose a valid module from the list."
+                            ),
+                            "single_import": True,
+                            "selected_module": restricted_model_name,
+                        },
+                    )
             if module != restricted_model_name:
                 view = ImportDataView()
                 view.request = request
@@ -444,6 +507,25 @@ class ImportStep1View(View):
                 best_match_id = obj_id
 
         return best_match_id
+
+    def _get_permitted_modules(self, request):
+        """Return registered import models the user has add permission for."""
+        permitted = []
+        try:
+            for model in FEATURE_REGISTRY.get("import_models", []):
+                add_perm = f"{model._meta.app_label}.add_{model._meta.model_name}"
+                if request.user.has_perm(add_perm):
+                    permitted.append(
+                        {
+                            "name": model.__name__,
+                            "label": model._meta.verbose_name.title(),
+                            "app_label": model._meta.app_label,
+                            "module": model.__module__,
+                        }
+                    )
+        except Exception as e:
+            logger.error("Error building permitted modules list: %s", e)
+        return permitted
 
     def get_app_label_for_model(self, model_name):
         """Find the app_label for a given model name"""

@@ -14,17 +14,22 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
+
+# First-party / Horilla imports
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 from django.views.generic import DetailView, TemplateView, View
 
 from horilla.auth.models import User
 from horilla.http import HttpNotFound, HttpResponse, RefreshResponse
-from horilla.shortcuts import get_object_or_404
-
-# First-party / Horilla imports
+from horilla.shortcuts import get_object_or_404, render
 from horilla.urls import reverse_lazy
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required_or_denied,
+)
 from horilla.utils.translation import gettext_lazy as _
 from horilla_crm.opportunities.filters import (
     OpportunityTeamFilter,
@@ -56,7 +61,38 @@ from horilla_utils.middlewares import _thread_local
 logger = logging.getLogger(__name__)
 
 
-class OpportunityTeamView(LoginRequiredMixin, HorillaView):
+class TeamSellingRequiredMixin:
+    """
+    Blocks access to views when Team Selling is disabled.
+    Mirrors the Google Calendar Sync access-control pattern:
+      - HTMX requests: 204 + HX-Redirect (navigates the full page away cleanly).
+      - Normal requests: 403 render.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if team selling is enabled before allowing access to the view."""
+        if not OpportunitySettings.is_team_selling_enabled(
+            getattr(request, "active_company", None)
+        ):
+            if request.headers.get("HX-Request") == "true":
+                messages.error(request, _("Team Selling is not enabled."))
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = reverse("opportunities:opportunities_view")
+                return response
+            return render(
+                request,
+                "403.html",
+                {
+                    "message": _(
+                        "Team Selling has not been enabled by your administrator."
+                    )
+                },
+                status=403,
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class OpportunityTeamView(LoginRequiredMixin, TeamSellingRequiredMixin, HorillaView):
     """Displays the main opportunity team page."""
 
     template_name = "opportunity_team/opportunity_team_view.html"
@@ -65,7 +101,9 @@ class OpportunityTeamView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamNavbar(LoginRequiredMixin, HorillaNavView):
+class OpportunityTeamNavbar(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaNavView
+):
     """Navbar for opportunity team listing with filters and create option."""
 
     nav_title = OpportunityTeam._meta.verbose_name_plural
@@ -92,7 +130,9 @@ class OpportunityTeamNavbar(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamListView(LoginRequiredMixin, HorillaListView):
+class OpportunityTeamListView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaListView
+):
     """Lists opportunity teams owned by the logged-in user."""
 
     model = OpportunityTeam
@@ -168,7 +208,9 @@ class OpportunityTeamListView(LoginRequiredMixin, HorillaListView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamFormView(LoginRequiredMixin, HorillaSingleFormView):
+class OpportunityTeamFormView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """Handles creation and update of opportunity teams with members."""
 
     model = OpportunityTeam
@@ -289,6 +331,24 @@ class OpportunityTeamDetailView(LoginRequiredMixin, DetailView):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
+        if not OpportunitySettings.is_team_selling_enabled(
+            getattr(request, "active_company", None)
+        ):
+            if request.headers.get("HX-Request") == "true":
+                messages.error(request, _("Team Selling is not enabled."))
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = reverse("opportunities:opportunities_view")
+                return response
+            return render(
+                request,
+                "403.html",
+                {
+                    "message": _(
+                        "Team Selling has not been enabled by your administrator."
+                    )
+                },
+                status=403,
+            )
         try:
             self.object = self.get_object()
         except Exception as e:
@@ -314,7 +374,9 @@ class OpportunityTeamDetailView(LoginRequiredMixin, DetailView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamDetailNavbar(LoginRequiredMixin, HorillaNavView):
+class OpportunityTeamDetailNavbar(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaNavView
+):
     """Navbar for navigating inside a single opportunity team detail view."""
 
     search_url = reverse_lazy("opportunities:opportunity_team_detail_list_view")
@@ -358,7 +420,9 @@ class OpportunityTeamDetailNavbar(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamDetailListView(LoginRequiredMixin, HorillaListView):
+class OpportunityTeamDetailListView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaListView
+):
     """Lists members of a specific opportunity team."""
 
     model = DefaultOpportunityMember
@@ -417,7 +481,9 @@ class OpportunityTeamDetailListView(LoginRequiredMixin, HorillaListView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamMemberCreateView(LoginRequiredMixin, HorillaSingleFormView):
+class OpportunityTeamMemberCreateView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """Form view to create new members in an opportunity team."""
 
     model = DefaultOpportunityMember
@@ -513,7 +579,9 @@ class OpportunityTeamMemberCreateView(LoginRequiredMixin, HorillaSingleFormView)
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamMemberUpdateView(LoginRequiredMixin, HorillaSingleFormView):
+class OpportunityTeamMemberUpdateView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """Form view to update an existing opportunity team member."""
 
     model = DefaultOpportunityMember
@@ -535,7 +603,9 @@ class OpportunityTeamMemberUpdateView(LoginRequiredMixin, HorillaSingleFormView)
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityMemberUpdateView(LoginRequiredMixin, HorillaSingleFormView):
+class OpportunityMemberUpdateView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """Form view to update an existing opportunity  member."""
 
     model = OpportunityTeamMember
@@ -556,7 +626,9 @@ class OpportunityMemberUpdateView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+class OpportunityTeamDeleteView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleDeleteView
+):
     """Deletes an opportunity team and returns HTMX response."""
 
     model = OpportunityTeam
@@ -566,7 +638,9 @@ class OpportunityTeamDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityTeamMembersDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+class OpportunityTeamMembersDeleteView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleDeleteView
+):
     """Deletes an opportunity team member and returns HTMX response."""
 
     model = DefaultOpportunityMember
@@ -576,7 +650,9 @@ class OpportunityTeamMembersDeleteView(LoginRequiredMixin, HorillaSingleDeleteVi
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunityMembersDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+class OpportunityMembersDeleteView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleDeleteView
+):
     """Deletes an opportunity team member and returns HTMX response."""
 
     model = OpportunityTeamMember
@@ -634,7 +710,9 @@ class OpportunityMembersDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class AddDefaultTeamView(LoginRequiredMixin, HorillaSingleFormView):
+class AddDefaultTeamView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """
     View to add default team members from an OpportunityTeam to an Opportunity
     """
@@ -738,7 +816,9 @@ class AddDefaultTeamView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class AddOpportunityMemberView(LoginRequiredMixin, HorillaSingleFormView):
+class AddOpportunityMemberView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaSingleFormView
+):
     """Form view to create new members in an opportunity team."""
 
     model = OpportunityTeamMember
@@ -809,6 +889,10 @@ class AddOpportunityMemberView(LoginRequiredMixin, HorillaSingleFormView):
         unique_cache.add(cache_key)
 
 
+@method_decorator(
+    permission_required_or_denied("opportunities.view_opportunitysettings"),
+    name="dispatch",
+)
 class TeamSellingSetupView(LoginRequiredMixin, TemplateView):
     """
     View to display and manage Team Selling setup
@@ -825,6 +909,10 @@ class TeamSellingSetupView(LoginRequiredMixin, TemplateView):
         return context
 
 
+@method_decorator(
+    permission_required_or_denied("opportunities.change_opportunitysettings"),
+    name="dispatch",
+)
 class ToggleTeamSellingView(LoginRequiredMixin, View):
     """
     HTMX view to toggle team selling feature on/off

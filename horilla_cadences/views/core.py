@@ -29,7 +29,6 @@ from horilla_generics.views import (
     HorillaSingleFormView,
     HorillaView,
 )
-from horilla_generics.views.helpers.condition_widget import GetModelFieldChoicesView
 from horilla_utils.middlewares import _thread_local
 
 
@@ -90,7 +89,7 @@ class CadenceListView(LoginRequiredMixin, HorillaListView):
     bulk_select_option = False
     table_width = False
     enable_sorting = False
-    table_height_as_class = "h-[500px]"
+    table_height_as_class = "h-[calc(_100vh_-_310px_)]"
     header_attrs = [
         {"description": {"style": "width: 300px;"}},
     ]
@@ -208,6 +207,7 @@ class CadenceToggleView(LoginRequiredMixin, View):
     """Toggle active status for cadence via HTMX."""
 
     def post(self, request, *args, **kwargs):
+        """Toggle the is_active status of a cadence and return an HTMX response to reload the list view."""
         try:
             cadence = Cadence.objects.get(pk=kwargs["pk"])
             user = request.user

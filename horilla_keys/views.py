@@ -15,7 +15,12 @@ from horilla.http import HttpResponse, JsonResponse
 
 # First-party / Horilla imports
 from horilla.urls import reverse_lazy
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required,
+    permission_required_or_denied,
+)
 from horilla.utils.translation import gettext_lazy as _
 from horilla_generics.views import (
     HorillaListView,
@@ -31,6 +36,10 @@ from horilla_keys.models import ShortcutKey
 logger = logging.getLogger(__name__)
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_keys.view_shortcutkey"),
+    name="dispatch",
+)
 class ShortKeyView(LoginRequiredMixin, HorillaView):
     """
     TemplateView for short key view.
@@ -42,6 +51,7 @@ class ShortKeyView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(permission_required("horilla_keys.view_shortcutkey"), name="dispatch")
 class ShortKeyNavbar(LoginRequiredMixin, HorillaNavView):
     """
     Navbar fro short key
@@ -70,6 +80,10 @@ class ShortKeyNavbar(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_keys.view_shortcutkey"),
+    name="dispatch",
+)
 class ShortKeyListView(LoginRequiredMixin, HorillaListView):
     """
     List view of user short key
@@ -170,6 +184,10 @@ class ShortKeyFormView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_keys.delete_shortcutkey", modal=True),
+    name="dispatch",
+)
 class ShortcutKeyDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     """View to handle deletion of shortcut keys."""
 

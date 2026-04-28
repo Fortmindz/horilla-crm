@@ -753,6 +753,8 @@ class ActivityCreateView(LoginRequiredMixin, HorillaSingleFormView):
 
                     initial["start_datetime"] = start_datetime
                     initial["end_datetime"] = end_datetime
+                    # Keep task deadline aligned with calendar slot defaults.
+                    initial["due_datetime"] = end_datetime
                 except (ValueError, TypeError):
                     pass
 
@@ -801,6 +803,14 @@ class ActivityCreateView(LoginRequiredMixin, HorillaSingleFormView):
                     values = self.request.GET.getlist(field)
                     if values:
                         kwargs["initial"][field] = values
+
+            # Preserve date/time values across activity-type transitions
+            # even when the current type does not expose those fields.
+            for field in ["start_datetime", "end_datetime", "due_datetime"]:
+                if field in self.request.GET:
+                    value = self.request.GET.get(field)
+                    if value:
+                        kwargs["initial"][field] = value
             if "content_type" in self.request.GET:
                 kwargs["initial"]["content_type"] = self.request.GET.get("content_type")
             if "object_id" in self.request.GET:
@@ -837,14 +847,37 @@ class ActivityCreateView(LoginRequiredMixin, HorillaSingleFormView):
             )
         return reverse_lazy("horilla_activity:activity_create_form")
 
-    def form_valid(self, form):
-        """
-        Handle form submission and save the meeting.
-        """
+    def _is_calendar_request(self):
+        """Return True when the request originates from the calendar page."""
+        referer = (
+            self.request.META.get("HTTP_HX_CURRENT_URL")
+            or self.request.META.get("HTTP_REFERER")
+            or ""
+        )
+        return "calendar-view" in referer
 
-        super().form_valid(form)
-        if "calendar-view" in self.request.META.get("HTTP_REFERER"):
-            return HttpResponse(
+    def get_object_or_error_response(self, request):
+        """
+        Override to return the calendar-aware reload script when the
+        activity pk is not found, instead of the generic reloadButton response.
+        """
+        obj, error_response = super().get_object_or_error_response(request)
+        if error_response is not None and self._is_calendar_request():
+            error_response = HttpResponse(
                 "<script>$('#reloadMainContent').click();closeModal();</script>"
             )
-        return HttpResponse("<script>$('#reloadButton').click();closeModal();</script>")
+        return obj, error_response
+
+    def form_valid(self, form):
+        """
+        Handle form submission and save the activity.
+        """
+        if self._is_calendar_request():
+            self.return_response = HttpResponse(
+                "<script>$('#reloadMainContent').click();closeModal();</script>"
+            )
+        else:
+            self.return_response = HttpResponse(
+                "<script>$('#reloadButton').click();closeModal();</script>"
+            )
+        return super().form_valid(form)

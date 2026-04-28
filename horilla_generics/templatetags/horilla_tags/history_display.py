@@ -150,8 +150,6 @@ def _get_activity_type_from_entry(entry):
             return at
     # Fallback: load the Activity by object_pk
     try:
-        from django.contrib.contenttypes.models import ContentType
-
         object_pk = getattr(entry, "object_pk", None) or getattr(
             entry, "object_id", None
         )
@@ -244,7 +242,6 @@ def activity_create_display(entry):
     if entry is None:
         return ""
     try:
-        from auditlog.models import LogEntry
 
         if getattr(entry, "action", None) != LogEntry.Action.CREATE:
             return ""

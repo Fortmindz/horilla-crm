@@ -170,6 +170,8 @@ class Company(models.Model):
         verbose_name_plural = _("Branches")
         ordering = ["name"]
 
+    SORT_FIELD_MAPPING = {"get_avatar_with_name": "name"}
+
     def __str__(self):
         return f"{self.name}"
 

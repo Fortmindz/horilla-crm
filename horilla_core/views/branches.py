@@ -42,6 +42,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_company"),
+    name="dispatch",
+)
 class BranchesView(LoginRequiredMixin, HorillaView):
     """
     TemplateView for branches page.
@@ -196,6 +200,10 @@ class BranchListView(LoginRequiredMixin, HorillaListView):
         ]
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_company"),
+    name="dispatch",
+)
 class BranchDetailView(LoginRequiredMixin, DetailView):
     """
     Detail view for user page
@@ -262,6 +270,19 @@ class BranchDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         return response
 
 
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "horilla_core.view_company",
+            "horilla_core.view_fiscalyear",
+            "horilla_core.view_businesshour",
+            "horilla_core.view_holiday",
+            "horilla_core.view_multiplecurrency",
+            "horilla_core.view_recyclebinpolicy",
+        ]
+    ),
+    name="dispatch",
+)
 class CompanyInformationTabView(LoginRequiredMixin, HorillaTabView):
     """
     A generic class-based view for rendering the company information settings page.
@@ -346,6 +367,10 @@ class CompanyInformationTabView(LoginRequiredMixin, HorillaTabView):
         return tabs
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_company"),
+    name="dispatch",
+)
 class CompanyInformationView(LoginRequiredMixin, TemplateView):
     """
     TemplateView for company information settings page.

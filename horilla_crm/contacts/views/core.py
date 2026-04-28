@@ -243,7 +243,6 @@ class ContactListView(LoginRequiredMixin, HorillaListView):
         ]
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["contacts.view_contact", "contacts.view_own_contact"]

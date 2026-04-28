@@ -15,7 +15,9 @@
                 <li>
                     <div class="rounded-lg bg-primary-50 border border-primary-100 p-4 text-center shadow-sm">
                         <p class="text-sm font-medium text-gray-600 mb-1">{% trans "Completed Calls" %}</p>
-                        <p class="text-2xl font-bold text-primary-600">{{ call_stats.completed_pct|default:0|floatformat:2 }}%</p>
+                        <p class="text-2xl font-bold text-primary-600">
+                            {{ call_stats.completed_pct|default:0|floatformat:2 }}%
+                        </p>
                     </div>
                 </li>
                 <li>
@@ -32,15 +34,14 @@
                 </li>
             </ul>
 
-            <div class="pt-2"
+            <div
+                class="pt-2"
                 hx-push-url="false"
                 hx-get="{% url 'cadences:cadence_call_list_view' %}?{{ request.GET.urlencode }}"
                 hx-trigger="load"
             >
             </div>
-
         </div>
-
     </div>
 {% else %}
     {% include "403.html" with embed=True %}

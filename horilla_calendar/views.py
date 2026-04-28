@@ -17,7 +17,7 @@ from django.views.generic import TemplateView
 # First-party imports (Horilla)
 from horilla.http import HttpResponse, JsonResponse
 from horilla.shortcuts import render
-from horilla.urls import reverse, reverse_lazy
+from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
     method_decorator,
@@ -636,10 +636,8 @@ class MarkCompletedView(LoginRequiredMixin, View):
                 }
             )
 
-        except Activity.DoesNotExist:
-            return JsonResponse(
-                {"status": "error", "message": "Activity not found"}, status=404
-            )
+        except Activity.DoesNotExist as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=404)
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
@@ -663,19 +661,29 @@ class CustomCalendarFormView(LoginRequiredMixin, HorillaSingleFormView):
     full_width_fields = ["name", "color"]
     save_and_new = False
     view_id = "customcalendar-form-view"
-    modal_height = True
+    modal_height = False
     return_response = HttpResponse(
-        "<script>$('#reloadMainContent').click();closeModal();</script>"
+        "<script>$('#reloadButton').click();closeModal();</script>"
     )
 
     @cached_property
     def form_url(self):
+        """Return the create or update URL for the custom calendar form."""
         pk = self.kwargs.get("pk")
         if pk:
             return reverse_lazy(
                 "horilla_calendar:custom_calendar_update", kwargs={"pk": pk}
             )
         return reverse_lazy("horilla_calendar:custom_calendar_create")
+
+    def get_object_or_error_response(self, request):
+        """Return calendar-aware reload script when the custom calendar pk is not found."""
+        obj, error_response = super().get_object_or_error_response(request)
+        if error_response is not None:
+            error_response = HttpResponse(
+                "<script>$('#reloadButton').click();closeModal();</script>"
+            )
+        return obj, error_response
 
     def form_valid(self, form):
         if not form.instance.pk:
@@ -750,9 +758,7 @@ class UserAvailabilityFormView(LoginRequiredMixin, HorillaSingleFormView):
         """
 
         super().form_valid(form)
-        return HttpResponse(
-            "<script>$('#reloadMainContent').click();closeModal();</script>"
-        )
+        return HttpResponse("<script>$('#reloadButton').click();closeModal();</script>")
 
     def form_invalid(self, form):
         return self.render_to_response(self.get_context_data(form=form))
@@ -769,9 +775,7 @@ class UserAvailabilityDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = UserAvailability
 
     def get_post_delete_response(self):
-        return HttpResponse(
-            "<script>htmx.trigger('#reloadMainContent','click');</script>"
-        )
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -785,6 +789,27 @@ class CustomCalendarDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     model = CustomCalendar
 
     def get_post_delete_response(self):
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
+
+    def _calendar_not_found_response(self, request, exc):
+        """Add error message and reload the calendar when the object is not found."""
+        messages.error(request, _(str(exc)))
         return HttpResponse(
-            "<script>htmx.trigger('#reloadMainContent','click');</script>"
+            "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
         )
+
+    def get(self, request, *args, **kwargs):
+        """Intercept missing-object early so we can return a calendar-aware reload."""
+        try:
+            self.object = self.get_object()
+        except Exception as e:
+            return self._calendar_not_found_response(request, e)
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        """Intercept missing-object early so we can return a calendar-aware reload."""
+        try:
+            self.object = self.get_object()
+        except Exception as e:
+            return self._calendar_not_found_response(request, e)
+        return self.delete(request, *args, **kwargs)

@@ -115,6 +115,7 @@ class SuperUserTab(LoginRequiredMixin, HorillaListView):
     view_id = "super_user_list"
     list_column_visibility = False
     bulk_select_option = False
+    main_url = reverse_lazy("horilla_core:super_user_tab")
 
     columns = [(_("First Name"), "get_avatar_with_name"), "role"]
 

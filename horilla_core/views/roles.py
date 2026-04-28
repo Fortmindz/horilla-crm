@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.template.loader import render_to_string
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -38,6 +39,10 @@ from horilla_generics.views.core import HorillaView
 from horilla_utils.middlewares import _thread_local
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_role"),
+    name="dispatch",
+)
 class RolesView(LoginRequiredMixin, HorillaView):
     """
     Template view for team role page
@@ -167,6 +172,7 @@ class RoleUsersListView(LoginRequiredMixin, HorillaListView):
     bulk_update_fields = ["role"]
     save_to_list_option = False
     filter_url_push = False
+    main_session_id = "role-user-list"
 
     def get_queryset(self):
         """
@@ -255,6 +261,11 @@ class UsersInRoleView(LoginRequiredMixin, TemplateView):
     def get(self, request, *args, **kwargs):
         """
         Handle GET request and validate role_id.
+
+        When called with search or filter params (i.e. a navbar search request),
+        delegate to RoleUsersListView and return the list HTML wrapped in a
+        #mainSession div so HTMX hx-select="#mainSession" works correctly without
+        triggering a second load via hx-trigger="load".
         """
         role_id = request.GET.get("role_id")
 
@@ -266,12 +277,45 @@ class UsersInRoleView(LoginRequiredMixin, TemplateView):
 
         try:
             Role.objects.get(pk=role_id)
-            return super().get(request, *args, **kwargs)
         except Exception:
             messages.error(request, _("The requested role does not exist."))
             return HttpResponse(
                 "<script>$('#reloadButton').click();closeContentModal()</script>"
             )
+
+        # If this is a search/filter request from the navbar, render the list
+        # directly wrapped in #mainSession to avoid hx-trigger="load" re-firing.
+        is_search_request = bool(
+            request.GET.get("search")
+            or request.GET.get("apply_filter")
+            or request.GET.get("field")
+        )
+        if is_search_request:
+            list_view = RoleUsersListView()
+            list_view.request = request
+            list_view.args = args
+            list_view.kwargs = kwargs
+            list_view.object_list = list_view.get_queryset()
+            list_context = list_view.get_context_data()
+            list_html = render_to_string(
+                "list_view.html", list_context, request=request
+            )
+            # Re-render the navbar with current request params so the
+            # filter count badge updates (OOB swap targets #navbar-roles).
+            nav_view = RoleUsersNavView()
+            nav_view.request = request
+            nav_view.args = args
+            nav_view.kwargs = kwargs
+            nav_context = nav_view.get_context_data()
+            nav_html = render_to_string("navbar.html", nav_context, request=request)
+            navbar_oob = f'<div id="navbar-roles" class="p-5 pb-0 w-full" hx-swap-oob="true">{nav_html}</div>'
+            wrapped = (
+                f'<div id="role-user-list" class="pl-5 pb-5 pr-7 pt-0">{list_html}</div>'
+                f"{navbar_oob}"
+            )
+            return HttpResponse(wrapped)
+
+        return super().get(request, *args, **kwargs)
 
 
 @method_decorator(htmx_required, name="dispatch")
@@ -300,6 +344,7 @@ class RoleUsersNavView(LoginRequiredMixin, HorillaNavView):
     border_enabled = False
     navbar_indication = True
     search_push_url = False
+    main_session_id = "role-user-list"
 
     def get_context_data(self, **kwargs):
         """
@@ -319,6 +364,10 @@ class RoleUsersNavView(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.change_role", modal=True),
+    name="dispatch",
+)
 class DeleteUserFromRole(LoginRequiredMixin, View):
     """
     Remove role from a user (without deleting the user)
@@ -415,6 +464,10 @@ class RoleNavbar(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_role"),
+    name="dispatch",
+)
 class RolesHierarchyView(LoginRequiredMixin, TemplateView):
     """
     TemplateView for role settings page.

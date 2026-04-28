@@ -3,7 +3,6 @@
 # Standard library imports
 import json
 from functools import cached_property
-from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -17,7 +16,12 @@ from horilla.db.models import Prefetch
 from horilla.http import HttpResponse
 from horilla.shortcuts import render
 from horilla.urls import reverse_lazy
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required,
+    permission_required_or_denied,
+)
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla apps
@@ -33,6 +37,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_matchingrule"),
+    name="dispatch",
+)
 class MatchingRuleView(LoginRequiredMixin, HorillaView):
     """
     Main view for matching rules page
@@ -44,6 +52,9 @@ class MatchingRuleView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required("horilla_duplicates.view_matchingrule"), name="dispatch"
+)
 class MatchingRuleNavView(LoginRequiredMixin, HorillaNavView):
     """
     Navbar view for Matching Rules
@@ -74,6 +85,10 @@ class MatchingRuleNavView(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_matchingrule"),
+    name="dispatch",
+)
 class MatchingRuleListView(LoginRequiredMixin, View):
     """
     Accordion view for Matching Rules
@@ -135,6 +150,11 @@ class MatchingRuleFormView(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("horilla_duplicates:matching_rule_create_view")
 
 
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.delete_matchingrule", modal=True),
+    name="dispatch",
+)
 class MatchingRuleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     """
     Delete view for MatchingRule
@@ -148,6 +168,15 @@ class MatchingRuleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "horilla_duplicates.add_matchingrule",
+            "horilla_duplicates.change_matchingrule",
+        ]
+    ),
+    name="dispatch",
+)
 class MatchingRuleCriteriaFieldChoicesView(LoginRequiredMixin, View):
     """
     View to return matching rule field choices based on selected content type

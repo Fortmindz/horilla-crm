@@ -1,15 +1,3 @@
-#cadence-followup-form .htmx-indicator {
-    display: none;
-}
-
-#cadence-followup-form.htmx-request .htmx-indicator {
-    display: inline;
-}
-
-#cadence-followup-form .htmx-request.htmx-indicator {
-    display: inline;
-}
-
 .cadence-followup-card {
     position: relative;
     z-index: 2;

@@ -7,21 +7,54 @@ automatic syncing of Horilla events to each user's Google Calendar.
 """
 
 import logging
+import queue
 import threading
+import time
 
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-
-def _run_in_thread(fn, *args, **kwargs):
-    """Fire-and-forget: run fn(*args) in a daemon thread so the request returns immediately."""
-    t = threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
-    t.start()
-
-
 from horilla.auth.models import User
 from horilla.urls import reverse_lazy
 from horilla_keys.models import ShortcutKey
+
+_google_push_queue = queue.Queue()
+
+
+def _google_push_worker():
+    """Single daemon thread that drains _google_push_queue at a throttled rate."""
+    from django.db import close_old_connections
+
+    while True:
+        # Close any stale/idle connection before starting the next job so the
+        # worker thread never holds a SQLite shared lock while the main thread
+        # needs an exclusive write lock (bulk delete, assigned_to.add, etc.).
+        close_old_connections()
+        fn, args, kwargs = _google_push_queue.get()
+        try:
+            fn(*args, **kwargs)
+        except Exception as exc:
+            logging.getLogger(__name__).error("Google push worker error: %s", exc)
+        finally:
+            _google_push_queue.task_done()
+            # Release the connection immediately after the job so no lock is
+            # held during the sleep or while waiting for the next queue item.
+            close_old_connections()
+        # Throttle: ~4 pushes/second keeps us safely under Google's
+        # 500 writes/100 s per-user quota even during bulk backfills.
+        time.sleep(0.25)
+
+
+_google_push_worker_thread = threading.Thread(
+    target=_google_push_worker, daemon=True, name="google-push-worker"
+)
+_google_push_worker_thread.start()
+
+
+def _run_in_thread(fn, *args, **kwargs):
+    """Enqueue fn(*args) onto the single Google push worker (non-blocking)."""
+    _google_push_queue.put((fn, args, kwargs))
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,26 +94,52 @@ def create_calendar_shortcuts(sender, instance, created, **kwargs):
 
 
 def _sync_activity(instance):
-    """Push an Activity to Google Calendar for all related users who are connected."""
+    """Push an Activity to Google Calendar for all related users who are connected.
+
+    Re-fetches the activity from the database by PK so we always read the
+    committed state of assigned_to (the signal may fire before an in-progress
+    assigned_to.add() on the main thread has committed).
+
+    The DB read is done first and the connection is closed before the Google
+    API call so the worker thread holds no SQLite lock during network I/O.
+    """
+    from django.db import close_old_connections
+
+    from horilla_activity.models import Activity
     from horilla_calendar.google_calendar.sync import push_activity_to_google
 
-    users = set()
-    if instance.owner_id:
-        users.add(instance.owner)
-    if instance.meeting_host_id:
-        users.add(instance.meeting_host)
+    # --- DB read phase: fetch all data needed, then release the connection ---
     try:
-        for u in instance.assigned_to.all():
+        fresh = (
+            Activity.objects.select_related("owner", "meeting_host")
+            .prefetch_related("assigned_to")
+            .get(pk=instance.pk)
+        )
+    except Activity.DoesNotExist:
+        return
+
+    users = set()
+    if fresh.owner_id:
+        users.add(fresh.owner)
+    if fresh.meeting_host_id:
+        users.add(fresh.meeting_host)
+    try:
+        for u in fresh.assigned_to.all():
             users.add(u)
     except Exception:
         pass
 
+    # Release the DB connection before network I/O so no SQLite lock is held
+    # while the Google API call (which can take hundreds of ms) is in flight.
+    close_old_connections()
+
+    # --- Network phase: push to Google (no DB connection held) ---------------
     for user in users:
         try:
-            push_activity_to_google(instance, user)
+            push_activity_to_google(fresh, user)
         except Exception as exc:
             logger.error(
-                "Google sync error for activity %s user %s: %s", instance.pk, user, exc
+                "Google sync error for activity %s user %s: %s", fresh.pk, user, exc
             )
 
 
@@ -92,7 +151,11 @@ def sync_activity_to_google(sender, instance, **kwargs):
     """
     from horilla_calendar.google_calendar.sync import is_pulling_from_google
 
-    if getattr(instance, "_from_google", False) or is_pulling_from_google():
+    if (
+        getattr(instance, "_from_google", False)
+        or getattr(instance, "_skip_google_push", False)
+        or is_pulling_from_google()
+    ):
         return
     _run_in_thread(_sync_activity, instance)
 

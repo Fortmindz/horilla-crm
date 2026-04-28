@@ -77,7 +77,7 @@ class ReportNavbar(LoginRequiredMixin, HorillaNavView):
         """Add navigation title from query params into the context."""
         context = super().get_context_data(**kwargs)
         title = self.request.GET.get("title")
-        context["nav_title"] = _(title)
+        context["nav_title"] = _(title) if title else ""
         return context
 
     @cached_property
@@ -586,6 +586,10 @@ class ReportFolderDetailView(LoginRequiredMixin, HorillaListView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_reports.view_reportfolder"),
+    name="dispatch",
+)
 class MarkFolderAsFavouriteView(LoginRequiredMixin, View):
     """View for marking/unmarking report folders as favourites."""
 
@@ -618,6 +622,10 @@ class MarkFolderAsFavouriteView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_reports.view_report"),
+    name="dispatch",
+)
 class MarkReportAsFavouriteView(LoginRequiredMixin, View):
     """View for marking/unmarking reports as favourites."""
 

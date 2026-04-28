@@ -55,6 +55,7 @@ class HorillaNavView(TemplateView):
     enable_actions = False
     search_push_url = True
     enable_quick_filters = False  # Set to True in child classes to enable
+    main_session_id: str = "mainSession"  # Override to avoid ID conflicts inside modals
 
     def get_navbar_indication_attrs(self):
         """Return additional attributes for navbar indication when enabled."""
@@ -110,6 +111,7 @@ class HorillaNavView(TemplateView):
             self, "default_layout", "list"
         )
         context["nav_title"] = self.nav_title
+        context["main_session_id"] = getattr(self, "main_session_id", "mainSession")
         context["search_url"] = self.search_url or self.request.path
         context["search_push_url"] = "true" if self.search_push_url else "false"
         context["main_url"] = self.main_url or self.request.path

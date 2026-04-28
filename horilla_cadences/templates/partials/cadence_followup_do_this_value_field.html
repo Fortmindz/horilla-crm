@@ -2,7 +2,9 @@
 <div
     id="do_this_value_container"
     class="{% if show_field %}flex flex-col{% else %}hidden{% endif %}"
-    {% if not show_field %}style="display:none;"{% endif %}
+    {% if not show_field %}
+        style="display: none"
+    {% endif %}
 >
     {% if show_field %}
         <div class="flex justify-between mb-1 w-full">

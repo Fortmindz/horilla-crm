@@ -324,6 +324,7 @@ class ReportDetailView(ReportDetailDataMixin, RecentlyViewedMixin, DetailView):
         )
         list_view.request = self.request
         list_view.table_width = False
+        list_view.table_auto = True
         list_view.bulk_select_option = False
         list_view.list_column_visibility = False
         list_view.paginate_by = 10

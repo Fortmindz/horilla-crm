@@ -6,17 +6,31 @@
             <h3 class="text-base font-semibold text-gray-900">
                 {% trans "Mail Configuration Required" %}
             </h3>
-            <button type="button" class="text-gray-500 hover:text-red-500 text-xl cursor-pointer" id="cadence-mail-config-close">
+            <button
+                type="button"
+                class="text-gray-500 hover:text-red-500 text-xl cursor-pointer"
+                id="cadence-mail-config-close"
+            >
                 <img src="{% static 'assets/icons/close.svg' %}" alt="{% trans 'Close' %}">
             </button>
         </div>
         <div class="px-5 py-6 text-center">
             <div class="mb-4 flex justify-center">
                 <div class="w-16 h-16 rounded-full bg-primary-100 border-2 border-primary-400 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                        <line x1="12" y1="9" x2="12" y2="13"></line>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="34"
+                        height="34"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#DC2626"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
                 </div>
             </div>
@@ -26,34 +40,38 @@
             <p class="text-sm text-gray-600 mb-5 leading-relaxed">
                 {% trans "Configure outgoing mail to use Email follow-ups in cadence." %}
             </p>
-            <button type="button" id="cadence-mail-config-btn" class="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md">
+            <button
+                type="button"
+                id="cadence-mail-config-btn"
+                class="inline-flex items-center justify-center px-4 py-2 bg-primary-600 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
+            >
                 {% trans "Configure" %}
             </button>
         </div>
     </div>
 </div>
 <script>
-(function () {
-  if (window.__cadenceMailConfigPopupShown) return;
-  window.__cadenceMailConfigPopupShown = true;
-  const overlay = document.getElementById("cadence-mail-config-overlay");
-  const closeBtn = document.getElementById("cadence-mail-config-close");
-  const cfgBtn = document.getElementById("cadence-mail-config-btn");
-  const followupTypeSelect = document.querySelector("#id_followup_type");
+    (function () {
+      if (window.__cadenceMailConfigPopupShown) return;
+      window.__cadenceMailConfigPopupShown = true;
+      const overlay = document.getElementById("cadence-mail-config-overlay");
+      const closeBtn = document.getElementById("cadence-mail-config-close");
+      const cfgBtn = document.getElementById("cadence-mail-config-btn");
+      const followupTypeSelect = document.querySelector("#id_followup_type");
 
-  // Ensure Email isn't kept selected in the form when popup is shown.
-  if (followupTypeSelect && followupTypeSelect.value === "email") {
-    followupTypeSelect.value = "task";
-    followupTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  }
+      // Ensure Email isn't kept selected in the form when popup is shown.
+      if (followupTypeSelect && followupTypeSelect.value === "email") {
+        followupTypeSelect.value = "task";
+        followupTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
 
-  function closePopup() {
-    if (overlay) overlay.remove();
-    window.__cadenceMailConfigPopupShown = false;
-  }
-  closeBtn && closeBtn.addEventListener("click", closePopup);
-  cfgBtn && cfgBtn.addEventListener("click", function () {
-    window.location.href = "{{ configure_url }}";
-  });
-})();
+      function closePopup() {
+        if (overlay) overlay.remove();
+        window.__cadenceMailConfigPopupShown = false;
+      }
+      closeBtn && closeBtn.addEventListener("click", closePopup);
+      cfgBtn && cfgBtn.addEventListener("click", function () {
+        window.location.href = "{{ configure_url }}";
+      });
+    })();
 </script>

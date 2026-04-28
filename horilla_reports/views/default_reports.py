@@ -12,12 +12,20 @@ from django.views.generic import TemplateView, View
 # First-party (Horilla) imports
 from horilla.apps import apps
 from horilla.http import HttpResponse
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required_or_denied,
+)
 from horilla_core.models import HorillaContentType
 from horilla_reports.models import Report, ReportFolder
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_reports.add_report", modal=True),
+    name="dispatch",
+)
 class LoadDefaultReportsModalView(LoginRequiredMixin, TemplateView):
     """Modal view that lists default reports provided by installed apps."""
 
@@ -65,6 +73,10 @@ class LoadDefaultReportsModalView(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_reports.add_report", modal=True),
+    name="dispatch",
+)
 class CreateSelectedDefaultReportsView(LoginRequiredMixin, View):
     """Create Report instances for user-selected default reports discovered in installed apps."""
 

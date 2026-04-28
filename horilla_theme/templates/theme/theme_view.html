@@ -9,6 +9,16 @@
                 {% trans 'Select a theme to customize the appearance of your application' %}
             </p>
         </div>
+        <button
+                id="reloadButton"
+                hidden
+                hx-get="{{ request.path }}?{{request.GET.urlencode}}"
+                hx-target="#theme-view"
+                hx-swap="outerHTML"
+                hx-select="#theme-view"
+            >
+                click
+            </button>
 
         <div id="theme-cards-container">
             {% include "theme/theme_cards.html" %}

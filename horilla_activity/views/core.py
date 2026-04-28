@@ -189,6 +189,10 @@ class HorillaActivitySectionView(DetailView):
         return context
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_activity.view_activity"),
+    name="dispatch",
+)
 class ActivityView(LoginRequiredMixin, HorillaView):
     """
     Render the activity page.
@@ -352,7 +356,6 @@ class ActivityDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailV
     ),
     name="dispatch",
 )
-@method_decorator(htmx_required, name="dispatch")
 class ActivityDetailTab(LoginRequiredMixin, HorillaDetailSectionView):
     """
     Activity Detail Tab View

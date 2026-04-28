@@ -57,9 +57,6 @@ def _on_registered_model_pre_save(sender, instance, **kwargs):
 
 
 def _on_registered_model_deleted(sender, instance, **kwargs):
-    from horilla_core.models import HorillaContentType
-
-    from .models import ApprovalInstance
 
     try:
         content_type = HorillaContentType.objects.get_for_model(sender)

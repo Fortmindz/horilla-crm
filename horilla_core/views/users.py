@@ -40,6 +40,12 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
+)
 class UserView(LoginRequiredMixin, HorillaView):
     """
     TemplateView for user page.
@@ -236,7 +242,6 @@ class UserListView(LoginRequiredMixin, HorillaListView):
         return queryset
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         f"{User._meta.app_label}.view_{User._meta.model_name}"
@@ -267,7 +272,6 @@ class UserKanbanView(LoginRequiredMixin, HorillaKanbanView):
     actions = UserListView.actions
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         f"{User._meta.app_label}.view_{User._meta.model_name}"
@@ -388,6 +392,15 @@ class UserFormView(LoginRequiredMixin, HorillaMultiStepFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            f"{User._meta.app_label}.add_{User._meta.model_name}",
+            f"{User._meta.app_label}.change_{User._meta.model_name}",
+        ]
+    ),
+    name="dispatch",
+)
 class GetCompanyRelatedFieldsView(LoginRequiredMixin, View):
     """HTMX endpoint to get role, department, and currency fields based on selected company"""
 
@@ -541,6 +554,12 @@ class UserDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
+@method_decorator(
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
+)
 class UserDetailView(RecentlyViewedMixin, LoginRequiredMixin, HorillaDetailView):
     """
     Detail view for user page
@@ -577,6 +596,12 @@ class MyProfileView(LoginRequiredMixin, TemplateView):
     template_name = "settings/users/my_profile.html"
 
 
+@method_decorator(
+    permission_required_or_denied(
+        f"{User._meta.app_label}.view_{User._meta.model_name}"
+    ),
+    name="dispatch",
+)
 class LoginHistoryView(LoginRequiredMixin, HorillaView):
     """
     Main login history view of user

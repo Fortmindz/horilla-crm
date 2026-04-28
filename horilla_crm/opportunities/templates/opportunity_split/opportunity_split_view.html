@@ -1,5 +1,6 @@
 {% extends "settings/settings.html" %}
-{% load static i18n %}
+{% load static i18n horilla_tags %}
+{% has_perm "opportunities.change_opportunitysettings" as change_opportunitysettings %}
 
 {% block settings %}
     {% if team_selling_enabled %}
@@ -22,33 +23,54 @@
             </div>
             <div class="text-sm font-semibold flex gap-2 relative mb-3">
                 {% trans 'Enable Opportunity split' %}
-                <label class="inline-flex items-center cursor-pointer">
-                    <input
-                        type="checkbox"
-                        class="sr-only peer"
-                        hx-post="{% url 'opportunities:toggle_opportunit_split' %}"
-                        hx-trigger="confirmed"
-                        {% if split_enabled %}
-                            hx-on:click="hxConfirm(this,'Are you sure you want to disable Opportunity Split?')"
-                        {% else %}
-                            hx-on:click="hxConfirm(this,'Are you sure you want to enable Opportunity Split?')"
-                        {% endif %}
-                        hx-vals='{"action": "{% if split_enabled %}disable{% else %}enable{% endif %}"}'
-                        {% if split_enabled %}
-                            checked
-                        {% endif %}
-                    >
-                    <div
-                        class="
-                            relative w-11 h-5 bg-gray-200 rounded-full
-                            peer peer-checked:bg-primary-600
-                            after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                            after:bg-white after:rounded-full after:h-4 after:w-4
-                            after:transition-all peer-checked:after:translate-x-6
-                        "
-                    >
-                    </div>
-                </label>
+                {% if change_opportunitysettings %}
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input
+                            type="checkbox"
+                            class="sr-only peer"
+                            hx-post="{% url 'opportunities:toggle_opportunit_split' %}"
+                            hx-trigger="confirmed"
+                            {% if split_enabled %}
+                                hx-on:click="hxConfirm(this,'Are you sure you want to disable Opportunity Split?')"
+                            {% else %}
+                                hx-on:click="hxConfirm(this,'Are you sure you want to enable Opportunity Split?')"
+                            {% endif %}
+                            hx-vals='{"action": "{% if split_enabled %}disable{% else %}enable{% endif %}"}'
+                            {% if split_enabled %}
+                                checked
+                            {% endif %}
+                        >
+                        <div
+                            class="
+                                relative w-11 h-5 bg-gray-200 rounded-full
+                                peer peer-checked:bg-primary-600
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                after:bg-white after:rounded-full after:h-4 after:w-4
+                                after:transition-all peer-checked:after:translate-x-6
+                            "
+                        >
+                        </div>
+                    </label>
+                {% else %}
+                    <label class="inline-flex items-center cursor-not-allowed opacity-50">
+                        <input
+                            type="checkbox"
+                            class="sr-only peer"
+                            disabled
+                            {% if split_enabled %}checked{% endif %}
+                        >
+                        <div
+                            class="
+                                relative w-11 h-5 bg-gray-200 rounded-full
+                                peer peer-checked:bg-primary-600
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                after:bg-white after:rounded-full after:h-4 after:w-4
+                                after:transition-all peer-checked:after:translate-x-6
+                            "
+                        >
+                        </div>
+                    </label>
+                {% endif %}
             </div>
             {% if split_enabled %}
                 <div
@@ -59,23 +81,33 @@
                 >
                 </div>
                 <span class="flex">
-                    <input
-                        type="checkbox"
-                        {% if allow_all_users_in_splits %}
-                            checked
-                        {% endif %}
-                        id="ch2"
-                        class="w-4 h-4 border border-[#cfcfcf] rounded-sm accent-[#e54f38] mr-2"
-                        hx-post="{% url 'opportunities:toggle_allow_all_users_split' %}"
-                        hx-trigger="confirmed"
-                        {% if allow_all_users_in_splits %}
-                            hx-on:click="hxConfirm(this,'Are you sure you want to restrict split members to only opportunity team members?')"
-                            hx-vals='{"action": "disable_all_users"}'
-                        {% else %}
-                            hx-on:click="hxConfirm(this,'Are you sure you want to allow all users to be added in splits?')"
-                            hx-vals='{"action": "enable_all_users"}'
-                        {% endif %}
-                    >
+                    {% if change_opportunitysettings %}
+                        <input
+                            type="checkbox"
+                            {% if allow_all_users_in_splits %}
+                                checked
+                            {% endif %}
+                            id="ch2"
+                            class="w-4 h-4 border border-[#cfcfcf] rounded-sm accent-[#e54f38] mr-2"
+                            hx-post="{% url 'opportunities:toggle_allow_all_users_split' %}"
+                            hx-trigger="confirmed"
+                            {% if allow_all_users_in_splits %}
+                                hx-on:click="hxConfirm(this,'Are you sure you want to restrict split members to only opportunity team members?')"
+                                hx-vals='{"action": "disable_all_users"}'
+                            {% else %}
+                                hx-on:click="hxConfirm(this,'Are you sure you want to allow all users to be added in splits?')"
+                                hx-vals='{"action": "enable_all_users"}'
+                            {% endif %}
+                        >
+                    {% else %}
+                        <input
+                            type="checkbox"
+                            {% if allow_all_users_in_splits %}checked{% endif %}
+                            id="ch2"
+                            class="w-4 h-4 border border-[#cfcfcf] rounded-sm accent-[#e54f38] mr-2 opacity-50 cursor-not-allowed"
+                            disabled
+                        >
+                    {% endif %}
                     <div class="flex gap-1">
                         <label for="ch2" class="cursor-pointer text-sm font-medium text-[#666] italic">
                             {% trans "Let users add members to opportunity teams while editing splits" %}

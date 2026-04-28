@@ -403,6 +403,7 @@ class YAxisMetricFieldChoicesView(View):
     """
 
     def get(self, request, *args, **kwargs):
+        """Method to handle GET request and return metric choices for y-axis based on the selected module."""
         component_type = (request.GET.get("component_type") or "").strip()
         # Only charts use the dedicated y-axis metric; others fall back to simple count.
         if component_type != "chart":

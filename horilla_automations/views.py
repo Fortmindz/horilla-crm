@@ -298,6 +298,15 @@ class HorillaAutomationFormView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        [
+            "horilla_automations.add_horillaautomation",
+            "horilla_automations.change_horillaautomation",
+        ]
+    ),
+    name="dispatch",
+)
 class AutomationFieldChoicesView(LoginRequiredMixin, View):
     """
     Class-based view to return field choices for a selected model via HTMX.

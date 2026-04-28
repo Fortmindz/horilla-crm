@@ -9,6 +9,6 @@
             <div id="mainSession" hx-get="{{ list_url }}?{{request.GET.urlencode}}" hx-trigger="load"></div>
         </div>
     {% else %}
-        {% include "error/403.html" %}
+        {% include "403.html" %}
     {% endif %}
 {% endblock %}

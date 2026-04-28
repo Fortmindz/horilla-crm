@@ -6,9 +6,12 @@ list view class smaller and focused.
 # Standard library imports
 import json
 import logging
+from functools import reduce
+from operator import or_
 
 # Third-party imports (Django)
 from django.contrib import messages
+from django.db.models import Q
 
 from horilla.http import HttpResponse
 
@@ -160,6 +163,37 @@ class HorillaBulkDeleteMixin:
         if action == "bulk_delete" and record_ids:
             try:
                 record_ids_list = json.loads(record_ids)
+
+                # Enforce delete_own permission: restrict to owned records only
+                # when the user lacks the global delete permission.
+                app_label = self.model._meta.app_label
+                model_name = self.model._meta.model_name
+                delete_perm = f"{app_label}.delete_{model_name}"
+                delete_own_perm = f"{app_label}.delete_own_{model_name}"
+
+                if not request.user.has_perm(delete_perm) and request.user.has_perm(
+                    delete_own_perm
+                ):
+                    owner_fields = getattr(self.model, "OWNER_FIELDS", None)
+                    if owner_fields:
+                        ownership_query = reduce(
+                            or_,
+                            (Q(**{field: request.user}) for field in owner_fields),
+                            Q(),
+                        )
+                        allowed_ids = (
+                            self.get_queryset()
+                            .filter(id__in=record_ids_list)
+                            .filter(ownership_query)
+                            .values_list("id", flat=True)
+                        )
+                        skipped_count = len(record_ids_list) - len(allowed_ids)
+                        record_ids_list = list(allowed_ids)
+                    else:
+                        skipped_count = 0
+                else:
+                    skipped_count = 0
+
                 cannot_delete, can_delete, _dependency_details = (
                     HorillaBulkDeleteMixin._check_dependencies(self, record_ids_list)
                 )
@@ -173,10 +207,16 @@ class HorillaBulkDeleteMixin:
                             deleted_count = HorillaBulkDeleteMixin._perform_soft_delete(
                                 self, can_delete_ids
                             )
-                            messages.success(
-                                request,
-                                f"Successfully soft deleted {deleted_count} records.",
-                            )
+                            if skipped_count > 0:
+                                messages.warning(
+                                    request,
+                                    f"Successfully soft deleted {deleted_count} record(s). {skipped_count} record(s) were skipped because you do not have permission to delete them.",
+                                )
+                            else:
+                                messages.success(
+                                    request,
+                                    f"Successfully soft deleted {deleted_count} records.",
+                                )
                             return HttpResponse(
                                 f"<script>$('#reloadButton').click();closeModal();$('#unselect-all-btn-{individual_view_id}').click();</script>"
                             )
@@ -185,10 +225,16 @@ class HorillaBulkDeleteMixin:
                             deleted_count = self.model.objects.filter(
                                 id__in=can_delete_ids
                             ).delete()[0]
-                            messages.success(
-                                request,
-                                f"Successfully hard deleted {deleted_count} records.",
-                            )
+                            if skipped_count > 0:
+                                messages.warning(
+                                    request,
+                                    f"Successfully hard deleted {deleted_count} record(s). {skipped_count} record(s) were skipped because you do not have permission to delete them.",
+                                )
+                            else:
+                                messages.success(
+                                    request,
+                                    f"Successfully hard deleted {deleted_count} records.",
+                                )
                             return HttpResponse(
                                 f"<script>$('#reloadButton').click();$('#unselect-all-btn-{individual_view_id}').click();</script>"
                             )

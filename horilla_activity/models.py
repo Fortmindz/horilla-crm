@@ -235,6 +235,18 @@ class Activity(HorillaCoreModel):
             return "All Day Event"
         return self.end_datetime or self.due_datetime or self.created_at
 
+    def status_col(self):
+        """
+        Return an inline status select dropdown for the all-activity list view.
+        """
+        return render_template(
+            path="activity_status_col.html",
+            context={
+                "instance": self,
+                "status_choices": self.STATUS_CHOICES,
+            },
+        )
+
     def get_status_update_html(self):
         """
         Return an inline status dropdown for list views.

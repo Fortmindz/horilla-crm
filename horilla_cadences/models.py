@@ -1,9 +1,11 @@
 """Models for CRM Cadence (Task/Call/Email)."""
 
+# Third-party imports (Django)
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 
+# First-party / Horilla apps
 from horilla.db import models
 from horilla.registry.limiters import limit_content_types
 from horilla.registry.permission_registry import permission_exempt_model
@@ -30,6 +32,8 @@ class Cadence(HorillaCoreModel):
     description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
 
     class Meta:
+        """Meta class for Cadence"""
+
         verbose_name = _("Cadence")
         verbose_name_plural = _("Cadences")
         ordering = ["-created_at"]
@@ -101,6 +105,8 @@ class CadenceCondition(HorillaCoreModel):
     order = models.PositiveIntegerField(default=0, verbose_name=_("Order"))
 
     class Meta:
+        """Meta class for CadenceCondition"""
+
         verbose_name = _("Cadence Condition")
         verbose_name_plural = _("Cadence Conditions")
 
@@ -245,6 +251,8 @@ class CadenceFollowUp(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta class for CadenceFollowUp"""
+
         verbose_name = _("Cadence Follow up")
         verbose_name_plural = _("Cadence Follow ups")
         ordering = ["followup_number", "order", "created_at"]
@@ -285,73 +293,72 @@ class CadenceFollowUp(HorillaCoreModel):
             "cadences:cadence_followup_delete_view", kwargs={"pk": self.pk}
         )
 
-    def clean(self):
-        super().clean()
+    TYPE_REQUIRED_FIELDS = {
+        "task": (
+            "subject",
+            "due_after_days",
+            "task_status",
+            "task_priority",
+            "task_owner",
+        ),
+        "call": ("call_start_after_days", "call_owner", "purpose"),
+        "email": ("to", "email_template"),
+    }
+
+    def _validate_followup_number(self, errors):
         if self.followup_number == 1 and self.cadence_id:
-            existing_first = CadenceFollowUp.objects.filter(
-                cadence_id=self.cadence_id, followup_number=1
-            ).exclude(pk=self.pk)
-            if existing_first.exists():
-                raise ValidationError(
-                    {"followup_number": _("Follow up 1 can only contain one item.")}
+            if (
+                CadenceFollowUp.objects.filter(
+                    cadence_id=self.cadence_id, followup_number=1
                 )
+                .exclude(pk=self.pk)
+                .exists()
+            ):
+                errors["followup_number"] = _("Follow up 1 can only contain one item.")
             self.previous_status = None
         else:
             if not self.previous_status:
-                raise ValidationError(
-                    {
-                        "previous_status": _(
-                            "Select status condition from previous follow-up."
-                        )
-                    }
+                errors["previous_status"] = _(
+                    "Select status condition from previous follow-up."
                 )
-            if self.cadence_id:
-                has_previous = CadenceFollowUp.objects.filter(
+            if (
+                self.cadence_id
+                and not CadenceFollowUp.objects.filter(
                     cadence_id=self.cadence_id, followup_number=self.followup_number - 1
                 ).exists()
-                if not has_previous:
-                    raise ValidationError(
-                        {
-                            "followup_number": _(
-                                "Cannot add this follow-up before creating previous follow-up bucket."
-                            )
-                        }
-                    )
+            ):
+                errors["followup_number"] = _(
+                    "Cannot add this follow-up before creating previous follow-up bucket."
+                )
 
-        if self.do_this_unit != "immediately" and not self.do_this_value:
-            raise ValidationError(
-                {"do_this_value": _("Enter value for selected Do This unit.")}
-            )
+    def _validate_do_this(self, errors):
         if self.do_this_unit == "immediately":
             self.do_this_value = None
+        elif not self.do_this_value:
+            errors["do_this_value"] = _("Enter value for selected Do This unit.")
 
-        if self.followup_type == "task":
-            required = {
-                "subject": self.subject,
-                "due_after_days": self.due_after_days,
-                "task_status": self.task_status,
-                "task_priority": self.task_priority,
-                "task_owner": self.task_owner,
-            }
-        elif self.followup_type == "call":
-            required = {
-                "call_start_after_days": self.call_start_after_days,
-                "call_owner": self.call_owner,
-                "purpose": self.purpose,
-            }
+    def _validate_type_required_fields(self, errors):
+        if self.followup_type == "call":
             self.call_type = "outbound"
             self.call_status = "scheduled"
-        else:
-            required = {
-                "to": self.to,
-                "email_template": self.email_template,
-            }
 
-        missing = [field for field, value in required.items() if value in (None, "")]
-        if missing:
-            raise ValidationError(
-                {
-                    field: _("This field is required for selected follow-up type.")
-                    for field in missing
-                }
-            )
+        required_fields = self.TYPE_REQUIRED_FIELDS.get(self.followup_type, ())
+        msg = _("This field is required for selected follow-up type.")
+        for field_name in required_fields:
+            if getattr(self, field_name, None) in (None, ""):
+                errors[field_name] = msg
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        valid_types = {choice[0] for choice in self.FOLLOWUP_TYPE_CHOICES}
+        if self.followup_type not in valid_types:
+            raise ValidationError({"followup_type": _("Invalid follow-up type.")})
+
+        self._validate_followup_number(errors)
+        self._validate_do_this(errors)
+        self._validate_type_required_fields(errors)
+
+        if errors:
+            raise ValidationError(errors)

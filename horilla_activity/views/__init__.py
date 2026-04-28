@@ -21,6 +21,7 @@ from horilla_activity.views.list_view import (
     TaskListView,
     MeetingListView,
     EventListView,
+    ActivityStatusUpdateView,
 )
 from horilla_activity.views.create_view import (
     TaskCreateForm,
@@ -51,5 +52,6 @@ __all__ = [
     "MeetingsCreateForm",
     "CallCreateForm",
     "EventCreateForm",
-    "ActivityCreateView"
+    "ActivityCreateView",
+    "ActivityStatusUpdateView",
 ]

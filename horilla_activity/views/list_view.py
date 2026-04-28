@@ -6,8 +6,12 @@ List views for different activity types (Task, Meeting, Call, Email, Event) in t
 from urllib.parse import urlencode
 
 # Third-party imports (Django)
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils.functional import cached_property  # type: ignore
+from django.views import View
+
+from horilla.http import HttpResponse
 
 # First-party / Horilla imports
 from horilla.urls import reverse_lazy
@@ -44,6 +48,9 @@ class AllActivityListView(LoginRequiredMixin, HorillaListView):
     bulk_update_fields = [
         "status",
     ]
+    header_attrs = [
+        {"subject": {"style": "width: 300px;"}},
+    ]
 
     @cached_property
     def col_attrs(self):
@@ -78,7 +85,7 @@ class AllActivityListView(LoginRequiredMixin, HorillaListView):
         "subject",
         "activity_type",
         (_("Related To"), "related_object"),
-        "status",
+        (_("Status"), "status_col"),
     ]
 
     actions = [
@@ -148,7 +155,7 @@ class TaskListView(LoginRequiredMixin, HorillaListView):
         ("Title", "title"),
         ("Due Date", "due_datetime"),
         ("Priority", "task_priority"),
-        ("Status", "get_status_display"),
+        (_("Status"), "status_col"),
     ]
 
     def get_search_url(self):
@@ -274,7 +281,7 @@ class MeetingListView(HorillaListView):
         ("Title", "title"),
         ("Start Date", "get_start_date"),
         ("End Date", "get_end_date"),
-        ("Status", "status"),
+        (_("Status"), "status_col"),
     ]
 
     def get_search_url(self):
@@ -403,7 +410,7 @@ class CallListView(HorillaListView):
         ("Purpose", "call_purpose"),
         ("Type", "call_type"),
         ("Duration", "call_duration_display"),
-        ("Status", "status"),
+        (_("Status"), "status_col"),
     ]
 
     def get_search_url(self):
@@ -713,7 +720,7 @@ class EventListView(HorillaListView):
         ("End Date", "get_end_date"),
         ("Location", "location"),
         # ("All day Event","is_all_day"),
-        ("Status", "get_status_display"),
+        (_("Status"), "status_col"),
     ]
 
     def get_search_url(self):
@@ -801,3 +808,39 @@ class EventListView(HorillaListView):
         context["object_id"] = self.kwargs.get("object_id")
         context["view_type"] = self.request.GET.get("view_type", "pending")
         return context
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_activity.change_activity", "horilla_activity.change_own_activity"]
+    ),
+    name="dispatch",
+)
+class ActivityStatusUpdateView(LoginRequiredMixin, View):
+    """
+    Inline status update view for activities.
+    Handles HTMX POST requests from the status select dropdown in the list view.
+    """
+
+    def post(self, request, *args, **kwargs):
+        """Handle POST request to update activity status inline."""
+        status = request.POST.get("status")
+        valid_statuses = [choice[0] for choice in Activity.STATUS_CHOICES]
+        if status not in valid_statuses:
+            messages.error(request, _("Invalid status."))
+            return HttpResponse(status=400)
+
+        try:
+            activity = Activity.objects.get(pk=kwargs["pk"])
+        except Activity.DoesNotExist:
+            messages.error(request, _("Activity not found."))
+            return HttpResponse(status=404)
+
+        activity.status = status
+        activity.save(update_fields=["status"])
+        messages.success(
+            request,
+            f"Status Updated.",
+        )
+        return HttpResponse("<script>$('#reloadButton').click();</script>")

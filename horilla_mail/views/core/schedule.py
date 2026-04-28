@@ -7,6 +7,7 @@ from datetime import datetime
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404
 from django.template import Context, Template
 from django.utils import timezone
 from django.views import View
@@ -404,12 +405,13 @@ class ScheduleMailModallView(LoginRequiredMixin, View):
         object_id = request.GET.get("object_id")
         pk = request.GET.get("pk") or kwargs.get("pk")
         is_reschedule = bool(kwargs.get("pk"))
-        mail = HorillaMail.objects.get(pk=pk)
         scheduled_at_formatted = ""
-        if mail.scheduled_at:
-            user_tz = timezone.get_current_timezone()
-            scheduled_at_local = mail.scheduled_at.astimezone(user_tz)
-            scheduled_at_formatted = scheduled_at_local.strftime("%Y-%m-%dT%H:%M")
+        if pk:
+            mail = get_object_or_404(HorillaMail, pk=pk)
+            if mail.scheduled_at:
+                user_tz = timezone.get_current_timezone()
+                scheduled_at_local = mail.scheduled_at.astimezone(user_tz)
+                scheduled_at_formatted = scheduled_at_local.strftime("%Y-%m-%dT%H:%M")
 
         context = {
             "model_name": model_name,

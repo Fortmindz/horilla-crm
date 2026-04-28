@@ -477,16 +477,22 @@ class AddToDashboardForm(LoginRequiredMixin, HorillaSingleFormView):
         return None
 
     def get(self, request, *args, **kwargs):
-        component_id = self.kwargs.get("component_id")
-        if request.user.has_perm(
-            "horilla_dashboard.change_dashboard"
-        ) or request.user.has_perm("horilla_dashboard.add_dashboard"):
-            return super().get(request, *args, **kwargs)
-
-        if component_id:
-            dashboard = get_object_or_404(Dashboard, pk=component_id)
-            if dashboard.dashboard_owner == request.user:
+        try:
+            component_id = self.kwargs.get("component_id")
+            if request.user.has_perm(
+                "horilla_dashboard.change_dashboard"
+            ) or request.user.has_perm("horilla_dashboard.add_dashboard"):
                 return super().get(request, *args, **kwargs)
+
+            if component_id:
+                dashboard = get_object_or_404(Dashboard, pk=component_id)
+                if dashboard.dashboard_owner == request.user:
+                    return super().get(request, *args, **kwargs)
+        except Exception as e:
+            messages.error(request, e)
+            return HttpResponse(
+                "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();</script>"
+            )
 
         return render(request, "403.html")
 

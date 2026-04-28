@@ -9,6 +9,6 @@
     >
     <h2 class="error-title">{% trans "Permission Denied" %}</h2>
     <p class="error-description pb-3">
-        {% trans "You do not have permission to view this page." %}
+        {% if message %}{{ message }}{% else %}{% trans "You do not have permission to view this page." %}{% endif %}
     </p>
 {% endblock %}

@@ -2,7 +2,6 @@
 
 # Standard library imports
 from functools import cached_property
-from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -10,7 +9,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 # First-party / Horilla imports
 from horilla.http import HttpResponse
 from horilla.urls import reverse_lazy
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required,
+    permission_required_or_denied,
+)
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla apps
@@ -27,6 +31,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_duplicaterule"),
+    name="dispatch",
+)
 class DuplicateRuleView(LoginRequiredMixin, HorillaView):
     """
     Main view for duplicate rules page
@@ -38,6 +46,9 @@ class DuplicateRuleView(LoginRequiredMixin, HorillaView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required("horilla_duplicates.view_duplicaterule"), name="dispatch"
+)
 class DuplicateRuleNavView(LoginRequiredMixin, HorillaNavView):
     """
     Navbar view for Duplicate Rules
@@ -68,6 +79,10 @@ class DuplicateRuleNavView(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_duplicaterule"),
+    name="dispatch",
+)
 class DuplicateRuleListView(LoginRequiredMixin, HorillaListView):
     """
     List view of Duplicate Rules
@@ -167,6 +182,13 @@ class DuplicateRuleFormView(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("horilla_duplicates:duplicate_rule_create_view")
 
 
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        "horilla_duplicates.delete_duplicaterule", modal=True
+    ),
+    name="dispatch",
+)
 class DuplicateRuleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     """
     Delete view for DuplicateRule
@@ -180,6 +202,10 @@ class DuplicateRuleDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_duplicaterule"),
+    name="dispatch",
+)
 class DuplicateRuleDetailView(LoginRequiredMixin, HorillaModalDetailView):
     """
     Detail view for DuplicateRule

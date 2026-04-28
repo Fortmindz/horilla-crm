@@ -27,6 +27,10 @@ from horilla_core.utils import delete_recycle_bin_records, restore_recycle_bin_r
 from horilla_generics.views import HorillaListView, HorillaNavView, HorillaView
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_recyclebin"),
+    name="dispatch",
+)
 class RecycleBinView(LoginRequiredMixin, HorillaView):
     """
     TemplateView for recycle bin page.

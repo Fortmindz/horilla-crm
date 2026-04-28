@@ -156,12 +156,16 @@ class ImportDataView(TemplateView):
                     None,
                 )
                 if model:
-                    models.append(self._format_model_info(model))
+                    add_perm = f"{model._meta.app_label}.add_{model._meta.model_name}"
+                    if self.request.user.has_perm(add_perm):
+                        models.append(self._format_model_info(model))
 
             else:
-                # Return all registered importable models
+                # Return only models the user has add permission for
                 for model in import_models:
-                    models.append(self._format_model_info(model))
+                    add_perm = f"{model._meta.app_label}.add_{model._meta.model_name}"
+                    if self.request.user.has_perm(add_perm):
+                        models.append(self._format_model_info(model))
         except Exception as e:
             logger.error("Error getting available models: %s", e)
 

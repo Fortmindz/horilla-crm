@@ -120,6 +120,15 @@ class PotentialDuplicatesTabView(LoginRequiredMixin, HorillaListView):
                 self.object_id = object_id
                 self.content_type_id = content_type_id
 
+                perm = (
+                    f"{self.model._meta.app_label}.view_{self.model._meta.model_name}"
+                )
+                if not request.user.has_perm(perm):
+                    messages.error(
+                        request, _("You do not have permission to view this.")
+                    )
+                    return RedirectResponse(request)
+
                 self.main_object = self.model.objects.get(pk=object_id)
             except Exception as e:
                 messages.error(request, str(e))

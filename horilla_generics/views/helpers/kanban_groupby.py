@@ -108,6 +108,11 @@ class KanbanLoadMoreView(LoginRequiredMixin, View):
             model = apps.get_model(
                 app_label=app_label.split(".")[-1], model_name=model_name
             )
+            perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+            if not request.user.has_perm(perm):
+                messages.error(request, _("You do not have permission to view this."))
+                return HttpResponse("<script>$('#reloadButton').click();")
+
             view_class = HorillaKanbanView._view_registry.get(model)
             if not view_class:
                 messages.error(request, f"View class {model_name} not found")
@@ -139,6 +144,11 @@ class GroupByLoadMoreView(LoginRequiredMixin, View):
             model = apps.get_model(
                 app_label=app_label.split(".")[-1], model_name=model_name
             )
+            perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+            if not request.user.has_perm(perm):
+                messages.error(request, _("You do not have permission to view this."))
+                return HttpResponse("<script>$('#reloadButton').click();")
+
             view_class = HorillaGroupByView._view_registry.get(model)
             if not view_class:
                 messages.error(request, f"View class {model_name} not found")

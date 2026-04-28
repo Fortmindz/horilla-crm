@@ -65,6 +65,12 @@ class CompanyFiscalYearTab(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_fiscalyear", "horilla_core.change_fiscalyear"],
+    ),
+    name="dispatch",
+)
 class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
     """
     Form view for creating or editing a Fiscal Year configuration.
@@ -250,6 +256,12 @@ class FiscalYearFormView(LoginRequiredMixin, HorillaSingleFormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_fiscalyear", "horilla_core.change_fiscalyear"],
+    ),
+    name="dispatch",
+)
 class FiscalYearFieldsView(LoginRequiredMixin, FormView):
     """
     HTMX endpoint for dynamically updating form fields
@@ -393,6 +405,12 @@ class FiscalYearFieldsView(LoginRequiredMixin, FormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_fiscalyear", "horilla_core.change_fiscalyear"],
+    ),
+    name="dispatch",
+)
 class CalculateWeekStartDayView(LoginRequiredMixin, View):
     """
     HTMX endpoint to calculate the day of the week for a given start_date_month and start_date_day
@@ -460,6 +478,12 @@ class CalculateWeekStartDayView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_fiscalyear", "horilla_core.change_fiscalyear"],
+    ),
+    name="dispatch",
+)
 class FiscalYearCalendarPreviewView(
     LoginRequiredMixin, FormView, FiscalYearCalendarMixin
 ):
@@ -501,6 +525,10 @@ class FiscalYearCalendarPreviewView(
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_fiscalyear"),
+    name="dispatch",
+)
 class FiscalYearCalendarView(LoginRequiredMixin, DetailView, FiscalYearCalendarMixin):
     """
     Detailed view for a Fiscal Year and its instances with calendar visualization.

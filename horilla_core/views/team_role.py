@@ -31,6 +31,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_teamrole"),
+    name="dispatch",
+)
 class TeamRoleView(LoginRequiredMixin, HorillaView):
     """
     Template view for team role page

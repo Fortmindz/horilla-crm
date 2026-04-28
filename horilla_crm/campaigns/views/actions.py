@@ -432,6 +432,7 @@ class AddCampaignMemberFormview(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("campaigns:add_campaign_members")
 
 
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied("campaigns.delete_campaignmember", modal=True),
     name="dispatch",
@@ -490,6 +491,7 @@ class AddContactToCampaignFormView(LoginRequiredMixin, HorillaSingleFormView):
         return reverse_lazy("campaigns:add_contact_to_campaign")
 
 
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied("campaigns.delete_campaignmember", modal=True),
     name="dispatch",

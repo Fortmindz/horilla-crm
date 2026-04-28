@@ -28,6 +28,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_department"),
+    name="dispatch",
+)
 class DepartmentView(LoginRequiredMixin, HorillaView):
     """
     Templateviews for department page

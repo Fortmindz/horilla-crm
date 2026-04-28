@@ -2,9 +2,6 @@
 Filters for the cadences app
 """
 
-# First party imports (Horilla)
-from horilla.db.models import Exists, OuterRef, Q
-
 # First-party / Horilla apps
 from horilla_cadences.models import Cadence
 from horilla_core.mixins import OwnerFiltersetMixin

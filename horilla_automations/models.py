@@ -370,6 +370,8 @@ class AutomationRunLog(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for AutomationRunLog model."""
+
         verbose_name = _("Automation Run Log")
         verbose_name_plural = _("Automation Run Logs")
         unique_together = ("automation", "content_type", "object_id", "scheduled_for")

@@ -3,14 +3,18 @@ Signals for the cadences app
 """
 
 import logging
+
+# Standard library imports
 import sys
 from datetime import timedelta
 
+# Third-party imports (Django)
 from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
+# First-party / Horilla apps
 from horilla_activity.models import Activity
 from horilla_automations.methods import evaluate_condition, resolve_mail_recipients
 from horilla_cadences.models import Cadence, CadenceFollowUp
@@ -427,6 +431,7 @@ def _sync_runtime_activities_for_followup(followup):
 
 @receiver(post_save)
 def cadence_apply_on_record_save(sender, instance, **kwargs):
+    """On save of any record, trigger cadence FU1 creation if conditions are met and not already created."""
     if _is_migrate_command():
         return
     if sender in {Cadence, Activity}:
@@ -443,6 +448,7 @@ def cadence_apply_on_record_save(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=Activity)
 def cache_previous_activity_status(sender, instance, **kwargs):
+    """Cache the previous status of the activity before saving, so we can detect status changes in post_save."""
     if not instance.pk:
         instance._cadence_previous_status = None
         return
@@ -454,6 +460,7 @@ def cache_previous_activity_status(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Activity)
 def cadence_progress_on_activity_status(sender, instance, created, **kwargs):
+    """When an activity is saved, if it has cadence runtime info and its status changed, trigger next follow-ups."""
     if _is_migrate_command():
         return
     # Only advance cadence on status changes after creation.

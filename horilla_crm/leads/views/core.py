@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Avg, Max, Min
 from django.utils.functional import cached_property  # type: ignore
 
 from horilla.http import RedirectResponse
@@ -436,7 +437,6 @@ class LeadKanbanView(LoginRequiredMixin, HorillaKanbanView):
         return queryset
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(["leads.view_lead", "leads.view_own_lead"]),
     name="dispatch",
@@ -565,7 +565,6 @@ class LeadChartView(LoginRequiredMixin, HorillaChartView):
         # Decide aggregation: metric(value_field) or Count("pk")
         agg_field_name = "_value"
         if value_field:
-            from django.db.models import Avg, Max, Min, Sum
 
             metric = (value_metric or "sum").lower()
             agg_map = {
@@ -637,7 +636,6 @@ class LeadChartView(LoginRequiredMixin, HorillaChartView):
         # Decide aggregation: metric(value_field) or Count("pk")
         agg_field_name = "_value"
         if value_field:
-            from django.db.models import Avg, Max, Min, Sum
 
             metric = (value_metric or "sum").lower()
             agg_map = {

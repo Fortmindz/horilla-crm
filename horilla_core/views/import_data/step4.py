@@ -24,6 +24,7 @@ from django.views.generic import View
 
 # First-party / Horilla imports
 from horilla.apps import apps
+from horilla.registry.feature import FEATURE_REGISTRY
 from horilla.shortcuts import redirect, render
 from horilla.utils.decorators import method_decorator, permission_required_or_denied
 from horilla.utils.translation import gettext_lazy as _
@@ -92,6 +93,42 @@ class ImportStep4View(View):
                 "common/message_fragment.html",
                 {"message": _("No import data found in session"), "variant": "sm"},
             )
+
+        module_name = import_data.get("module", "")
+        app_label_check = import_data.get("app_label", "")
+        if module_name and app_label_check:
+            import_models = FEATURE_REGISTRY.get("import_models", [])
+            registered = next(
+                (
+                    m
+                    for m in import_models
+                    if m.__name__ == module_name
+                    and m._meta.app_label == app_label_check
+                ),
+                None,
+            )
+            add_perm = f"{app_label_check}.add_{module_name.lower()}"
+            if not registered or not request.user.has_perm(add_perm):
+                field_mappings = import_data.get("field_mappings", {})
+                headers = import_data.get("headers", [])
+                return render(
+                    request,
+                    "import/import_step4.html",
+                    {
+                        "import_data": import_data,
+                        "mapped_count": len(field_mappings),
+                        "unmapped_count": len(headers) - len(field_mappings),
+                        "module": module_name,
+                        "module_verbose_name": get_model_verbose_name(
+                            module_name, app_label_check
+                        ),
+                        "app_label": app_label_check,
+                        "single_import": single_import,
+                        "error_message": _(
+                            "Invalid module selection. Please choose a valid module from the list."
+                        ),
+                    },
+                )
 
         process_start = time.perf_counter()
         # Create import history record

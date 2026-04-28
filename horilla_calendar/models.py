@@ -143,12 +143,14 @@ class CustomCalendar(HorillaCoreModel):
     OWNER_FIELDS = ["user"]
 
     class Meta:
+        """Meta options for CustomCalendar."""
+
         verbose_name = _("Custom Calendar")
         verbose_name_plural = _("Custom Calendars")
         ordering = ["name"]
 
     def __str__(self):
-        return self.name
+        return str(self.name)
 
 
 @permission_exempt_model
@@ -169,6 +171,8 @@ class CustomCalendarCondition(HorillaCoreModel):
     sequence = models.PositiveIntegerField(default=1, verbose_name=_("Sequence"))
 
     class Meta:
+        """Meta options for CustomCalendarCondition."""
+
         ordering = ["sequence"]
         verbose_name = _("Custom Calendar Condition")
         verbose_name_plural = _("Custom Calendar Conditions")
@@ -189,6 +193,8 @@ class GoogleIntegrationSetting(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for GoogleIntegrationSetting."""
+
         verbose_name = _("Google Integration Setting")
         verbose_name_plural = _("Google Integration Settings")
 
@@ -293,6 +299,8 @@ class GoogleCalendarConfig(HorillaCoreModel):
     )
 
     class Meta:
+        """Meta options for GoogleCalendarConfig."""
+
         verbose_name = _("Google Calendar Configuration")
         verbose_name_plural = _("Google Calendar Configurations")
 
@@ -312,15 +320,19 @@ class GoogleCalendarConfig(HorillaCoreModel):
         return creds.get("web") or creds.get("installed") or {}
 
     def get_client_id(self):
+        """Return the OAuth client ID from credentials JSON."""
         return self._web_block().get("client_id", "")
 
     def get_client_secret(self):
+        """Return the OAuth client secret from credentials JSON."""
         return self._web_block().get("client_secret", "")
 
     def get_auth_uri(self):
+        """Return the OAuth authorization URI from credentials JSON."""
         return self._web_block().get(
             "auth_uri", "https://accounts.google.com/o/oauth2/v2/auth"
         )
 
     def get_token_uri(self):
+        """Return the OAuth token URI from credentials JSON."""
         return self._web_block().get("token_uri", "https://oauth2.googleapis.com/token")

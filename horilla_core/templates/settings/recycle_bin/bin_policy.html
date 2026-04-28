@@ -1,21 +1,19 @@
 {% load static i18n horilla_tags %}
 
 {% block settings %}
-    <div class="flex justify-between items-center pl-3 pt-3">
+    <div id="{{ view_id|safe }}" class="flex justify-between items-center pl-3 pt-3">
         {% include "messages.html" %}
 
-        <button
-            id="reloadButton"
-            hidden
-            hx-get="{{ request.path }}?{{ request.GET.urlencode }}"
-            hx-target="#{{ view_id|safe }}"
-            hx-trigger="click"
-            hx-swap="outerHTML"
-            hx-select="#{{ view_id|safe }}"
-        >
-            click
-        </button>
-
+    <button
+        id="reloadButton"
+        hidden
+        hx-get="{% url 'horilla_core:recycle_bin_policy_view' %}?{{request.GET.urlencode}}"
+        hx-target="#{{ view_id|safe }}"
+        hx-swap="innerHTML"
+        hx-select="#{{ view_id|safe }}"
+    >
+        click
+    </button>
         <form
             hx-post="{% url 'horilla_core:recycle_bin_policy_view' %}"
             hx-swap="none"

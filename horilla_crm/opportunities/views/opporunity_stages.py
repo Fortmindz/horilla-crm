@@ -130,6 +130,7 @@ class OpportunityStageListView(LoginRequiredMixin, HorillaListView):
                     "sort_url": reverse_lazy(
                         "opportunities:update_opportunity_stage_order"
                     ),
+                    "permission": "opportunities.change_opportunitystage",
                 }
             }
         ]
@@ -324,7 +325,8 @@ class OpportunityStatusDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
 
 
 @method_decorator(
-    permission_required_or_denied("opportunities.add_opportunitystage"), name="dispatch"
+    permission_required_or_denied("opportunities.change_opportunitystage"),
+    name="dispatch",
 )
 class UpdateOpportunityStageOrderView(LoginRequiredMixin, View):
     """
@@ -419,7 +421,11 @@ class UpdateOpportunityStageOrderView(LoginRequiredMixin, View):
                 OpportunityStage.objects.filter(id=status.id).update(order=order)
 
 
-@method_decorator(htmx_required(), name="dispatch")
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("opportunities.view_opportunitystage"),
+    name="dispatch",
+)
 class LoadOpportunityStagesView(LoginRequiredMixin, View):
     """View to load opportunity stages modal for a company."""
 
@@ -572,7 +578,10 @@ class LoadOpportunityStagesView(LoginRequiredMixin, View):
         )
 
 
-@method_decorator(htmx_required(), name="dispatch")
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("opportunities.add_opportunitystage"), name="dispatch"
+)
 class CustomOppStagesFormView(LoginRequiredMixin, View):
     """View to display custom opportunity stages form."""
 
@@ -693,7 +702,10 @@ class CustomOppStagesFormView(LoginRequiredMixin, View):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-@method_decorator(htmx_required(), name="dispatch")
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("opportunities.add_opportunitystage"), name="dispatch"
+)
 class SaveCustomOppStagesView(LoginRequiredMixin, View):
     """View to save custom opportunity stages for a company."""
 
@@ -848,7 +860,7 @@ class SaveCustomOppStagesView(LoginRequiredMixin, View):
             )
 
 
-@method_decorator(htmx_required(), name="dispatch")
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(csrf_exempt, name="dispatch")
 class CreateOppStageGroupView(LoginRequiredMixin, View):
     """View to create opportunity stage group for a company."""

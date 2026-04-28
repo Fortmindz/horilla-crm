@@ -81,15 +81,14 @@ class UserHolidayListView(LoginRequiredMixin, HorillaListView):
         app_label = self.model._meta.app_label
         model_name = self.model._meta.model_name
 
-        queryset = (
-            self.model.objects.all()
-            if user.has_perm(f"{app_label}.view_{model_name}")
-            else (
-                queryset.filter(Q(all_users=True) | Q(specific_users=user)).distinct()
-                if user.has_perm(f"{app_label}.view_own_{model_name}")
-                else queryset.none()
-            )
-        )
+        if user.has_perm(f"{app_label}.view_{model_name}"):
+            queryset = self.model.objects.all()
+        elif user.has_perm(f"{app_label}.view_own_{model_name}"):
+            queryset = self.model.objects.filter(
+                Q(all_users=True) | Q(specific_users=user)
+            ).distinct()
+        else:
+            queryset = self.model.objects.none()
 
         if self.store_ordered_ids:
             self.request.session[f"ordered_ids_{self.model.__name__.lower()}"] = list(

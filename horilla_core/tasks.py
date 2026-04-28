@@ -223,6 +223,14 @@ def execute_scheduled_export(schedule_id):
         logger.error("ExportSchedule %s not found", schedule_id)
         return
 
+    if not schedule.user.has_perm("horilla_core.can_view_horilla_export"):
+        logger.warning(
+            "Skipping schedule %s: user %s no longer has export permission",
+            schedule_id,
+            schedule.user.email,
+        )
+        return
+
     try:
         logger.info("Generating export files for %s modules", len(schedule.modules))
         export_files = generate_export_files(
@@ -269,6 +277,17 @@ def generate_export_files(module_names, export_format, user=None):
             if not model:
                 logger.warning("Model %s not found", model_name)
                 continue
+
+            if user is not None:
+                view_perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+                if not user.has_perm(view_perm):
+                    logger.warning(
+                        "Skipping model %s: user %s lacks %s",
+                        model_name,
+                        user.email,
+                        view_perm,
+                    )
+                    continue
 
             filename, data = export_model_data(model, export_format, user=user)
             if filename and data:

@@ -1,5 +1,6 @@
 {% extends "settings/settings.html" %}
-{% load static i18n %}
+{% load static i18n horilla_tags %}
+{% has_perm "opportunities.change_opportunitysettings" as change_opportunitysettings %}
 
 {% block settings %}
     <div id="opportunity-team-settings">
@@ -55,33 +56,54 @@
 
                         <!-- Toggle Button Container -->
                         <div id="team-selling-toggle-container">
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    class="sr-only peer"
-                                    hx-post="{% url 'opportunities:toggle_team_selling' %}"
-                                    hx-trigger="confirmed"
-                                    {% if team_selling_enabled %}
-                                        hx-on:click="hxConfirm(this,'Are you sure you want to disable Team Selling?')"
-                                    {% else %}
-                                        hx-on:click="hxConfirm(this,'Are you sure you want to enable Team Selling?')"
-                                    {% endif %}
-                                    hx-vals='{"action": "{% if team_selling_enabled %}disable{% else %}enable{% endif %}"}'
-                                    {% if team_selling_enabled %}
-                                        checked
-                                    {% endif %}
-                                >
-                                <div
-                                    class="
-                                        relative w-11 h-5 bg-gray-200 rounded-full
-                                        peer peer-checked:bg-primary-600
-                                        after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                                        after:bg-white after:rounded-full after:h-4 after:w-4
-                                        after:transition-all peer-checked:after:translate-x-6
-                                    "
-                                >
-                                </div>
-                            </label>
+                            {% if change_opportunitysettings %}
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        class="sr-only peer"
+                                        hx-post="{% url 'opportunities:toggle_team_selling' %}"
+                                        hx-trigger="confirmed"
+                                        {% if team_selling_enabled %}
+                                            hx-on:click="hxConfirm(this,'Are you sure you want to disable Team Selling?')"
+                                        {% else %}
+                                            hx-on:click="hxConfirm(this,'Are you sure you want to enable Team Selling?')"
+                                        {% endif %}
+                                        hx-vals='{"action": "{% if team_selling_enabled %}disable{% else %}enable{% endif %}"}'
+                                        {% if team_selling_enabled %}
+                                            checked
+                                        {% endif %}
+                                    >
+                                    <div
+                                        class="
+                                            relative w-11 h-5 bg-gray-200 rounded-full
+                                            peer peer-checked:bg-primary-600
+                                            after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                            after:bg-white after:rounded-full after:h-4 after:w-4
+                                            after:transition-all peer-checked:after:translate-x-6
+                                        "
+                                    >
+                                    </div>
+                                </label>
+                            {% else %}
+                                <label class="inline-flex items-center cursor-not-allowed opacity-50">
+                                    <input
+                                        type="checkbox"
+                                        class="sr-only peer"
+                                        disabled
+                                        {% if team_selling_enabled %}checked{% endif %}
+                                    >
+                                    <div
+                                        class="
+                                            relative w-11 h-5 bg-gray-200 rounded-full
+                                            peer peer-checked:bg-primary-600
+                                            after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                            after:bg-white after:rounded-full after:h-4 after:w-4
+                                            after:transition-all peer-checked:after:translate-x-6
+                                        "
+                                    >
+                                    </div>
+                                </label>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

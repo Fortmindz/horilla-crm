@@ -233,7 +233,6 @@ class OpportunityDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
         return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]
@@ -317,7 +316,6 @@ class OpportunityCardView(LoginRequiredMixin, HorillaCardView):
     no_record_add_button = OpportunityListView.no_record_add_button
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["opportunities.view_opportunity", "opportunities.view_own_opportunity"]

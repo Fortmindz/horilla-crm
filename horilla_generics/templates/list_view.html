@@ -194,7 +194,7 @@
                         {% if bulk_update_option %}
                             {% has_perm app_label|add:".change_"|add:model_name|lower as has_change_perm %}
                             {% has_perm app_label|add:".change_own_"|add:model_name|lower as has_change_own_perm %}
-                            {% if has_change_perm or has_change_own_perm %}
+                            {% if bulk_update_fields and has_change_perm or bulk_update_fields and has_change_own_perm %}
                                 <button
                                     class="text-xs px-4 py-2 bg-[#d5095726] rounded-md hover:bg-[#d50957] transition duration-300 text-[#d50957] border border-[#d5095742] hover:text-[white]"
                                     hx-post="{{ search_url }}"
@@ -335,7 +335,7 @@
                 data-record-ids="{{ selected_ids_json }}"
                 data-total-records="{{ total_records_count }}"
             >
-                <table class="w-full table-fixed {% if not table_class %} border-separate border-spacing-0 {% endif %}">
+                <table class="{% if table_auto %}min-w-full table-auto{% else %}w-full table-fixed{% endif %} {% if not table_class %} border-separate border-spacing-0 {% endif %}">
                     <thead class="sticky top-0 {% if table_class %} bg-primary-300 text-primary-600 {% else %} bg-white {% endif %} z-50">
                         <tr>
                             {% if bulk_select_option %}
@@ -593,11 +593,12 @@
         }
 
         var url = mainUrl + '?' + params.toString();
-        var target = sortingTarget || '#mainSession';
+        var mainSessionId = '{{ main_session_id|default:"mainSession" }}';
+        var target = sortingTarget || '#' + mainSessionId;
 
         htmx.ajax('GET', url, {
             target: target,
-            select: '#mainSession',
+            select: '#' + mainSessionId,
             swap: 'outerHTML'
         });
     }

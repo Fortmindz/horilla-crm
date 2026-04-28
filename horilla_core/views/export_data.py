@@ -73,19 +73,21 @@ class ExportView(LoginRequiredMixin, TemplateView):
         return context
 
     def get_available_models(self):
-        """Return a list of all models available for export from the FEATURE_REGISTRY."""
+        """Return registered export models the user has view permission for."""
         models = []
         try:
             export_models = FEATURE_REGISTRY.get("export_models", [])
             for model in export_models:
-                models.append(
-                    {
-                        "name": model.__name__,
-                        "label": model._meta.verbose_name.title(),
-                        "app_label": model._meta.app_label,
-                        "module": model.__module__,
-                    }
-                )
+                view_perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+                if self.request.user.has_perm(view_perm):
+                    models.append(
+                        {
+                            "name": model.__name__,
+                            "label": model._meta.verbose_name.title(),
+                            "app_label": model._meta.app_label,
+                            "module": model.__module__,
+                        }
+                    )
         except Exception as e:
             logger.error(e)
 
@@ -102,21 +104,31 @@ class ExportView(LoginRequiredMixin, TemplateView):
         export_format = request.POST.get("export_format")
 
         if not selected_models or not export_format:
-            return HttpResponse(
-                "Please select at least one model and export format.", status=400
+            messages.error(
+                request, _("Please select at least one model and export format.")
             )
+            return self.render_to_response(self.get_context_data())
 
         if len(selected_models) == 1:
             model_name = selected_models[0]
             model = self.get_model_by_name(model_name)
 
             if not model:
-                return HttpResponse("Model not found.", status=404)
+                messages.error(request, _("Selected module not found."))
+                return self.render_to_response(self.get_context_data())
+
+            view_perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+            if not request.user.has_perm(view_perm):
+                messages.error(
+                    request, _("You do not have permission to export this module.")
+                )
+                return self.render_to_response(self.get_context_data())
 
             filename, data = self.export_model_data(model, export_format)
 
             if not filename or not data:
-                return HttpResponse("Export failed.", status=500)
+                messages.error(request, _("Export failed. Please try again."))
+                return self.render_to_response(self.get_context_data())
 
             messages.success(request, _("Export completed successfully!"))
 
@@ -131,6 +143,16 @@ class ExportView(LoginRequiredMixin, TemplateView):
             for model_name in selected_models:
                 model = self.get_model_by_name(model_name)
                 if not model:
+                    continue
+
+                view_perm = f"{model._meta.app_label}.view_{model._meta.model_name}"
+                if not request.user.has_perm(view_perm):
+                    logger.warning(
+                        "Skipping model %s: user %s lacks %s",
+                        model_name,
+                        request.user.email,
+                        view_perm,
+                    )
                     continue
 
                 filename, data = self.export_model_data(model, export_format)

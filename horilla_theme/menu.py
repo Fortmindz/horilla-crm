@@ -31,5 +31,6 @@ class ThemeSettings:
             "hx-target": "#settings-content",
             "hx-select": "#theme-view",
             "hx-select-oob": "#settings-sidebar",
+            "perm": "horilla_theme.view_horillacolortheme",
         },
     ]

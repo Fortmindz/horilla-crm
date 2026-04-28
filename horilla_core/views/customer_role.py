@@ -31,6 +31,10 @@ from horilla_generics.views import (
 )
 
 
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_customerrole"),
+    name="dispatch",
+)
 class CustomerRoleView(LoginRequiredMixin, HorillaView):
     """
     Template view for customer role page

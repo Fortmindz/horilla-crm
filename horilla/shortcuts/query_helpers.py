@@ -34,5 +34,5 @@ def get_object_or_404(klass, *args, **kwargs):
         return queryset.get(*args, **kwargs)
     except queryset.model.DoesNotExist:
         raise Http404(
-            "No %s matches the given query." % queryset.model._meta.verbose_name
+            "%s matching query does not exist." % queryset.model._meta.verbose_name
         )

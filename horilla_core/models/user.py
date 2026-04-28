@@ -187,6 +187,7 @@ class HorillaUser(AbstractUser):
     AbstractUser._meta.get_field("is_active").verbose_name = _("Active")
 
     PROPERTY_LABELS = {"get_avatar_with_name": "Name"}
+    SORT_FIELD_MAPPING = {"get_avatar_with_name": "first_name"}
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

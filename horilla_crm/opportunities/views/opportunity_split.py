@@ -6,13 +6,14 @@ from decimal import Decimal
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+
+# First-party / Horilla imports
+from django.urls import reverse
 from django.views.generic import TemplateView, View
 
 from horilla.auth.models import User
 from horilla.http import HttpResponse
 from horilla.shortcuts import get_object_or_404, render
-
-# First-party / Horilla imports
 from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
@@ -31,7 +32,69 @@ from horilla_crm.opportunities.models import (
 from horilla_generics.views import HorillaListView, HorillaNavView, HorillaTabView
 
 
-class SplitTypeView(LoginRequiredMixin, TemplateView):
+class TeamSellingRequiredMixin:
+    """
+    Blocks access to views when Team Selling is disabled.
+    Mirrors the Google Calendar Sync access-control pattern:
+      - HTMX requests: 204 + HX-Redirect (navigates the full page away cleanly).
+      - Normal requests: 403 render.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if team selling is enabled before allowing access to the view."""
+        if not OpportunitySettings.is_team_selling_enabled(
+            getattr(request, "active_company", None)
+        ):
+            if request.headers.get("HX-Request") == "true":
+                messages.error(request, _("Team Selling is not enabled."))
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = reverse("opportunities:opportunities_view")
+                return response
+            return render(
+                request,
+                "403.html",
+                {
+                    "message": _(
+                        "Team Selling has not been enabled by your administrator."
+                    )
+                },
+                status=403,
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class SplitEnabledRequiredMixin:
+    """
+    Blocks access to views when Opportunity Splits are disabled.
+    Mirrors the Google Calendar Sync access-control pattern:
+      - HTMX requests: 204 + HX-Redirect (navigates the full page away cleanly).
+      - Normal requests: 403 render.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check if opportunity splits are enabled before allowing access to the view."""
+        if not OpportunitySettings.is_split_enabled(
+            getattr(request, "active_company", None)
+        ):
+            if request.headers.get("HX-Request") == "true":
+                messages.error(request, _("Opportunity Splits are not enabled."))
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = reverse("opportunities:opportunities_view")
+                return response
+            return render(
+                request,
+                "403.html",
+                {
+                    "message": _(
+                        "Opportunity Splits have not been enabled by your administrator."
+                    )
+                },
+                status=403,
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class SplitTypeView(LoginRequiredMixin, TeamSellingRequiredMixin, TemplateView):
     """
     View to display and manage Team Selling setup
     """
@@ -53,7 +116,9 @@ class SplitTypeView(LoginRequiredMixin, TemplateView):
 @method_decorator(
     permission_required("opportunities.view_opportunitysplittype"), name="dispatch"
 )
-class OpportunitySplitNavbar(LoginRequiredMixin, HorillaNavView):
+class OpportunitySplitNavbar(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaNavView
+):
     """Navigation bar view for opportunity split settings."""
 
     nav_title = _("Opportunity Split Settings")
@@ -71,7 +136,9 @@ class OpportunitySplitNavbar(LoginRequiredMixin, HorillaNavView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunitySplitListView(LoginRequiredMixin, HorillaListView):
+class OpportunitySplitListView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, HorillaListView
+):
     """
     opportunity List view
     """
@@ -94,7 +161,11 @@ class OpportunitySplitListView(LoginRequiredMixin, HorillaListView):
     ]
 
 
-class ToggleOpportunitySplitView(LoginRequiredMixin, View):
+@method_decorator(
+    permission_required_or_denied("opportunities.change_opportunitysettings"),
+    name="dispatch",
+)
+class ToggleOpportunitySplitView(LoginRequiredMixin, TeamSellingRequiredMixin, View):
     """
     HTMX view to toggle opportunity split feature on/off
     """
@@ -132,7 +203,11 @@ class ToggleOpportunitySplitView(LoginRequiredMixin, View):
         )
 
 
-class ToggleAllowAllUsersSplitView(LoginRequiredMixin, View):
+@method_decorator(
+    permission_required_or_denied("opportunities.change_opportunitysettings"),
+    name="dispatch",
+)
+class ToggleAllowAllUsersSplitView(LoginRequiredMixin, TeamSellingRequiredMixin, View):
     """
     HTMX view to toggle whether all users can be added to opportunity splits
     """
@@ -171,7 +246,9 @@ class ToggleAllowAllUsersSplitView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class OpportunitySplitTypeActiveToggleView(LoginRequiredMixin, View):
+class OpportunitySplitTypeActiveToggleView(
+    LoginRequiredMixin, TeamSellingRequiredMixin, View
+):
     """
     Toggle active/inactive status for Opportunity Split Types via HTMX.
     """
@@ -214,7 +291,9 @@ class OpportunitySplitTypeActiveToggleView(LoginRequiredMixin, View):
     permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
 )
 @method_decorator(htmx_required, name="dispatch")
-class ManageOpportunitySplit(LoginRequiredMixin, TemplateView):
+class ManageOpportunitySplit(
+    LoginRequiredMixin, SplitEnabledRequiredMixin, TemplateView
+):
     """
     Content view for each split type tab
     """
@@ -226,7 +305,9 @@ class ManageOpportunitySplit(LoginRequiredMixin, TemplateView):
     permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
 )
 @method_decorator(htmx_required, name="dispatch")
-class OpportunitySplitTabView(LoginRequiredMixin, HorillaTabView):
+class OpportunitySplitTabView(
+    LoginRequiredMixin, SplitEnabledRequiredMixin, HorillaTabView
+):
     """
     Tab view for opportunity splits - displays Revenue and Overlay tabs
     """
@@ -288,7 +369,9 @@ class OpportunitySplitTabView(LoginRequiredMixin, HorillaTabView):
     permission_required_or_denied("opportunities.add_opportunitysplit"), name="dispatch"
 )
 @method_decorator(htmx_required, name="dispatch")
-class OpportunitySplitTabContentView(LoginRequiredMixin, TemplateView):
+class OpportunitySplitTabContentView(
+    LoginRequiredMixin, SplitEnabledRequiredMixin, TemplateView
+):
     """
     Content view for each split type tab
     """
@@ -406,7 +489,7 @@ class OpportunitySplitTabContentView(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class SaveOpportunitySplitsView(LoginRequiredMixin, View):
+class SaveOpportunitySplitsView(LoginRequiredMixin, SplitEnabledRequiredMixin, View):
     """
     Save all splits for a specific split type
     """
@@ -628,7 +711,7 @@ class SaveOpportunitySplitsView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class AddSplitRowView(LoginRequiredMixin, View):
+class AddSplitRowView(LoginRequiredMixin, SplitEnabledRequiredMixin, View):
     """Add a new empty split row (HTMX)"""
 
     template_name = "opportunity_split/split_row.html"
@@ -728,7 +811,7 @@ class AddSplitRowView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class DeleteSplitRowView(LoginRequiredMixin, View):
+class DeleteSplitRowView(LoginRequiredMixin, SplitEnabledRequiredMixin, View):
     """Delete a split row and redistribute percentage to owner if totals must be 100%"""
 
     template_name = "opportunity_split/split_tab_content.html"
@@ -847,7 +930,7 @@ class DeleteSplitRowView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class RecalculateTotalsView(LoginRequiredMixin, View):
+class RecalculateTotalsView(LoginRequiredMixin, SplitEnabledRequiredMixin, View):
     """Recalculate and return updated totals"""
 
     template_name = "opportunity_split/totals_row.html"
@@ -892,7 +975,7 @@ class RecalculateTotalsView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
-class RecalculateSplitRowView(LoginRequiredMixin, View):
+class RecalculateSplitRowView(LoginRequiredMixin, SplitEnabledRequiredMixin, View):
     """Recalculate a single split row AND totals"""
 
     def get(self, request, opportunity_id, split_type_id):

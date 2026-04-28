@@ -4,18 +4,16 @@ View for Cadence Report
 
 # Standard library imports
 from functools import cached_property
-from urllib.parse import urlencode
 
 # Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import CharField, Count, F, Q, Value
 from django.db.models.functions import Concat
-from django.views import View
 from django.views.generic import TemplateView
 
 # First party imports (Horilla)
-from horilla.http import HttpResponse
+from horilla.shortcuts import get_object_or_404, redirect
 from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
@@ -24,20 +22,10 @@ from horilla.utils.decorators import (
 )
 from horilla.utils.translation import gettext_lazy as _
 from horilla_activity.models import Activity
-from horilla_cadences.filters import CadenceFilter
-from horilla_cadences.forms import CadenceForm
-from horilla_cadences.models import Cadence, CadenceCondition, CadenceFollowUp
-from horilla_generics.views import (
-    HorillaListView,
-    HorillaNavView,
-    HorillaSingleDeleteView,
-    HorillaSingleFormView,
-    HorillaView,
-)
+from horilla_cadences.models import Cadence, CadenceFollowUp
+from horilla_generics.views import HorillaListView
 from horilla_generics.views.core import HorillaTabView
-from horilla_generics.views.helpers.condition_widget import GetModelFieldChoicesView
 from horilla_mail.models import HorillaMail
-from horilla_utils.middlewares import _thread_local
 
 
 def get_cadence_activity_queryset(cadence, activity_type):
@@ -85,6 +73,20 @@ class CadenceReportView(LoginRequiredMixin, TemplateView):
     """View for cadence report."""
 
     template_name = "cadence_report/cadence_report_view.html"
+
+    def get(self, request, *args, **kwargs):
+        cadence_pk = request.GET.get("cadence_pk")
+        if cadence_pk:
+            try:
+                get_object_or_404(Cadence, pk=cadence_pk)
+            except Exception as e:
+                messages.error(request, str(e))
+                fallback = request.META.get(
+                    "HTTP_REFERER",
+                    reverse_lazy("cadences:cadence_view"),
+                )
+                return redirect(fallback)
+        return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         """Add cadence context for report header and navigation."""

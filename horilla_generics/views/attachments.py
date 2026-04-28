@@ -220,6 +220,9 @@ class HorillaNotesAttachementDetailView(HorillaModalDetailView):
         try:
             self.object = self.get_object()
         except Http404:
+            self.object = None
+
+        if not self.object:
             messages.error(self.request, "The requested attachment does not exist.")
             return HttpResponse(
                 "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeContentModal();</script>"

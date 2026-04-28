@@ -439,7 +439,6 @@ class MergeDuplicatesView(LoginRequiredMixin, View):
                         let timerInterval;
                         let remainingTime = 3000;
                         let isPaused = false;
-
                         const swalInstance = Swal.fire({{
                             html: '{gettext("The master record is different from the current record. You will be redirected to the master record.")}',
                             icon: "info",
@@ -462,7 +461,6 @@ class MergeDuplicatesView(LoginRequiredMixin, View):
                                             Swal.stopTimer();
                                         }}
                                     }});
-
                                     // Resume timer on mouse leave
                                     popup.addEventListener('mouseleave', function() {{
                                         if (isPaused) {{

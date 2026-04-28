@@ -3,13 +3,7 @@ This module registers Floating, Settings, My Settings, and Main Section menus
 for the cadences app
 """
 
-from horilla.menu import (
-    floating_menu,
-    main_section_menu,
-    my_settings_menu,
-    settings_menu,
-    sub_section_menu,
-)
+# First-party / Horilla apps
 from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
 from horilla_automations.menu import AutomationSettings

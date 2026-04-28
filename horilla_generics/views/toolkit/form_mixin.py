@@ -174,7 +174,8 @@ class FormViewCommonMixin:
             app_label = self.model._meta.app_label
             model_name = self.model._meta.model_name
             change_own_perm = f"{app_label}.change_own_{model_name}"
-            if user.has_perm(change_own_perm):
+            model_supports_ownership = hasattr(self.model, "OWNER_FIELDS")
+            if user.has_perm(change_own_perm) and model_supports_ownership:
                 return self.has_object_permission()
 
         if is_create_or_duplicate and self.model:
@@ -183,7 +184,6 @@ class FormViewCommonMixin:
             add_own_perm = f"{app_label}.add_own_{model_name}"
             if user.has_perm(add_own_perm):
                 return True
-
         return False
 
     def has_object_permission(self):
@@ -217,7 +217,6 @@ class FormViewCommonMixin:
                 if hasattr(obj, owner_field):
                     if getattr(obj, owner_field) == self.request.user:
                         return True
-
             return False
         except self.model.DoesNotExist:
             return False

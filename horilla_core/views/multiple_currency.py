@@ -122,6 +122,12 @@ class CompanyMultipleCurrency(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_multiplecurrency", "horilla_core.change_multiplecurrency"],
+    ),
+    name="dispatch",
+)
 class FetchExchangeRateView(LoginRequiredMixin, View):
     """
     HTMX endpoint to fetch exchange rate when currency is selected.
@@ -170,6 +176,10 @@ class FetchExchangeRateView(LoginRequiredMixin, View):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_multiplecurrency"),
+    name="dispatch",
+)
 class CurrencyListView(LoginRequiredMixin, HorillaListView):
     """
     List View for currency list.
@@ -178,6 +188,7 @@ class CurrencyListView(LoginRequiredMixin, HorillaListView):
     model = MultipleCurrency
     view_id = "currency-list-view"
     table_width = False
+    table_auto = True
     bulk_select_option = False
     table_height_as_class = "h-[calc(_100vh_-_410px_)]"
     search_url = reverse_lazy("horilla_core:currency_list_view")
@@ -501,6 +512,13 @@ class ChangeDefaultCurrencyFormView(LoginRequiredMixin, FormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["horilla_core.add_multiplecurrency", "horilla_core.change_multiplecurrency"],
+        modal=True,
+    ),
+    name="dispatch",
+)
 class AddCurrencyView(LoginRequiredMixin, HorillaSingleFormView):
     """
     View to add a new currency.
@@ -716,6 +734,10 @@ class DatedConversionRateFormView(LoginRequiredMixin, FormView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.view_datedconversionrate"),
+    name="dispatch",
+)
 class DatedCurrencyListView(LoginRequiredMixin, HorillaListView):
     """
     List View for currency list.
@@ -767,6 +789,10 @@ class DatedCurrencyListView(LoginRequiredMixin, HorillaListView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_core.delete_multiplecurrency", modal=True),
+    name="dispatch",
+)
 class CurrencyDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     """
     HTMX endpoint to delete a currency.

@@ -1,14 +1,17 @@
 """Cadence follow-up create/update/delete views."""
 
+# Standard library imports
 from functools import cached_property
 
+# Third-party imports (Django)
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import Http404
 from django.template.loader import render_to_string
 from django.views.generic import TemplateView
 
-from horilla.http import HttpResponse
+# First-party / Horilla apps
+from horilla.http import Http404, HttpResponse
+from horilla.shortcuts import get_object_or_404
 from horilla.urls import reverse_lazy
 from horilla.utils.decorators import (
     htmx_required,
@@ -36,18 +39,29 @@ class CadenceFollowUpCreateView(LoginRequiredMixin, HorillaSingleFormView):
     view_id = "cadence-followup-form"
     hidden_fields = ["followup_number", "branch_from"]
 
+    def dispatch(self, request, *args, **kwargs):
+        cadence_pk = kwargs.get("cadence_pk")
+        if cadence_pk is not None:
+            try:
+                cadence = get_object_or_404(Cadence, pk=cadence_pk)
+            except Exception as e:
+                messages.error(request, str(e))
+                return HttpResponse(
+                    "<script>$('#reloadButton').click();closeModal();</script>"
+                )
+        try:
+            return super().dispatch(request, *args, **kwargs)
+        except ValueError as e:
+            messages.error(request, str(e))
+            return HttpResponse(
+                "<script>$('#reloadButton').click();closeModal();</script>"
+            )
+
     @staticmethod
     def _has_outgoing_mail_server(cadence):
-        qs = HorillaMailConfiguration.all_objects.filter(
+        return HorillaMailConfiguration.objects.filter(
             mail_channel="outgoing", is_active=True
-        )
-        if (
-            cadence
-            and cadence.company_id
-            and qs.filter(company_id=cadence.company_id).exists()
-        ):
-            return True
-        return qs.filter(is_primary=True).exists() or qs.exists()
+        ).exists()
 
     def _should_show_mail_config_popup(self, request, **kwargs):
         followup_type = request.GET.get("followup_type")
@@ -55,11 +69,16 @@ class CadenceFollowUpCreateView(LoginRequiredMixin, HorillaSingleFormView):
         if followup_type != "email" or is_update:
             return False
         cadence_pk = kwargs.get("cadence_pk") or request.GET.get("cadence")
-        cadence = (
-            Cadence.objects.only("id", "company_id").filter(pk=cadence_pk).first()
-            if cadence_pk
-            else None
-        )
+        try:
+            cadence = get_object_or_404(Cadence, pk=cadence_pk)
+        except Exception as e:
+            messages.error(request, str(e))
+            return (
+                None,
+                HttpResponse(
+                    "<script>$('#reloadButton').click();closeModal();</script>"
+                ),
+            )
         return not self._has_outgoing_mail_server(cadence)
 
     def get(self, request, *args, **kwargs):
@@ -97,6 +116,7 @@ class CadenceFollowUpCreateView(LoginRequiredMixin, HorillaSingleFormView):
 
     @cached_property
     def form_url(self):
+        """Return the URL for form submission, used in form kwargs for HTMX."""
         if self.kwargs.get("pk"):
             return reverse_lazy(
                 "cadences:cadence_followup_update_view",
@@ -157,8 +177,11 @@ class CadenceFollowUpDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
     def get(self, request, *args, **kwargs):
         try:
             self.object = self.get_object()
-        except Http404:
-            raise
+        except Exception as e:
+            messages.error(self.request, str(e))
+            return HttpResponse(
+                "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeDeleteModeModal();closeModal();</script>"
+            )
         blocked = self._block_if_has_branch_children()
         if blocked is not None:
             return blocked

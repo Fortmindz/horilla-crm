@@ -48,6 +48,10 @@ from horilla_processes.approvals.models import (
 from horilla_utils.middlewares import _thread_local
 
 
+@method_decorator(
+    permission_required_or_denied(["approvals.view_approvalrule"]),
+    name="dispatch",
+)
 class ApprovalProcessView(LoginRequiredMixin, HorillaView):
     """Settings wrapper view for approval process module."""
 
@@ -173,12 +177,6 @@ class ApprovalProcessListView(LoginRequiredMixin, HorillaListView):
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied(
-        ["approvals.add_approvalrule", "approvals.change_approvalrule"]
-    ),
-    name="dispatch",
-)
 class ApprovalProcessCreateUpdateView(LoginRequiredMixin, HorillaSingleFormView):
     """Create/update approval process only (module, name, triggers). Criteria are edited per rule on detail."""
 
@@ -209,10 +207,6 @@ class ApprovalProcessCreateUpdateView(LoginRequiredMixin, HorillaSingleFormView)
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied(["approvals.change_approvalrule"]),
-    name="dispatch",
-)
 class ApprovalProcessRuleCriteriaView(LoginRequiredMixin, HorillaSingleFormView):
     """Modal: edit when-this-rule-applies criteria for one process rule."""
 
@@ -274,10 +268,6 @@ class ApprovalProcessRuleCriteriaView(LoginRequiredMixin, HorillaSingleFormView)
 
 
 @method_decorator(htmx_required, name="dispatch")
-@method_decorator(
-    permission_required_or_denied(["approvals.change_approvalrule"]),
-    name="dispatch",
-)
 class ApprovalProcessRuleComposeView(LoginRequiredMixin, HorillaSingleFormView):
     """Modal: add a process rule with criteria, approvers, and rule automation JSON in one form."""
 

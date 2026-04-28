@@ -70,6 +70,7 @@ class HorillaListView(HorillaListViewMixin, ListView):
     table_width = True
     table_class = True
     table_height_as_class = ""
+    table_auto = False
     bulk_update_option = True
     store_ordered_ids = False
     save_to_list_option = True
@@ -300,15 +301,21 @@ class HorillaListView(HorillaListViewMixin, ListView):
             return queryset.none()
         return queryset.distinct()
 
-    def _apply_sorting(self, queryset, field, direction):
-        """Fast sorting: uses DB fields or mapped aliases only."""
-
-        if not field:
-            return queryset
-
+    def _resolve_sort_field(self, field, model_class):
+        """
+        Resolve a column name to a sortable DB field name.
+        Returns None if the field cannot be sorted.
+        """
+        # get_*_display → strip to underlying choice field
         if field.startswith("get_") and field.endswith("_display"):
             field = field[4:-8]
 
+        # Check model-level SORT_FIELD_MAPPING (e.g. {"get_avatar_with_name": "first_name"})
+        model_sort_map = getattr(model_class, "SORT_FIELD_MAPPING", {})
+        if field in model_sort_map:
+            return model_sort_map[field]
+
+        # Check view-level sort_by_mapping
         mapped_field = next(
             (
                 item[1]
@@ -317,12 +324,25 @@ class HorillaListView(HorillaListViewMixin, ListView):
             ),
             field,
         )
-        model_class = queryset.model
+
         if not hasattr(model_class, mapped_field):
-            return queryset
+            return None
 
         attr = getattr(model_class, mapped_field)
         if callable(attr) or isinstance(attr, property):
+            return None
+
+        return mapped_field
+
+    def _apply_sorting(self, queryset, field, direction):
+        """Fast sorting: uses DB fields or mapped aliases only."""
+
+        if not field:
+            return queryset
+
+        model_class = queryset.model
+        mapped_field = self._resolve_sort_field(field, model_class)
+        if mapped_field is None:
             return queryset
 
         # Check if the field is a GenericForeignKey
@@ -353,24 +373,10 @@ class HorillaListView(HorillaListViewMixin, ListView):
     def _apply_multi_sorting(self, queryset, sort_pairs):
         """Apply multiple sort columns in order. sort_pairs is a list of (field, direction) tuples."""
         order_fields = []
+        model_class = queryset.model
         for field, direction in sort_pairs:
-            if field.startswith("get_") and field.endswith("_display"):
-                field = field[4:-8]
-
-            mapped_field = next(
-                (
-                    item[1]
-                    for item in getattr(self, "sort_by_mapping", [])
-                    if item[0] == field
-                ),
-                field,
-            )
-            model_class = queryset.model
-            if not hasattr(model_class, mapped_field):
-                continue
-
-            attr = getattr(model_class, mapped_field)
-            if callable(attr) or isinstance(attr, property):
+            mapped_field = self._resolve_sort_field(field, model_class)
+            if mapped_field is None:
                 continue
 
             try:
@@ -918,6 +924,7 @@ class HorillaListView(HorillaListViewMixin, ListView):
                 context["next_page"] = context["page_obj"].next_page_number()
         context["search_url"] = self.search_url or self.request.path
         context["main_url"] = self.main_url or self.request.path
+        context["main_session_id"] = getattr(self, "main_session_id", "mainSession")
         query_params = {
             item: self.request.GET.getlist(item) for item in self.request.GET
         }
@@ -935,6 +942,7 @@ class HorillaListView(HorillaListViewMixin, ListView):
         context["table_width"] = self.table_width
         context["table_class"] = self.table_class
         context["table_height_as_class"] = self.table_height_as_class
+        context["table_auto"] = self.table_auto
         context["save_to_list_option"] = self.save_to_list_option
 
         self._build_sort_context(context)

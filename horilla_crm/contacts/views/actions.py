@@ -1,3 +1,5 @@
+""" Views for handling contact-related actions such as create, update, delete, and managing relationships. """
+
 # Standard library imports
 import logging
 from functools import cached_property
@@ -426,6 +428,7 @@ class ChildContactDeleteView(LoginRequiredMixin, View):
             )
 
 
+@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied("contacts.delete_contact", modal=True),
     name="dispatch",

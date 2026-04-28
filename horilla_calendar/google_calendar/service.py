@@ -9,6 +9,7 @@ from the user's GoogleCalendarConfig — no environment variables required.
 import ipaddress
 import logging
 import secrets
+import time
 import uuid
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -288,11 +289,15 @@ def push_task_to_google_tasks(config, horilla_activity):
             resp = session.patch(url, json=payload_patch)
             if resp.ok:
                 return resp.json()["id"]
-            if resp.status_code == 404:
+            if resp.status_code in (404, 403):
                 logger.info(
-                    "Google task %s missing at PATCH; creating a new task in @default",
+                    "Google task %s inaccessible (HTTP %s) — stale or cross-account ID; "
+                    "creating a new task in @default",
                     google_task_id,
+                    resp.status_code,
                 )
+                # Clear the stale ID so the caller stores the fresh one
+                horilla_activity.google_event_id = None
             else:
                 logger.error(
                     "Google Tasks PATCH failed for task %s list %s: %s %s",
@@ -303,12 +308,30 @@ def push_task_to_google_tasks(config, horilla_activity):
                 )
                 resp.raise_for_status()
 
-    # No stored id, or task was deleted in Google — create in the default list only
+    # No stored id, task was deleted in Google, or stale/cross-account ID — create in @default
     list_id = "@default"
     url = f"{GOOGLE_TASKS_API_BASE}/lists/{list_id}/tasks"
-    resp = session.post(url, json=payload_insert)
+    resp = _post_with_retry(session, url, payload_insert)
     resp.raise_for_status()
     return resp.json()["id"]
+
+
+def _post_with_retry(session, url, payload, max_retries=2):
+    """POST with simple retry for transient 5xx errors."""
+    for attempt in range(max_retries + 1):
+        resp = session.post(url, json=payload)
+        if resp.status_code < 500 or attempt == max_retries:
+            return resp
+        wait = 2**attempt  # 1s, 2s
+        logger.warning(
+            "Google Tasks POST returned %s; retrying in %ss (attempt %s/%s)",
+            resp.status_code,
+            wait,
+            attempt + 1,
+            max_retries,
+        )
+        time.sleep(wait)
+    return resp
 
 
 def delete_task_from_google_tasks(config, google_task_id):

@@ -26,7 +26,7 @@
         </button>
         <div id="mainContent" class="flex-[1_0] leftspace transition-all duration-300 ease-in-out pt-0">
             <button
-                id="reloadMainContent"
+                id="reloadButton"
                 style="display: none"
                 hx-get="{% url 'horilla_calendar:calendar_view' %}{% if request.GET.display_only %}?display_only={{ request.GET.display_only }}{% endif %}"
                 hx-target="#mainContent"
@@ -34,6 +34,16 @@
                 hx-swap="outerHTML"
             >
                 Reload Content
+            </button>
+            <button
+                id="reloadMainContent"
+                style="display: none"
+                hx-get="{% url 'horilla_calendar:calendar_view' %}{% if request.GET.display_only %}?display_only={{ request.GET.display_only }}{% endif %}"
+                hx-target="#mainContent"
+                hx-select="#mainContent"
+                hx-swap="outerHTML"
+            >
+                Reload Main Content
             </button>
             {% include "messages.html" %}
             <div class="bg-white px-5 border-b border-b-dark-50 fixed w-fill-available z-10">
@@ -115,6 +125,13 @@
                 window.hasUnavailabilityDeletePerm = {% if perms.horilla_calendar.delete_userunavalability or perms.horilla_calendar.delete_own_userunavalability %}true{% else %}false{% endif %};
 
 
+                function showCalendarMessage(level, text) {
+                    $('#messages-container').append(
+                        $('<div class="message">').attr('data-level', level).attr('data-message', text)
+                    );
+                    showMessages();
+                }
+
                 function getCalendarUrl(baseUrl) {
                     if (window.currentDisplayOnly) {
                         return baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'display_only=' + encodeURIComponent(window.currentDisplayOnly);
@@ -134,45 +151,49 @@
                             status: newStatus
                         })
                     })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok: ' + response.statusText);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.status === 'success') {
-                            $('#reloadMainContent').click();
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        $('#reloadMainContent').click();
+                        if (ok && data.status === 'success') {
                             if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                         } else {
-                            alert('Error updating status: ' + (data.message || 'Unknown error'));
+                            showCalendarMessage('error', data.message || 'Failed to update status');
                         }
                     })
                     .catch(error => {
-                        console.error('Fetch error:', error);
-                        alert('Failed to update status: ' + error.message);
+                        $('#reloadMainContent').click();
+                        showCalendarMessage('error', 'Failed to update status');
                     });
                 }
 
                 // HTMX helper functions for calendar events
                 function editEvent(eventId, editUrl) {
-                    htmx.ajax('GET', editUrl, {
-                        target: '#modalBox',
-                        swap: 'innerHTML'
-                    }).then(() => {
-                        if (typeof openModal === 'function') {
-                            openModal();
+                    fetch(editUrl, {
+                        headers: {
+                            'HX-Request': 'true',
+                            'X-CSRFToken': '{{ csrf_token }}'
                         }
+                    })
+                    .then(function(response) { return response.text(); })
+                    .then(function(html) {
                         if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
-                    }).catch(error => {
-                        console.error('Error editing event:', error);
-                        alert('Failed to load edit form');
+                        // Script response means activity not found or error — don't do a full reload
+                        if (html.trim().startsWith('<script>')) {
+                            if (window.calendarInstance) window.calendarInstance.refetchEvents();
+                            $('#reloadMessagesButton').click();
+                        } else {
+                            document.getElementById('modalBox').innerHTML = html;
+                            if (typeof openModal === 'function') openModal();
+                        }
+                    })
+                    .catch(function() {
+                        showCalendarMessage('error', '{% trans "Failed to load edit form" %}');
                     });
                 }
 
                 function deleteEvent(eventId, deleteUrl) {
                     if (!deleteUrl || deleteUrl === 'None' || deleteUrl === '#') {
-                        alert('Delete action is not available for this event.');
+                        showCalendarMessage('warning', 'Delete action is not available for this event.');
                         return;
                     }
 
@@ -192,14 +213,13 @@
                         }
                         if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                     }).catch(error => {
-                        console.error('Error deleting event:', error);
-                        alert('Failed to delete event');
+                        showCalendarMessage('error', 'Failed to delete event');
                     });
                 }
 
                 function showEventInfo(eventId, detailUrl) {
                     if (!detailUrl || detailUrl === 'None' || detailUrl === '#') {
-                        alert('Detail view is not available for this event.');
+                        showCalendarMessage('warning', 'Detail view is not available for this event.');
                         return;
                     }
 
@@ -214,8 +234,7 @@
                     }).then(() => {
                         if (window.hideDetailPopup) window.hideDetailPopup(); else $("#calendarPopup").addClass("hidden");
                     }).catch(error => {
-                        console.error('Error loading event details:', error);
-                        alert('Failed to load event details');
+                        showCalendarMessage('error', 'Failed to load event details');
                     });
                 }
 
@@ -649,6 +668,7 @@
                     });
 
                     calendar.render();
+                    window.calendarInstance = calendar;
                     // datesSet can run async; set title immediately so range always shows
                     if (titleEl && calendar.view && calendar.view.title) {
                         titleEl.textContent = calendar.view.title;

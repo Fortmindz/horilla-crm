@@ -1,8 +1,8 @@
 {% load static i18n horilla_tags %}
 <style>
-    .htmx-request #single-form-save-spinner {
+    #single-form-save-spinner.htmx-request {
         display: inline-flex !important;
-      }
+    }
 </style>
 <div id="{{ view_id|safe }}-container" class="relative bg-white rounded-lg shadow-sm">
     <form

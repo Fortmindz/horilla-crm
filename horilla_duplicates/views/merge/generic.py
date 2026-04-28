@@ -14,7 +14,11 @@ from horilla.db import models
 from horilla.db.models import QuerySet
 from horilla.http import HttpResponse
 from horilla.urls import reverse_lazy
-from horilla.utils.decorators import htmx_required, method_decorator
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required_or_denied,
+)
 from horilla.utils.translation import gettext_lazy as _
 
 # First-party / Horilla apps
@@ -59,6 +63,11 @@ class GenericDuplicateDetailView(LoginRequiredMixin, HorillaModalDetailView):
 
         if not self.model:
             messages.error(request, "Model not found.")
+            return HttpResponse("<script>$('#reloadButton').click();</script>")
+
+        perm = f"{self.model._meta.app_label}.view_{self.model._meta.model_name}"
+        if not request.user.has_perm(perm):
+            messages.error(request, _("You do not have permission to view this."))
             return HttpResponse("<script>$('#reloadButton').click();</script>")
 
         return super().dispatch(request, *args, **kwargs)
@@ -212,6 +221,10 @@ class GenericDuplicateDetailView(LoginRequiredMixin, HorillaModalDetailView):
 
 
 @method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied("horilla_duplicates.view_duplicaterule", modal=True),
+    name="dispatch",
+)
 class DuplicateWarningModalView(LoginRequiredMixin, View):
     """
     View to render duplicate warning modal content.

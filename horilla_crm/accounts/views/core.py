@@ -239,7 +239,6 @@ class AccountListView(LoginRequiredMixin, HorillaListView):
     ]
 
 
-@method_decorator(htmx_required, name="dispatch")
 @method_decorator(
     permission_required_or_denied(
         ["accounts.view_account", "accounts.view_own_account"]
@@ -367,7 +366,7 @@ class AccountsKanbanView(LoginRequiredMixin, HorillaKanbanView):
         """Return the 'New Account' button if the user has add permission."""
         if self.request.user.has_perm("accounts.add_account"):
             return {
-                "url": f"""{ reverse_lazy('accounts:account_create')}?new=true""",
+                "url": f"""{ reverse_lazy('accounts:account_create_form_view')}?new=true""",
                 "attrs": 'id="account-create"',
             }
         return None

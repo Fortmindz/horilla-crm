@@ -20,7 +20,7 @@ from horilla.core.exceptions import (
     ObjectDoesNotExist,
     PermissionDenied,
 )
-from horilla.http import HttpResponse
+from horilla.http import Http404, HttpResponse
 from horilla.shortcuts import redirect, render
 from horilla.urls import reverse_lazy
 from horilla.utils.translation import gettext_lazy as _
@@ -227,14 +227,19 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
             logger.error("Error in get method: %s", str(e))
             messages.error(self.request, str(e))
             return HttpResponse(
-                "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeDeleteModeModal();closeModal();</script>"
+                "<script>$('#reloadButton').click();closeDeleteModeModal();closeModal();</script>"
             )
 
     def get_object(self, queryset=None):
         """Override to check delete permissions on the specific object."""
         if queryset is None:
             queryset = self.get_queryset()
-        obj = super().get_object(queryset)
+        try:
+            obj = super().get_object(queryset)
+        except Http404:
+            raise Http404(
+                f"{self.model._meta.object_name} matching query does not exist."
+            )
         if self.check_delete_permission:
             user = self.request.user
             app_label = self.model._meta.app_label
@@ -266,12 +271,12 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
         """Resolve object and delegate to parent post; on error return reload/close script."""
         try:
             self.object = self.get_object()
+            return self.delete(request, *args, **kwargs)
         except Exception as e:
             messages.error(self.request, _(str(e)))
             return HttpResponse(
-                "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeDeleteModeModal();</script>"
+                "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
             )
-        return super().post(request, *args, **kwargs)
 
     def delete(self, request, *args, **kwargs):
         """Handle POST requests for delete actions with dependency handling."""
@@ -318,7 +323,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                         ),
                     )
                     return HttpResponse(
-                        "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeDeleteModeModal();</script>"
+                        "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
                     )
 
             if action == "check_dependencies_with_mode":
@@ -581,7 +586,7 @@ class HorillaSingleDeleteView(DeleteDependencyMixin, DeleteReassignMixin, Delete
                         ),
                     )
                     return HttpResponse(
-                        "<script>$('#reloadButton').click();$('#reloadMessagesButton').click();closeDeleteModeModal();</script>"
+                        "<script>$('#reloadButton').click();closeDeleteModeModal();</script>"
                     )
 
             if action == "set_null_action":
